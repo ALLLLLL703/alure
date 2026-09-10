@@ -62,6 +62,18 @@ evidence below, including a live recheck of corrected automatic zones.
 
 ## Install (explicit, optional)
 
+User-local installation and Niri session service registration:
+
+```sh
+./scripts/install.sh          # build + install + register; does not start
+./scripts/install.sh --start  # also start in the current systemd Niri session
+./scripts/install.sh --no-service # install without touching systemd
+```
+
+Options and service lifecycle: [scripts/README.md](scripts/README.md).
+Existing configuration is never overwritten. The script uses `build-install/`
+by default, separate from the development build. For manual installation:
+
 ```sh
 cmake --install build
 ```
@@ -73,7 +85,8 @@ works. The service's absolute ExecStart uses the **configure-time** prefix;
 reconfigure when changing it (a later `cmake --install --prefix` alone cannot
 rewrite this file). User-local systemd unit lookup varies with libdir/distribution;
 copy/symlink the installed unit into your user unit search path if necessary.
-No service is enabled/started automatically. Ensure the graphical-session user
+CMake installation alone does not enable/start a service. The installation script
+enables it for `niri.service`; only `--start` starts it immediately. Ensure the graphical-session user
 manager has WAYLAND_DISPLAY and related session environment before opting in.
 Alure does not modify Niri configuration or set any session environment globally.
 

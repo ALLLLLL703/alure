@@ -32,6 +32,8 @@ qt_add_executable(config_editing_tests ConfigEditingTest.cpp)
 target_link_libraries(config_editing_tests PRIVATE alure_core Qt6::Test)
 add_test(NAME ConfigEditing COMMAND config_editing_tests)
 set_tests_properties(ConfigEditing PROPERTIES TIMEOUT 30)
+add_test(NAME InstallScripts COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/InstallScriptsTest.sh ${PROJECT_SOURCE_DIR})
+set_tests_properties(InstallScripts PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
 # Optional private-display process-exit regression, using only installed system tools.
 find_program(XVFB_EXECUTABLE Xvfb)
 find_program(XDOTOOL_EXECUTABLE xdotool)
