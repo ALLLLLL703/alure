@@ -12,12 +12,14 @@ class ConfigStore final : public QObject {
     Q_PROPERTY(QString source READ source NOTIFY sourceChanged)
     Q_PROPERTY(QString diagnostic READ diagnostic NOTIFY diagnosticChanged)
     Q_PROPERTY(QString path READ path CONSTANT)
+    Q_PROPERTY(QStringList themeNames READ themeNames CONSTANT)
 public:
     explicit ConfigStore(QString path, QObject *parent = nullptr);
     QVariantMap model() const { return m_model; }
     QString source() const { return QString::fromUtf8(m_source); }
     QString diagnostic() const { return m_diagnostic; }
     QString path() const { return m_path; }
+    QStringList themeNames() const;
     static QByteArray defaultSource();
     static bool parse(const QByteArray &text, QVariantMap &model, QString &error);
     Q_INVOKABLE bool validColor(const QString &color) const;

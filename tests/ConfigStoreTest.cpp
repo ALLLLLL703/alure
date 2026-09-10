@@ -59,6 +59,18 @@ edge = "bottom"
         QVERIFY(ConfigStore::parse("panels = []", model, error));
         QVERIFY(model.value("panels").toList().isEmpty());
     }
+    void themeCatalog() {
+        QTemporaryDir dir; ConfigStore store(dir.filePath("config.toml")); QVERIFY(store.reload());
+        const auto names = store.themeNames(); QCOMPARE(names.size(), 6);
+        for (const auto &name : names) {
+            QVariantMap model; QString error;
+            QVERIFY2(ConfigStore::parse(QString("[theme]\nname='%1'").arg(name).toUtf8(), model, error), qPrintable(error));
+            QCOMPARE(model.value("theme").toMap().value("palette").toMap().size(), 6);
+            QVERIFY(ConfigStore::parse(QString("[theme]\nname='%1'\n[theme.palette]\naccent='#123456'").arg(name).toUtf8(), model, error));
+            QCOMPARE(model.value("theme").toMap().value("palette").toMap().value("accent").toString(), "#123456");
+        }
+        for (const auto *name : {"onedark", "catppuccin", "tokyonight"}) QVERIFY(names.contains(name));
+    }
     void panelLayouts() {
         QVariantMap model; QString error;
         QVERIFY(ConfigStore::parse({}, model, error));

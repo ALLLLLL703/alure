@@ -1,7 +1,8 @@
 # Alure
 
 A TOML-configurable Qt Quick desktop **shell**, initially targeting Niri/Wayland.
-Alure provides transparent multi-edge panels, three themes, original SVG/theme
+Alure provides transparent multi-edge panels with linear/three-zone layouts and
+spacers, six themes (including One Dark, Catppuccin Mocha and Tokyo Night), original SVG/theme
 icons, real system modules and a separate settings application with forms and a
 full TOML editor. Workspace/media/tray/sound/updates/network/Bluetooth/notification/
 calendar/battery details expose supported controls and honest provider diagnostics.

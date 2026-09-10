@@ -5,7 +5,7 @@ watch = true
 reload_delay_ms = 200
 trace_windows = false # diagnostic stderr for auxiliary focus/rebuilds
 [theme]
-name = "midnight" # midnight, dawn, forest
+name = "midnight" # midnight, dawn, forest, onedark, catppuccin (Mocha), tokyonight (Night)
 font = "Sans Serif"
 font_size = 13
 spacing = 10

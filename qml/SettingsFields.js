@@ -8,7 +8,6 @@ function label(key) {
 function describe(path, value) {
     const key = path.split(".").pop()
     let options = []
-    if (path === "theme.name") options = ["midnight", "dawn", "forest"]
     if (key === "icon_mode") options = ["builtin", "theme"]
     if (key === "controls_style") options = ["Basic", "Fusion"]
     if (key === "edge") options = path.indexOf("ui.toast") === 0 ? ["top", "bottom"] : ["top", "bottom", "left", "right"]

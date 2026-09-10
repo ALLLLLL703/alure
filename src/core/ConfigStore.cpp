@@ -91,6 +91,10 @@ bool readDisk(const QString &path, QByteArray &data, bool &exists, QString &erro
 }
 }
 QByteArray ConfigStore::defaultSource() { initDefaults(); return resource(":/config/default.toml"); }
+QStringList ConfigStore::themeNames() const {
+    initDefaults();
+    return convert(toml::parse(resource(":/config/themes.toml").toStdString())).toMap().keys();
+}
 bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &error) {
     try {
         initDefaults();

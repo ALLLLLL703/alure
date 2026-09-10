@@ -54,7 +54,7 @@ shown in defaults are validated by type; enum/range constraints follow below.
 |---|---|
 | root | `version` integer, exactly 1 |
 | runtime | `watch` bool=true; `reload_delay_ms` integer 50..10000, default 200; `trace_windows` bool=false emits window lifecycle stderr diagnostics |
-| theme | `name` midnight/dawn/forest; `font` nonempty string; `font_size` integer 6..72; `spacing`, `padding`, `radius` integer 0..128; `border_width` integer 0..16; `opacity` finite number 0..1 (backdrop alpha only); `icon_mode` builtin/theme; `icon_size` integer 8..128 |
+| theme | `name` midnight/dawn/forest/onedark/catppuccin/tokyonight; `font` nonempty string; `font_size` integer 6..72; `spacing`, `padding`, `radius` integer 0..128; `border_width` integer 0..16; `opacity` finite number 0..1 (backdrop alpha only); `icon_mode` builtin/theme; `icon_size` integer 8..128 |
 | theme.palette | Optional `background`, `surface`, `foreground`, `muted`, `accent`, `border`: Qt color strings (`#rrggbb` recommended). Start with selected named theme, then apply overrides. `opacity` controls panel background/border alpha; content stays opaque. |
 | settings | `width` integer 400..7680; `height` 300..4320; `editor_font` nonempty string; `editor_font_size` integer 6..72 |
 | foundation | `label`, `notice`, `icon` strings; `bold`, `show_icon`, `show_notice` booleans. `icon` is a nonempty built-in or freedesktop theme icon name (letters/digits/underscore/dot/hyphen), not a filesystem path. Deprecated compatibility keys, validated but no longer rendered. |
@@ -209,6 +209,25 @@ Nested Wayland computer-use check: a synthetic DBusMenu provider's right-click
 dropdown appeared beneath its tray icon; submenu navigation and action dismissal
 worked. Automated tests cover protocol updates/errors, disabled/hidden entries,
 owner loss, cancellation and the actual QML right-click route.
+
+## Additional built-in themes
+
+`theme.name` also accepts `onedark`, `catppuccin` (Mocha), and `tokyonight` (Night).
+The default remains `midnight`. Settings reads its theme choices directly from
+`config/themes.toml`, the same catalog used by validation. Preview affects only
+settings; Save & apply publishes the theme to watching panels. Existing explicit
+`theme.palette` overrides still win over the selected theme's colors.
+
+```toml
+[theme]
+name = "catppuccin"
+```
+
+Palette references: [One Dark](https://github.com/joshdick/onedark.vim) (MIT),
+[Catppuccin](https://github.com/catppuccin/palette) (MIT),
+[Tokyo Night](https://github.com/folke/tokyonight.nvim) (Apache-2.0).
+Only color values were used to map Alure's six palette roles; no theme code or
+assets were copied. One Dark uses a lighter muted tone for small shell text.
 
 ## Panel module placement
 

@@ -26,7 +26,7 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: field.theme.spacing
         Repeater {
-            model: field.spec.kind === "theme" ? field.spec.options : []
+            model: field.spec.kind === "theme" ? Config.themeNames : []
             ShellButton {
                 required property string modelData
                 readonly property var previewPalette: Config.inspectText("[theme]\nname = " + Ui.literal(modelData)).model.theme.palette

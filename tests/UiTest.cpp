@@ -535,6 +535,7 @@ private slots:
         group->forceActiveFocus(); QTest::keyClick(window, Qt::Key_Up); QTest::qWait(10);
         QTest::keyClick(window, Qt::Key_Escape);
         QCOMPARE(window->property("appearanceGroup").toInt(), 0);
+        for (const auto &name : config.themeNames()) QVERIFY(find("theme-choice-" + name));
         const auto beforeTheme = find("settings-raw-editor")->property("text").toString();
         revealItem(find("theme-choice-forest")); clickItem(window, find("theme-choice-forest"));
         QCOMPARE(find("settings-raw-editor")->property("text").toString(), beforeTheme);
