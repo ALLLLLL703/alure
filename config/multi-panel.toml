@@ -1,0 +1,28 @@
+# Custom example: independently configured panels, no real service controls yet.
+version = 1
+[theme]
+name = "forest"
+opacity = 0.82
+radius = 10
+font_size = 14
+[theme.palette]
+accent = "#b4f0c8"
+[foundation]
+notice = "Alure · configurable shell foundation"
+[modules.updates]
+enabled = false
+[[panels]]
+id = "top-all"
+output = "*"
+edge = "top"
+thickness = 48
+modules = ["workspaces", "media", "calendar", "tray"]
+[[panels]]
+id = "left-primary"
+output = "primary"
+edge = "left"
+thickness = 64
+length = 480
+exclusive_zone = 0
+margins = { top = 64, bottom = 16, left = 12, right = 12 }
+modules = ["volume", "wifi", "bluetooth", "battery"]

@@ -1,0 +1,21 @@
+[midnight]
+background = "#151923"
+surface = "#252b3b"
+foreground = "#eef1fa"
+muted = "#a5b0c8"
+accent = "#a9bfff"
+border = "#45516b"
+[dawn]
+background = "#f5f0e8"
+surface = "#e5ded3"
+foreground = "#282c35"
+muted = "#656876"
+accent = "#455dc0"
+border = "#b6b0a9"
+[forest]
+background = "#142621"
+surface = "#223e33"
+foreground = "#e4f5e9"
+muted = "#a0bbae"
+accent = "#8ce3b1"
+border = "#406a57"
