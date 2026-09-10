@@ -292,13 +292,26 @@ private slots:
         engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Shell", &shell);
         engine.rootContext()->setContextProperty("Services", QVariantMap{{"media", QVariant::fromValue(&service)}});
         QSignalSpy warnings(&engine, &QQmlEngine::warnings);
-        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(440, 560);
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(360, 460);
         view.setSource(QUrl("qrc:/qml/MediaPopup.qml")); QVERIFY(view.status() == QQuickView::Ready); view.show(); QTest::qWait(40);
         const auto find = [&](const QString &name) { return itemNamed(view.rootObject(), name); };
         QCOMPARE(find("media-title")->property("text").toString(), "Fixture track");
         QCOMPARE(find("media-artist")->property("text").toString(), "Artist A, Artist B");
         QVERIFY(find("media-artwork")->property("source").toUrl().isEmpty());
-        auto *play = find("media-play-pause"); revealItem(play); clickItem(&view, play); QCOMPARE(service.lastAction, "playPause");
+        auto *play = find("media-play-pause");
+        QVERIFY(find("media-shuffle-glyph")->scale() >= 1.);
+        for (const auto &theme : {"midnight", "dawn"}) {
+            QVERIFY(config.previewText(QString("[theme]\nname='%1'\n[modules.media.behavior]\nartwork_remote=false").arg(theme)));
+            clickItem(&view, find("media-player-choice")); QTest::qWait(20);
+            auto *choice = itemNamed(view.contentItem(), "media-source-0"); QVERIFY(choice);
+            QTest::mouseMove(&view, choice->mapToScene(QPointF(choice->width()/2, choice->height()/2)).toPoint());
+            QTRY_VERIFY(choice->property("hovered").toBool());
+            const auto textColor = itemNamed(choice, "media-source-label-0")->property("color").value<QColor>();
+            const auto fill = itemNamed(choice, "media-source-background-0")->property("color").value<QColor>();
+            QVERIFY(textColor != fill);
+            clickItem(&view, choice);
+        }
+        revealItem(play); clickItem(&view, play); QCOMPARE(service.lastAction, "playPause");
         QVERIFY(!find("media-next")->isEnabled());
         clickItem(&view, find("media-shuffle")); QCOMPARE(service.lastArguments.value("shuffle").toBool(), true);
         clickItem(&view, find("media-repeat")); QCOMPARE(service.lastArguments.value("loopStatus").toString(), "Playlist");

@@ -257,10 +257,14 @@ are rejected. The dropdown also allows choosing a player for that open card.
 
 ```toml
 [modules.media.behavior]
+popup_width = 360
+popup_height = 460
+control_size = 40
+control_icon_size = 26
 preferred_player = ""
 show_artwork = true
 artwork_remote = true
-artwork_height = 200
+artwork_height = 160
 show_artist = true
 show_album = true
 show_progress = true
@@ -268,9 +272,15 @@ show_shuffle = true
 show_repeat = true
 ```
 
-These are the defaults; flags require booleans, artwork height is an integer
-80–720 logical pixels. All apply on reload, without restarting Alure. The theme
-and existing popup geometry control the remaining layout/appearance. The cover
+These are the defaults; flags require booleans. Dimensions are integer logical
+pixels: popup width 240–1920, height 240–2160, control size 24–96, control icon
+size 16–64, artwork height 80–720 (a maximum, also capped to fit the card).
+All apply on reload, without restarting Alure. Media has its own compact popup
+size rather than inheriting the larger general dropdown. Vector transport icons
+are independent of font glyph coverage; the main play button is 1.4× the control
+size. Playback-source hover/selection explicitly pairs accent backgrounds with
+contrasting text in both light and dark themes. Other layout/appearance follows
+the theme. Verified via computer-use on Niri and QML hover/click regressions. The cover
 supports `file:` and, with `artwork_remote=true`, HTTP(S); it loads only in a
 visible dropdown, decodes at its display size and releases its source on hide.
 Missing/failed artwork has a music-symbol fallback. Remote artwork may contact

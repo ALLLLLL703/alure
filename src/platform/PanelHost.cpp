@@ -194,6 +194,11 @@ void PanelHost::createPopup(const QString &name, const QVariantMap &panel, QQuic
         options["popup_width"] = behavior.value("menu_width");
         options["popup_height"] = behavior.value("menu_height");
     }
+    if (name == "media") {
+        const auto behavior = m_config.model().value("modules").toMap().value(name).toMap().value("behavior").toMap();
+        options["popup_width"] = behavior.value("popup_width");
+        options["popup_height"] = behavior.value("popup_height");
+    }
     const auto p = popupPlacement(visiblePopupAnchor(anchor), parent->size(), parent->screen()->size(),
                                   panel.value("edge").toString(), options);
     if (p.anchorRect.isEmpty()) { releasePopupKeyboard(); return; }

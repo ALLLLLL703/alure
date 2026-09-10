@@ -25,6 +25,7 @@ set(ALURE_UI_FILES
   qml/ShellButton.qml
   qml/ModulePopup.qml
   qml/MediaPopup.qml
+  qml/MediaButton.qml
   qml/TrayMenu.qml
   qml/Popup.qml
   qml/CalendarView.qml

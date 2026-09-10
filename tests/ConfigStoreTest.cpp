@@ -101,6 +101,8 @@ edge = "bottom"
     void invalid_data() {
         QTest::addColumn<QByteArray>("source");
         for (const auto &[name, text] : std::initializer_list<std::pair<const char *, const char *>>{
+            {"media-width", "[modules.media.behavior]\npopup_width=100"},
+            {"media-icon", "[modules.media.behavior]\ncontrol_icon_size=100"},
             {"toggle-type", "[ui]\ntoggle_on_click='yes'"},
             {"workspace-indicator", "[modules.workspaces.style]\nactive_indicator='sunken'"},
             {"popup-align", "[ui]\npopup_alignment='middle'"}, {"popup-direction", "[ui]\npopup_direction='outward'"},

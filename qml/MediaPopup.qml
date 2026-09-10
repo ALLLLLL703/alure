@@ -15,6 +15,7 @@ Control {
     readonly property bool controllable: ready && options.allow_actions && !!player.CanControl
     property var queuedAction: null
     property string actionError: ""
+    readonly property real controlExtent: Math.min(options.control_size, Math.max(16, (availableWidth - 6 * theme.spacing) / 5.4))
     function dispatch(name, args) {
         const request = {name: name, args: Object.assign({service: player.service}, args || {})}
         if (service.busy) queuedAction = request
@@ -59,6 +60,7 @@ Control {
             Layout.fillWidth: true
             InfoText { text: "Now Playing"; font.bold: true; font.pixelSize: root.theme.font_size * 1.35; Layout.fillWidth: true }
             ComboBox {
+                id: playerChoice
                 objectName: "media-player-choice"
                 visible: root.ready
                 Layout.maximumWidth: root.availableWidth / 2
@@ -67,6 +69,29 @@ Control {
                 currentIndex: root.playerIndex
                 onActivated: root.selectedService = root.players[currentIndex].service
                 Accessible.name: "Media player"
+                delegate: ItemDelegate {
+                    id: sourceChoice
+                    required property int index
+                    required property var modelData
+                    objectName: "media-source-" + index
+                    width: playerChoice.width
+                    highlighted: playerChoice.highlightedIndex === index
+                    hoverEnabled: true
+                    contentItem: Text {
+                        objectName: "media-source-label-" + sourceChoice.index
+                        text: sourceChoice.modelData.identity
+                        font: playerChoice.font
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
+                        color: sourceChoice.highlighted || sourceChoice.hovered ? root.theme.palette.background : root.theme.palette.foreground
+                    }
+                    background: Rectangle {
+                        objectName: "media-source-background-" + sourceChoice.index
+                        color: sourceChoice.highlighted || sourceChoice.hovered ? root.theme.palette.accent : root.theme.palette.surface
+                        radius: root.theme.radius / 2
+                    }
+                }
             }
             ShellButton { objectName: "popup-close"; text: "×"; Accessible.name: "Close now playing"; onClicked: Shell.closePopup() }
         }
@@ -88,7 +113,7 @@ Control {
                 Rectangle {
                     visible: root.options.show_artwork
                     Layout.fillWidth: true
-                    Layout.preferredHeight: root.options.artwork_height
+                    Layout.preferredHeight: Math.min(root.options.artwork_height, Math.max(80, root.availableHeight * 0.38))
                     color: root.theme.palette.surface
                     clip: true
                     Image {
@@ -182,54 +207,47 @@ Control {
                     Layout.fillWidth: true
                     spacing: root.theme.spacing
                     Item { Layout.fillWidth: true }
-                    ShellButton {
+                    MediaButton {
+                        Layout.preferredWidth: root.controlExtent; Layout.preferredHeight: root.controlExtent
                         objectName: "media-shuffle"
                         visible: root.options.show_shuffle
-                        text: "⤨"; Accessible.name: "Shuffle"
+                        symbol: "shuffle"; Accessible.name: "Shuffle"
                         accent: !!root.player.shuffle
                         enabled: root.controllable && !!root.player.hasShuffle && !root.service.busy
                         onClicked: root.dispatch("setShuffle", {shuffle: !root.player.shuffle})
                     }
-                    ShellButton {
+                    MediaButton {
+                        Layout.preferredWidth: root.controlExtent; Layout.preferredHeight: root.controlExtent
                         objectName: "media-previous"
-                        text: "|◀"; Accessible.name: "Previous track"
-                        font.pixelSize: root.theme.icon_size
+                        symbol: "previous"; Accessible.name: "Previous track"
                         enabled: root.controllable && !!root.player.CanGoPrevious && !root.service.busy
                         onClicked: root.dispatch("previous")
                     }
-                    ShellButton {
-                        id: playControl
+                    MediaButton {
                         objectName: "media-play-pause"
-                        contentItem: Text {
-                            text: playControl.text
-                            font: playControl.font
-                            color: playControl.foreground
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            opacity: playControl.enabled ? 1 : 0.45
-                        }
-                        text: root.player.playbackStatus === "Playing" ? "Ⅱ" : "▶"
+                        symbol: root.player.playbackStatus === "Playing" ? "pause" : "play"
                         Accessible.name: root.player.playbackStatus === "Playing" ? "Pause" : "Play"
-                        Layout.preferredWidth: Config.model.ui.module_height * 2
-                        Layout.preferredHeight: Config.model.ui.module_height * 2
-                        font.pixelSize: root.theme.icon_size * 1.6
+                        Layout.preferredWidth: root.controlExtent * 1.4
+                        Layout.preferredHeight: root.controlExtent * 1.4
+                        glyphSize: root.options.control_icon_size * 1.25
                         foreground: root.theme.palette.background
                         baseColor: root.theme.palette.accent
                         background: Rectangle { radius: width / 2; color: root.theme.palette.accent; opacity: parent.down ? 0.7 : 1 }
                         enabled: root.controllable && !root.service.busy && (root.player.playbackStatus === "Playing" ? !!root.player.CanPause : !!root.player.CanPlay)
                         onClicked: root.dispatch("playPause")
                     }
-                    ShellButton {
+                    MediaButton {
+                        Layout.preferredWidth: root.controlExtent; Layout.preferredHeight: root.controlExtent
                         objectName: "media-next"
-                        text: "▶|"; Accessible.name: "Next track"
-                        font.pixelSize: root.theme.icon_size
+                        symbol: "next"; Accessible.name: "Next track"
                         enabled: root.controllable && !!root.player.CanGoNext && !root.service.busy
                         onClicked: root.dispatch("next")
                     }
-                    ShellButton {
+                    MediaButton {
+                        Layout.preferredWidth: root.controlExtent; Layout.preferredHeight: root.controlExtent
                         objectName: "media-repeat"
                         visible: root.options.show_repeat
-                        text: root.player.loopStatus === "Track" ? "↻1" : "↻"
+                        symbol: root.player.loopStatus === "Track" ? "repeat-one" : "repeat"
                         Accessible.name: "Repeat: " + (root.player.loopStatus || "Not supported")
                         accent: root.player.loopStatus === "Track" || root.player.loopStatus === "Playlist"
                         enabled: root.controllable && !!root.player.hasLoopStatus && !root.service.busy

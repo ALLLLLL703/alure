@@ -191,6 +191,10 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
                 range(behavior, "menu_height", 100, 2160, path);
             }
             if (it.key() == "media") {
+                range(behavior, "popup_width", 240, 1920, path);
+                range(behavior, "popup_height", 240, 2160, path);
+                range(behavior, "control_size", 24, 96, path);
+                range(behavior, "control_icon_size", 16, 64, path);
                 range(behavior, "artwork_height", 80, 720, path);
                 const auto preferred = behavior.value("preferred_player").toString();
                 if (!preferred.isEmpty() && !QRegularExpression("^org\\.mpris\\.MediaPlayer2\\.[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$").match(preferred).hasMatch())
