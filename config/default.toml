@@ -240,6 +240,7 @@ allow_actions = true
 toast_enabled = true
 server_enabled = false # opt in; never replaces another notification daemon
 dnd = false
+persist_dnd = true # dropdown DND changes are saved to this TOML file
 history_limit = 100
 default_expire_ms = 5000
 max_expire_ms = 86400000

@@ -16,6 +16,14 @@ uint NotificationEndpoint::Notify(const QString &appName, uint replacesId, const
 void NotificationEndpoint::CloseNotification(uint id) { m_service->close(id, 3); }
 NotificationService::NotificationService(QObject *parent) : Service(parent), m_endpoint(this) {}
 NotificationService::~NotificationService() { stop(); }
+void NotificationService::configure(const QVariantMap &module) {
+    const bool configuredDnd = m_options.value("dnd").toBool();
+    Service::configure(module);
+    if (configuredDnd != m_options.value("dnd").toBool()) {
+        m_dnd = m_options.value("dnd").toBool();
+        if (m_owned) update();
+    }
+}
 void NotificationService::stop() {
     if (m_owned) {
         const auto history = m_history;

@@ -18,10 +18,10 @@ Service::Service(QObject *parent) : QObject(parent) {
 }
 void Service::configure(const QVariantMap &module) {
     auto behavior = module.value("behavior").toMap();
-    // Presentation-only behavior must not reset notification history or in-flight reads.
-    for (const auto &key : {"format", "popup_enabled", "toast_enabled", "menu_width", "menu_height", "show_artwork", "artwork_remote", "artwork_height", "show_artist", "show_album", "show_progress", "show_shuffle", "show_repeat"}) behavior.remove(key);
+    // Presentation and live DND options must not reset history or in-flight reads.
+    for (const auto &key : {"format", "popup_enabled", "toast_enabled", "menu_width", "menu_height", "show_artwork", "artwork_remote", "artwork_height", "show_artist", "show_album", "show_progress", "show_shuffle", "show_repeat", "dnd", "persist_dnd"}) behavior.remove(key);
     const QVariantMap executionConfig{{"enabled", module.value("enabled")}, {"behavior", behavior}};
-    if (executionConfig == m_config) return;
+    if (executionConfig == m_config) { m_options = module.value("behavior").toMap(); return; }
     m_config = executionConfig; ++m_generation; m_timer.stop();
     for (auto *watcher : findChildren<QDBusPendingCallWatcher *>(QString(), Qt::FindDirectChildrenOnly)) delete watcher;
     stop();

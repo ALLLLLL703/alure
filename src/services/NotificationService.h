@@ -25,6 +25,7 @@ class NotificationService : public Service {
 public:
     explicit NotificationService(QObject *parent = nullptr);
     ~NotificationService() override;
+    void configure(const QVariantMap &module) override;
     uint notify(const QString &sender, const QString &appName, uint replacesId, const QString &icon, const QString &summary,
                 const QString &body, const QStringList &actions, const QVariantMap &hints, int expireTimeout);
     void close(uint id, uint reason);

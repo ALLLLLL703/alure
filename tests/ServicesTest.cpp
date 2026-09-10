@@ -171,7 +171,7 @@ private slots:
         }
         QVERIFY(ConfigStore::parse("[modules.workspaces.behavior]\nordering='provider'", config, error));
         QCOMPARE(config.value("modules").toMap().value("workspaces").toMap().value("behavior").toMap().value("ordering").toString(), "provider");
-        for (const QByteArray &text : {QByteArray("[modules.media.behavior]\nartwork_height=0"), QByteArray("[modules.media.behavior]\nartwork_remote='yes'"), QByteArray("[modules.media.behavior]\npreferred_player='random'"), QByteArray("[modules.tray.behavior]\nmenu_width=0"), QByteArray("[modules.tray.behavior]\nmenu_height=2161"), QByteArray("[modules.tray.behavior]\nmenu_width='280'"), QByteArray("[modules.volume.behavior]\ndebounce_ms=0"), QByteArray("[modules.volume.behavior]\nmax_percent=151"),
+        for (const QByteArray &text : {QByteArray("[modules.notifications.behavior]\npersist_dnd='yes'"), QByteArray("[modules.media.behavior]\nartwork_height=0"), QByteArray("[modules.media.behavior]\nartwork_remote='yes'"), QByteArray("[modules.media.behavior]\npreferred_player='random'"), QByteArray("[modules.tray.behavior]\nmenu_width=0"), QByteArray("[modules.tray.behavior]\nmenu_height=2161"), QByteArray("[modules.tray.behavior]\nmenu_width='280'"), QByteArray("[modules.volume.behavior]\ndebounce_ms=0"), QByteArray("[modules.volume.behavior]\nmax_percent=151"),
              QByteArray("[modules.notifications.behavior]\nhistory_limit=0"), QByteArray("[modules.notifications.behavior]\nserver_enabled=1"),
              QByteArray("[modules.wifi.behavior]\nradio_command=[1]"), QByteArray("[modules.battery.behavior]\nsysfs_path=\"relative\"")})
             QVERIFY2(!ConfigStore::parse(text, config, error), text.constData());
@@ -373,6 +373,13 @@ private slots:
         QVERIFY(service.action("invoke", {{"id", second}, {"key", "key"}}));
         QTRY_COMPARE(received.lastAction, "key");
         service.notify(":fixture", "App", 0, "", "Third", "", {}, {}, 0); QCOMPARE(service.items().size(), 2);
+        const auto history = service.items();
+        service.configure(module("notifications", {{"server_enabled", true}, {"history_limit", 2}, {"default_expire_ms", 100}, {"interval_ms", 100}, {"dnd", true}}));
+        QCOMPARE(service.items(), history); QVERIFY(service.available());
+        service.configure(module("notifications", {{"server_enabled", true}, {"history_limit", 2}, {"default_expire_ms", 100}, {"interval_ms", 100}, {"dnd", false}, {"persist_dnd", false}}));
+        QCOMPARE(service.items(), history); QVERIFY(!service.state().value("dnd").toBool());
+        service.notify(":fixture", "App", 0, "", "Fresh after DND", "", {}, {}, 0);
+        QVERIFY(!service.items().last().toMap().value("suppressed").toBool());
         auto disabled = module("notifications"); disabled["enabled"] = false; service.configure(disabled);
         QVERIFY(QDBusConnection::sessionBus().registerService("org.freedesktop.Notifications")); QDBusConnection::sessionBus().unregisterService("org.freedesktop.Notifications");
     }

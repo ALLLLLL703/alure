@@ -24,7 +24,7 @@ public:
     QString diagnostic() const { return m_diagnostic; }
     QVariantMap state() const { return m_state; }
     QVariantList items() const { return m_items; }
-    void configure(const QVariantMap &module);
+    virtual void configure(const QVariantMap &module);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE bool action(const QString &name, const QVariantMap &arguments = {});
 signals:

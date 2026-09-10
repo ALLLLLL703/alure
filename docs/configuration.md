@@ -210,6 +210,42 @@ dropdown appeared beneath its tray icon; submenu navigation and action dismissal
 worked. Automated tests cover protocol updates/errors, disabled/hidden entries,
 owner loss, cancellation and the actual QML right-click route.
 
+## Notification DND and banners
+
+```toml
+[modules.notifications.behavior]
+server_enabled = true # still opt-in; never replaces an existing notification daemon
+toast_enabled = true
+dnd = false
+persist_dnd = true
+[ui.toast]
+enabled = true
+output = "primary"
+duration_ms = 5000
+```
+
+`persist_dnd` is boolean, defaults to `true` and applies on reload. The dropdown's
+explicit Turn on/off do not disturb action now saves `dnd` to TOML, so a restart
+does not silently restore the opposite configured value. Set `persist_dnd=false`
+for the previous session-only switch. Save errors/conflicts are displayed and
+leave the switch unchanged. A DND-only reload updates the live server without
+releasing its DBus name or discarding history. Other execution-option changes
+still restart the service as documented in services.md.
+
+DND suppresses **new banners**, not history. Turning it off does not replay older
+suppressed items; test with a fresh `notify-send`. Both toast enable flags must
+be true and the configured output must exist. The dropdown now explains these
+states. With `runtime.trace_windows=true`, each new arrival logs whether it is
+DND-suppressed, disabled or banner-eligible; an absent output gives a diagnostic.
+
+Regression coverage uses a private DBus end-to-end: Notify → service → panel host
+→ Toast, DND off via an actual QML click, retained history/name ownership,
+configuration persistence, session-only mode, restart and banner timer dismissal.
+Native computer-use verification on nested Niri confirmed the overlay with no
+keyboard interactivity after DND-off and after restart (the screenshot used a
+30-second duration; the normal 5-second mapping and automatic dismissal were
+also observed). No host service or live user configuration was replaced.
+
 ## Now-playing media card
 
 The panel automatically uses the first **Playing** MPRIS player, then Paused,

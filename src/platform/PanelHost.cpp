@@ -45,7 +45,12 @@ PanelHost::PanelHost(ConfigStore &config, QQmlEngine &engine, bool preview, QObj
     m_engine.rootContext()->setContextProperty("Shell", this);
     rebuild();
 }
-PanelHost::~PanelHost() = default;
+PanelHost::~PanelHost() {
+    // Window destruction emits focus/visibility signals. Tear down windows while
+    // the popup's borrowed parent/anchor and keyboard-policy state are still alive.
+    closePopup();
+    m_toast.reset(); m_popup.reset(); m_windows.clear();
+}
 void PanelHost::scheduleRebuild() {
     if (m_rebuildPending) return;
     closePopup();
@@ -276,6 +281,8 @@ void PanelHost::syncNotifications(const QVariantList &items) {
         const auto key = row.value("id").toString() + ":" + row.value("createdAt").toString();
         current.insert(key);
         const bool show = row.value("active").toBool() && !row.value("suppressed").toBool();
+        if (!m_seenNotifications.contains(key))
+            trace(QString("notification %1: %2").arg(row.value("id").toString(), !enabled ? "banners disabled" : row.value("suppressed").toBool() ? "suppressed by DND" : show ? "banner eligible" : "already closed"));
         if (show && key == m_toastId) toastActive = true;
         if (enabled && show && !m_seenNotifications.contains(key)) { latest = row; m_toastId = key; toastActive = true; }
     }
@@ -286,6 +293,7 @@ void PanelHost::syncNotifications(const QVariantList &items) {
     for (auto *candidate : QGuiApplication::screens())
         if ((options.value("output").toString() == "primary" && candidate == QGuiApplication::primaryScreen()) || options.value("output").toString() == candidate->name()) { screen = candidate; break; }
     if (screen) createToast({{"notification", latest}}, screen);
+    else qWarning().noquote() << "Alure: notification banner output unavailable:" << options.value("output").toString();
 }
 
 }

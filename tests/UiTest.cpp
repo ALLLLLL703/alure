@@ -1,6 +1,10 @@
 #include "ConfigStore.h"
 #include "PanelHost.h"
 #include "PopupPlacement.h"
+#include "NotificationService.h"
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
+#include <QDBusMessage>
 #include <QScreen>
 #include <QCloseEvent>
 #include "IconProvider.h"
@@ -221,6 +225,58 @@ private slots:
             QTRY_VERIFY(entry = findItem(view.rootObject(), moduleName + "-entry-20"));
             QCOMPARE(entry->property("iconSource").toString(), "image://icons/theme/battery");
         }
+        QCOMPARE(warnings.size(), 0);
+    }
+    void notificationDndToToast() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QVERIFY(config.saveText("[ui]\nshow_settings=false\n[ui.toast]\nduration_ms=300\n[modules.notifications.behavior]\nserver_enabled=true\ndnd=true\n[[panels]]\nmodules=['notifications']"));
+        Alure::NotificationService service;
+        const auto notificationConfig = [&] { return config.model().value("modules").toMap().value("notifications").toMap(); };
+        connect(&config, &Alure::ConfigStore::modelChanged, &service, [&] { service.configure(notificationConfig()); });
+        service.configure(notificationConfig()); QTRY_VERIFY(service.available()); QVERIFY(service.state().value("dnd").toBool());
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"notifications", QVariant::fromValue(&service)}});
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        Alure::PanelHost host(config, engine, true);
+        connect(&service, &Alure::Service::changed, &host, [&] { host.syncNotifications(service.items()); });
+        const auto window = [](const QString &title) -> QQuickView * {
+            for (auto *w : QGuiApplication::topLevelWindows()) if (w->title() == title && w->isVisible()) return qobject_cast<QQuickView *>(w);
+            return nullptr;
+        };
+        const auto notify = [](const QString &summary) {
+            auto message = QDBusMessage::createMethodCall("org.freedesktop.Notifications", "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "Notify");
+            message.setArguments({"Fixture", uint(0), "", summary, "Body", QStringList{}, QVariantMap{}, 0});
+            return QDBusConnection::sessionBus().asyncCall(message, 1000);
+        };
+        QDBusPendingCallWatcher suppressed(notify("Suppressed")); QTRY_VERIFY(suppressed.isFinished());
+        QVERIFY(!QDBusPendingReply<uint>(suppressed).isError()); QCOMPARE(service.items().size(), 1);
+        QVERIFY(!window("Alure notification"));
+        QTRY_VERIFY(window("Alure · main")); auto *bar = window("Alure · main");
+        clickItem(bar, itemNamed(bar->rootObject(), "notifications-button")); QTRY_VERIFY(window("Alure details"));
+        auto *details = window("Alure details"); clickItem(details, itemNamed(details->rootObject(), "notification-dnd"));
+        QTRY_VERIFY(!service.state().value("dnd").toBool());
+        QCOMPARE(service.items().size(), 1); QVERIFY(service.items().first().toMap().value("active").toBool());
+        QVERIFY(!window("Alure notification")); // no replay of earlier DND history
+        Alure::ConfigStore disk(config.path()); QVERIFY(disk.reload());
+        QVERIFY(!disk.model().value("modules").toMap().value("notifications").toMap().value("behavior").toMap().value("dnd").toBool());
+        QTest::qWait(20); // allow deferred panel rebuild after the saved DND setting
+        QDBusPendingCallWatcher fresh(notify("Fresh after DND")); QTRY_VERIFY(fresh.isFinished());
+        QTRY_VERIFY(window("Alure notification"));
+        QCOMPARE(window("Alure notification")->rootObject()->property("notification").toMap().value("summary").toString(), "Fresh after DND");
+        QTRY_VERIFY(!window("Alure notification")); QCOMPARE(service.state().value("activeCount").toInt(), 2);
+        QVERIFY(config.previewText(config.editLiteral(config.source(), "modules.notifications.behavior.persist_dnd", "false").value("text").toString()));
+        const auto sessionOnlySource = config.source(); QTest::qWait(20);
+        bar = window("Alure · main"); QVERIFY(bar); clickItem(bar, itemNamed(bar->rootObject(), "notifications-button"));
+        QTRY_VERIFY(window("Alure details")); details = window("Alure details");
+        clickItem(details, itemNamed(details->rootObject(), "notification-dnd"));
+        QTRY_VERIFY(service.state().value("dnd").toBool()); QCOMPARE(config.source(), sessionOnlySource);
+        QVERIFY(disk.reload()); QVERIFY(!disk.model().value("modules").toMap().value("notifications").toMap().value("behavior").toMap().value("dnd").toBool());
+        auto disabled = notificationConfig(); disabled["enabled"] = false; service.configure(disabled);
+        service.configure(disk.model().value("modules").toMap().value("notifications").toMap()); QTRY_VERIFY(service.available());
+        QVERIFY(!service.state().value("dnd").toBool());
+        QDBusPendingCallWatcher restarted(notify("Fresh after restart")); QTRY_VERIFY(restarted.isFinished());
+        QTRY_VERIFY(window("Alure notification"));
         QCOMPARE(warnings.size(), 0);
     }
     void mediaCardControls() {

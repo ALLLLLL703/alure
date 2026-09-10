@@ -16,6 +16,15 @@ Control {
     function act(name, args) {
         actionStatus = service && service.action(name, args || {}) ? "Request sent; waiting for provider." : "Request not accepted. Check availability, configured commands and action permissions."
     }
+    function toggleDnd() {
+        const dnd = !service.state.dnd
+        if (config.behavior.persist_dnd) {
+            const edit = Config.editLiteral(Config.source, "modules.notifications.behavior.dnd", dnd ? "true" : "false")
+            if (edit.error) { actionStatus = edit.error; return }
+            if (!Config.saveText(edit.text)) { actionStatus = Config.diagnostic; return }
+        }
+        act("setDnd", {dnd: dnd})
+    }
     Connections {
         target: root.service
         function onChanged() {
@@ -120,8 +129,16 @@ Control {
                 RowLayout {
                     visible: root.moduleName === "notifications" && root.ready
                     Layout.fillWidth: true
-                    ShellButton { text: root.ready && root.service.state.dnd ? "DND on" : "DND off"; accent: root.ready && !!root.service.state.dnd; enabled: root.canAct; onClicked: root.act("setDnd", {dnd: !root.service.state.dnd}) }
+                    ShellButton { objectName: "notification-dnd"; text: root.ready && root.service.state.dnd ? "Turn off do not disturb" : "Turn on do not disturb"; accent: root.ready && !!root.service.state.dnd; enabled: root.canAct; onClicked: root.toggleDnd() }
                     ShellButton { text: "Clear history"; enabled: root.canAct; onClicked: root.act("clearHistory") }
+                }
+                InfoText {
+                    visible: root.moduleName === "notifications" && root.ready
+                    Layout.fillWidth: true
+                    color: root.theme.palette.muted
+                    text: root.ready && root.service.state.dnd ? "Banners paused by do not disturb; history is still recorded."
+                          : !Config.model.ui.toast.enabled || !root.config.behavior.toast_enabled ? "Banners disabled in configuration."
+                          : "New notifications appear as banners. Earlier suppressed notifications stay in history."
                 }
                 ColumnLayout {
                     visible: root.moduleName === "updates"
