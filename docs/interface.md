@@ -131,7 +131,7 @@ Common values use real controls:
 
 Apply fields/Enter flushes staged edits into the raw draft without writing disk.
 Section/category/module/panel navigation, Preview and Save also flush focused input;
-invalid input blocks that transition and remains editable. Raw TOML is always the
+invalid input blocks that transition and remains editable. Raw TOML remains the
 full-fidelity fallback. Opening/browsing the UI does not materialize default keys,
 remove unknown values or change comments. An unrelated theme Preview does not reset
 a user/compositor-supplied window size; actual configured width/height changes do.
@@ -168,6 +168,14 @@ The foundation's locking, symlink rejection, 1 MiB document cap, before-write/
 before-commit conflict comparisons and small non-cooperating writer race still
 apply. See [configuration.md](configuration.md). Settings Basic/Fusion controls
 style is chosen before loading QML and requires process restart to change.
+
+Two pre-existing editing limitations remain: forms apply pending fields sequentially,
+so coupled bounds such as `min_width`/`max_width` may need the relaxed bound applied
+first even when the final pair would be valid. Quoted/unsupported structures should
+be edited in Configuration **before** staging form changes: a rejected pending form
+edit can also block navigation there. Reload → Discard clears the draft explicitly;
+retain any wanted unsaved edits elsewhere before doing that. This update does not
+introduce a transactional multi-field editor or silently discard rejected edits.
 
 ## Configuration coverage and defaults
 
@@ -425,5 +433,51 @@ Automated regression additions:
 - ConfigStore: defaults, custom enums/gap/dismissal values and invalid type/value
   diagnostics. Source-preserving/atomic save implementation is untouched.
 
-Actual compositor screenshot/protocol validation remains parent-owned; these tests
-alone do not establish Niri rendering, grabs or scaling behavior.
+Automated tests alone do not establish Niri rendering, grabs or scaling behavior.
+
+### Parent compositor verification of the settings/popup update
+
+Verified in a private computer-use Sway desktop containing nested **Niri 26.04**,
+without `--session`, using temporary TOML files and a private D-Bus. No host Niri
+configuration, desktop component, notification ownership or device state was changed.
+
+- Final `13f7326` binary SHA256:
+  `bcb478b3f664430924a9ca3e3ae55613995acdc566848fd7a06f9a7e347953a3`.
+  Parent independently configured/built Debug, reran all **7/7 CTest suites** and
+  validated all five `config/*.toml` examples. Optional Vulkan headers were absent;
+  configuration/build succeeded without them.
+- Settings header Close exited the actual window and process. Earlier close-stage
+  native checks also covered invalid Save retaining its modal/error, Cancel returning
+  to editing and Discard exiting with an unchanged on-disk hash. The old baseline
+  already responded to compositor close in isolated Sway; no universal original
+  close-handler failure is claimed.
+- Native typed-widget checks on `ad7260f` exercised theme selection, opacity dragging,
+  color-picker acceptance, two successive palette changes, inherited-panel module
+  reorder/disable and a subsequent margin edit. They persisted valid sparse TOML
+  without removing the source comment. Preview retained the compositor's 957×1166
+  window size; highlighted picker text and selected tracks were legible. Final
+  `13f7326` visually confirmed ordered panel fields and a single contiguous margins
+  group. Native keyboard injection through two compositors was unreliable, so
+  Ctrl+W/Escape are covered by automated event/Xvfb tests, not claimed native checks.
+- Final native popup checks exercised all four panel edges. For a 360×420 card and
+  gap 12, the protocol surface was 384×444. Niri configured parent-local coordinates
+  north `(-8,46)`, south `(-8,-444)`, west `(52,-122)`, east `(-384,-122)` on a
+  973×1182 output. Visible cards opened inward with the configured normal gap;
+  near-edge positions were constrained to the output. Protocol logs confirm
+  `xdg_surface.get_popup` followed by the **originating** layer surface's `get_popup`.
+  Native outside `popup_done` dismissed each card; reopening preserved the shell
+  process. No QML/protocol errors were found in those popup logs.
+- Earlier popup-stage native checks additionally compared two distinct top modules
+  (different horizontal positions), clicked calendar next-month and Close, changed
+  TOML while a popup was open, and exercised `start` alignment, explicit direction
+  with compositor flip, and maximum size/gap. A requested 1920×2160 with gap 256
+  was capped to the 973×1182 output. Transparent padding remains part of the native
+  popup input region; clicking it is not an outside-surface click. Close remains
+  available even when an extreme configuration covers the output.
+
+Local evidence is under `/tmp/alure-close-recheck/`, `/tmp/alure-widgets-final/`,
+`/tmp/alure-popups-final/` and `/tmp/alure-ux-final/` (PNG captures, temporary TOML,
+geometry and protocol logs). These are temporary local evidence, not committed
+fixtures. All test desktops were stopped afterward. Physical multi-monitor/hotplug,
+fractional scaling, native keyboard shortcuts and systemd login/logout lifecycle
+remain outside this compositor verification.
