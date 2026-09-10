@@ -1,13 +1,16 @@
 # Alure
 
 A TOML-configurable Qt Quick desktop **shell**, initially targeting Niri/Wayland.
-The foundation provides transparent multi-edge panels, three themes, SVG/theme
-icons, safe configuration and a separate TOML editor. **Real system services are
-now implemented**, while the full module UI is the next stage: the panel still
-shows its explicit foundation banner, not fake workspaces/battery/network data.
+Alure provides transparent multi-edge panels, three themes, original SVG/theme
+icons, real system modules and a separate settings application with forms and a
+full TOML editor. Workspace/media/tray/sound/updates/network/Bluetooth/notification/
+calendar/battery details expose supported controls and honest provider diagnostics.
+No wallpaper, compositor replacement or simulated system state is supplied.
 
 See [architecture](docs/architecture.md), [configuration](docs/configuration.md),
-[service API/readiness/limits](docs/services.md) and [foundation handoff](docs/foundation.md).
+[interface/configuration coverage](docs/interface.md), and
+[service API/readiness/limits](docs/services.md). Historical foundation handoff:
+[foundation.md](docs/foundation.md).
 
 ## Build
 
@@ -59,7 +62,7 @@ Wayland anchors, focus, stacking or exclusive zones. Those need a real Niri chec
 cmake --install build
 ```
 
-Installs `bin/alure`, `share/alure/{default,multi-panel,services-example}.toml`, and
+Installs `bin/alure`, `share/alure/{default,multi-panel,services-example,four-edge}.toml`, and
 `${CMAKE_INSTALL_LIBDIR}/systemd/user/alure.service` under the configured prefix.
 QML, original icons, defaults and themes are embedded, so moving the executable
 works. The service's absolute ExecStart uses the **configure-time** prefix;
@@ -73,3 +76,11 @@ Alure does not modify Niri configuration or set any session environment globally
 `theme.icon_mode = "theme"` resolves via QIcon (including qt6ct when your normal
 Qt environment selects that platform theme), with original SVG fallback. Alure
 does not force qt6ct or install icon packs. The fallback SVGs use intrinsic colors.
+
+`config/four-edge.toml` demonstrates explicit corner margins and per-output bars.
+Settings Preview changes only settings styling; Save & apply publishes to watching
+panels. Close/Reload protect unsaved drafts. Forms preserve unrelated source text;
+panel add/remove/reorder explicitly warns before normalizing panel sections.
+`runtime.trace_windows=true` enables bounded-content stderr focus/rebuild diagnostics.
+See [interface validation](docs/interface.md#bounded-live-validation-reported-by-parent)
+for the limited nested-Wayland check; native Niri/multiscreen validation is pending.

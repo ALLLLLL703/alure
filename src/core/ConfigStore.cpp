@@ -118,7 +118,22 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
         range(theme, "icon_size", 8, 128, "theme.");
         choice(theme, "icon_mode", {"builtin", "theme"}, "theme.");
         result["theme"] = theme;
+        const auto ui = result.value("ui").toMap();
+        range(ui, "panel_padding", 0, 128, "ui.");
+        range(ui, "module_height", 16, 256, "ui.");
+        range(ui, "popup_width", 240, 1920, "ui.");
+        range(ui, "popup_height", 240, 2160, "ui.");
+        range(ui, "popup_gap", 0, 256, "ui.");
+        range(ui, "animation_ms", 0, 2000, "ui.");
+        const auto toast = ui.value("toast").toMap();
+        range(toast, "width", 240, 1920, "ui.toast.");
+        range(toast, "height", 80, 1080, "ui.toast.");
+        range(toast, "margin", 0, 4096, "ui.toast.");
+        range(toast, "duration_ms", 100, 600000, "ui.toast.");
+        choice(toast, "edge", {"top", "bottom"}, "ui.toast.");
+        nonempty(toast, "output", "ui.toast.");
         auto settings = result.value("settings").toMap();
+        choice(settings, "controls_style", {"Basic", "Fusion"}, "settings.");
         range(settings, "width", 400, 7680, "settings.");
         range(settings, "height", 300, 4320, "settings.");
         range(settings, "editor_font_size", 6, 72, "settings.");
@@ -127,6 +142,7 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
         static const QRegularExpression iconName(QStringLiteral("^[A-Za-z0-9_.-]+$"));
         if (!iconName.match(foundation.value("icon").toString()).hasMatch())
             invalid("foundation.icon", "expected a nonempty icon name (letters, digits, _, . or -), not a path");
+        if (!iconName.match(ui.value("settings_icon").toString()).hasMatch()) invalid("ui.settings_icon", "expected icon name");
         auto modules = result.value("modules").toMap();
         auto moduleDefaults = defaults.value("modules").toMap().value("media").toMap();
         auto behaviorDefaults = moduleDefaults.value("behavior").toMap();
@@ -134,6 +150,15 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
         moduleDefaults["behavior"] = behaviorDefaults;
         for (auto it = modules.begin(); it != modules.end(); ++it) {
             auto module = merge(moduleDefaults, table(it.value(), "modules." + it.key()), "modules." + it.key() + '.');
+            const auto style = module.value("style").toMap();
+            const QString stylePath = "modules." + it.key() + ".style.";
+            range(style, "icon_size", 8, 128, stylePath);
+            range(style, "min_width", 16, 1024, stylePath);
+            range(style, "max_width", 16, 2048, stylePath);
+            if (style.value("min_width").toInt() > style.value("max_width").toInt()) invalid(stylePath + "min_width", "exceeds max_width");
+            if (!iconName.match(style.value("icon").toString()).hasMatch()) invalid(stylePath + "icon", "expected icon name, not a path");
+            for (const auto &key : {"foreground", "background"})
+                if (!style.value(key).toString().isEmpty() && !QColor::isValidColorName(style.value(key).toString())) invalid(stylePath + key, "invalid Qt color");
             auto behavior = module.value("behavior").toMap();
             const QString path = "modules." + it.key() + ".behavior.";
             range(behavior, "interval_ms", 100, 86400000, path);
@@ -148,6 +173,7 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
                     if (arg.metaType().id() != QMetaType::QString || arg.toString().contains(QChar::Null)) invalid(path + option.key(), "expected strings without NUL");
                 if (!argv.isEmpty() && argv.first().toString().trimmed().isEmpty()) invalid(path + option.key(), "executable must not be empty");
             }
+            if (it.key() == "calendar") range(behavior, "first_day_of_week", 0, 1, path);
             if (it.key() == "volume") {
                 range(behavior, "max_percent", 1, 150, path);
                 range(behavior, "debounce_ms", 10, 2000, path);
@@ -220,6 +246,7 @@ ConfigStore::ConfigStore(QString path, QObject *parent) : QObject(parent), m_pat
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, schedule);
 }
 void ConfigStore::setDiagnostic(QString message) {
+    if (m_diagnostic == message) return;
     m_diagnostic = std::move(message); emit diagnosticChanged();
 }
 bool ConfigStore::reload() {
@@ -228,14 +255,21 @@ bool ConfigStore::reload() {
     QVariantMap model;
     // Keep the raw editor document/snapshot even if parsing fails; only the
     // published runtime model retains its last good value.
-    m_source = existed ? bytes : defaultSource();
+    const auto source = existed ? bytes : defaultSource();
+    const bool sourceChangedValue = m_source != source;
+    m_source = source;
     m_diskSnapshot = bytes; m_diskExisted = existed; m_hasSnapshot = true;
     if (!parse(m_source, model, error)) {
-        setDiagnostic(error); emit sourceChanged(); updateWatch(); return false;
+        setDiagnostic(error); if (sourceChangedValue) emit sourceChanged(); updateWatch(); return false;
     }
+    const bool changed = m_model != model;
     m_model = std::move(model);
     setDiagnostic({});
-    emit sourceChanged(); emit modelChanged(); updateWatch();
+    if (sourceChangedValue) emit sourceChanged();
+    // Directory watches also fire for unrelated sibling files. Do not rebuild
+    // panels (and dismiss details) unless the effective configuration changed.
+    if (changed) emit modelChanged();
+    updateWatch();
     return true;
 }
 bool ConfigStore::saveText(const QString &text) {

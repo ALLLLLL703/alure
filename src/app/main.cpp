@@ -8,6 +8,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
+#include <QQuickStyle>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QTimer>
@@ -29,7 +30,7 @@ int main(int argc, char **argv) {
     QCoreApplication::setApplicationName("alure");
     QCoreApplication::setApplicationVersion("0.1.0");
     QCommandLineParser parser;
-    parser.setApplicationDescription("Alure configurable Wayland shell (foundation)");
+    parser.setApplicationDescription("Alure configurable Wayland shell");
     parser.addHelpOption(); parser.addVersionOption();
     parser.addOption({"config", "Use this TOML file", "path", QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/alure/config.toml"});
     parser.addOption({"validate-config", "Validate configuration without a display; missing file uses defaults"});
@@ -56,6 +57,7 @@ int main(int argc, char **argv) {
     if (!parser.isSet("settings") && !parser.isSet("preview") && QGuiApplication::platformName() != "wayland") {
         QTextStream(stderr) << "Panel mode requires Wayland. Use --preview or --settings for normal windows.\n"; return 2;
     }
+    QQuickStyle::setStyle(config.model().value("settings").toMap().value("controls_style").toString());
     QQuickWindow::setDefaultAlphaBuffer(true);
     if (!parser.isSet("settings") && !parser.isSet("preview")) LayerShellQt::Shell::useLayerShell();
     QGuiApplication::setQuitOnLastWindowClosed(parser.isSet("settings") || parser.isSet("preview"));
@@ -63,6 +65,7 @@ int main(int argc, char **argv) {
     std::unique_ptr<Alure::Services> services;
     if (!parser.isSet("settings")) services = std::make_unique<Alure::Services>(config);
     QQmlApplicationEngine engine;
+    QObject::connect(&engine, &QQmlEngine::warnings, &engine, [](const QList<QQmlError> &errors) { for (const auto &error : errors) QTextStream(stderr) << error.toString() << '\n'; });
     engine.addImageProvider("icons", new Alure::IconProvider); // ownership transferred to engine
     engine.rootContext()->setContextProperty("Config", &config);
     if (services) engine.rootContext()->setContextProperty("Services", services.get());
@@ -75,6 +78,7 @@ int main(int argc, char **argv) {
         if (engine.rootObjects().isEmpty()) return 1;
     } else {
         host = std::make_unique<Alure::PanelHost>(config, engine, parser.isSet("preview"));
+        QObject::connect(services->notifications(), &Alure::Service::changed, host.get(), [&] { host->syncNotifications(services->notifications()->items()); });
         config.startWatching();
     }
     if (quitAfter) QTimer::singleShot(quitAfter, app.get(), &QCoreApplication::quit);

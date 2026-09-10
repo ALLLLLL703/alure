@@ -1,0 +1,61 @@
+# Four edges on each output. Vertical bars leave room for the horizontal bars.
+# Use a temporary --config path for experiments; no Niri configuration is needed.
+[theme]
+name = "midnight"
+opacity = 0.92
+spacing = 10
+icon_mode = "builtin"
+# icon_theme = "breeze" # optional; empty default respects desktop selection
+[ui]
+panel_padding = 6
+module_height = 32
+popup_width = 440
+popup_height = 560
+animation_ms = 120
+[ui.toast]
+enabled = true
+output = "primary"
+edge = "top"
+margin = 68
+width = 380
+height = 150
+duration_ms = 5000
+[[panels]]
+id = "north"
+output = "*"
+edge = "top"
+thickness = 46
+margins = { top = 8, right = 8, bottom = 8, left = 8 }
+modules = ["workspaces", "media", "calendar"]
+[[panels]]
+id = "south"
+output = "*"
+edge = "bottom"
+thickness = 46
+margins = { top = 8, right = 8, bottom = 8, left = 8 }
+modules = ["tray", "updates"]
+[[panels]]
+id = "west"
+output = "*"
+edge = "left"
+thickness = 52
+margins = { top = 68, right = 8, bottom = 68, left = 8 }
+modules = ["wifi", "bluetooth", "volume"]
+[[panels]]
+id = "east"
+output = "*"
+edge = "right"
+thickness = 52
+margins = { top = 68, right = 8, bottom = 68, left = 8 }
+modules = ["notifications", "battery"]
+[modules.media.style]
+max_width = 320
+foreground = "#d3ccff"
+[modules.calendar.behavior]
+format = "ddd dd MMM · HH:mm"
+first_day_of_week = 1
+month_format = "MMMM yyyy"
+[modules.updates.behavior]
+update_command = [] # safe default: explicit action disabled
+[modules.notifications.behavior]
+server_enabled = false # deliberate opt-in only when ready to use Alure notifications

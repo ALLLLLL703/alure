@@ -22,6 +22,10 @@ public:
     static bool parse(const QByteArray &text, QVariantMap &model, QString &error);
     Q_INVOKABLE bool reload();
     Q_INVOKABLE bool saveText(const QString &text);
+    Q_INVOKABLE QVariantMap inspectText(const QString &text) const;
+    Q_INVOKABLE bool previewText(const QString &text);
+    Q_INVOKABLE QVariantMap editLiteral(const QString &text, const QString &path, const QString &literal) const;
+    Q_INVOKABLE QVariantMap editPanels(const QString &text, const QString &operation, int index) const;
     void startWatching(); // panel process only; editor uses explicit reload
 signals:
     void modelChanged();

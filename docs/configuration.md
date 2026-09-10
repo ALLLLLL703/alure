@@ -1,7 +1,9 @@
 # Configuration contract (version 1)
 
 The canonical complete defaults are [`config/default.toml`](../config/default.toml),
-embedded in `alure_core`; a custom example is `config/multi-panel.toml`.
+embedded in `alure_core`; custom examples include `config/multi-panel.toml` and `config/four-edge.toml`.
+The complete v0.1 UI/settings key table and formatting/interaction boundaries are
+in [interface.md](interface.md#configuration-coverage-and-defaults).
 QML and downstream C++ consume the **same fully defaulted** ConfigStore model.
 Maps merge recursively. Arrays replace in full; missing `panels` uses one default
 panel, `panels = []` intentionally creates none. Each panel entry is merged with
@@ -17,7 +19,8 @@ QVariant model; their exact source survives saves. Maximum document size: 1 MiB.
   document for repair, with default styling and a diagnostic.
 - Running panels watch the file and parent directory (nearest existing ancestor
   for missing paths). Debounced valid reload publishes a model and rebuilds
-  panels. Invalid reload reports a diagnostic and retains the **last good runtime
+  panels only when the effective model changes. Unrelated sibling-file changes and
+  comment-only edits do not dismiss popups or restart services. Invalid reload reports a diagnostic and retains the **last good runtime
   model**. Raw `source` follows the last explicitly read document, even if invalid.
 - Settings is intentionally **not auto-reloaded**, so unsaved edits are not lost.
   Reload discards edits explicitly and loads the disk text, including invalid
@@ -27,7 +30,9 @@ QVariant model; their exact source survives saves. Maximum document size: 1 MiB.
   snapshot before writing and again before commit. External modification,
   creation/deletion, locks and symlinks produce diagnostics rather than overwrite.
   Copy edits elsewhere before Reload after a conflict. Comments and unknown keys
-  survive exactly because the editor saves the full text, not a reserialized model.
+  survive exactly when using the raw editor, which saves full text. Form edits use
+  source spans; panel collection operations explicitly warn before normalizing only
+  panel regions. See the [source-preserving forms policy](interface.md#settings-one-draft-no-silent-rewrites).
   Deliberately deleting keys in the editor does, of course, delete those keys.
 - There is an unavoidable tiny check-to-rename race with **non-cooperating external
   writers**: no cross-process filesystem compare-and-swap is available here. Alure
@@ -48,19 +53,20 @@ shown in defaults are validated by type; enum/range constraints follow below.
 | Table | Keys, bounds and meaning |
 |---|---|
 | root | `version` integer, exactly 1 |
-| runtime | `watch` bool=true; `reload_delay_ms` integer 50..10000, default 200 |
+| runtime | `watch` bool=true; `reload_delay_ms` integer 50..10000, default 200; `trace_windows` bool=false emits window lifecycle stderr diagnostics |
 | theme | `name` midnight/dawn/forest; `font` nonempty string; `font_size` integer 6..72; `spacing`, `padding`, `radius` integer 0..128; `border_width` integer 0..16; `opacity` finite number 0..1 (backdrop alpha only); `icon_mode` builtin/theme; `icon_size` integer 8..128 |
 | theme.palette | Optional `background`, `surface`, `foreground`, `muted`, `accent`, `border`: Qt color strings (`#rrggbb` recommended). Start with selected named theme, then apply overrides. `opacity` controls panel background/border alpha; content stays opaque. |
 | settings | `width` integer 400..7680; `height` 300..4320; `editor_font` nonempty string; `editor_font_size` integer 6..72 |
-| foundation | `label`, `notice`, `icon` strings; `bold`, `show_icon`, `show_notice` booleans. `icon` is a nonempty built-in or freedesktop theme icon name (letters/digits/underscore/dot/hyphen), not a filesystem path. These control the honest temporary foundation banner. |
+| foundation | `label`, `notice`, `icon` strings; `bold`, `show_icon`, `show_notice` booleans. `icon` is a nonempty built-in or freedesktop theme icon name (letters/digits/underscore/dot/hyphen), not a filesystem path. Deprecated compatibility keys, validated but no longer rendered. |
 
 Theme defaults: Sans Serif 13 px, spacing 10, padding 12, radius 14, border 1,
-opacity .88, icons 20 px, built-in mode. Settings defaults: 900×680, monospace 13 px.
+opacity .88, icons 18 px, built-in mode. Settings defaults: 900×680, monospace 13 px.
 Built-in palette values are in `config/themes.toml`. Unknown icon names resolve to
 `fallback.svg`; `alure` resolves to the original logo. SVG colors are intrinsic,
-not recolored by the palette. Settings uses standard Qt Quick Controls semantics
-and labels; this stage offers a TOML editor, not a schema-generated form, shortcut
-editor, per-control style sheet, translations, or an unsaved-close dialog.
+not recolored by the palette. Settings offers source-preserving forms plus a complete TOML editor and unsaved
+Save/Discard/Cancel dialogs. Standard Qt control/editor semantics apply; no arbitrary
+shortcut editor, per-control stylesheet or translations are provided. See interface.md
+for UI, per-module style, controls_style and icon_theme keys.
 
 ### `[[panels]]` (up to 128 definitions, any number per output/edge)
 
@@ -91,7 +97,7 @@ focus suppression and reservations intentionally are not emulated.
 
 Known initial names: `workspaces`, `media`, `tray`, `volume`, `updates`, `wifi`,
 `bluetooth`, `notifications`, `calendar`, `battery`. **Live services now run for
-enabled modules; full module rendering awaits the UI stage.** Their stable outer contract is:
+enabled modules, now rendered with actionable detail surfaces.** Their stable outer contract is:
 
 - `enabled`: bool, true by default.
 - `style.show_icon`, `style.show_label`: bool, true except tray label false.
@@ -102,8 +108,8 @@ enabled modules; full module rendering awaits the UI stage.** Their stable outer
   Never interpreted by a shell. Default command/interval/format for each module
   is listed explicitly in the canonical TOML example.
 - `behavior.allow_actions`: bool, default true; false disables service controls.
-- `behavior.format`: string. The UI stage consumes formatting contracts; no
-  substitution occurs in the foundation banner.
+- `behavior.format`: string. UI field substitutions and calendar Qt date patterns
+  are documented in [interface.md](interface.md#configuration-coverage-and-defaults).
 
 New named module tables are accepted, merged with the same common defaults
 (enabled, both labels/icons, interval 1000, timeout 3000, empty argv and format).
@@ -149,5 +155,5 @@ If opting into an update terminal, supply executable and arguments separately;
 Alure does not add `sh -c`, authentication, confirmations or package installation.
 Do not verify custom update/power/connect actions on a live desktop inadvertently.
 
-The service layer returns raw data only. Module `style` and `format` still need the
-next stage's UI; they must not be advertised as rendering functionality yet.
+The service layer returns raw data only. The v0.1 interface consumes module style
+and formatting; see [interface.md](interface.md) for supported boundaries.

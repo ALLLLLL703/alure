@@ -130,6 +130,18 @@ edge = "bottom"
         QCOMPARE(readFile(target), "version = 1");
         QVariantMap model; QString error; QVERIFY(!ConfigStore::parse(QByteArray(1024 * 1024 + 1, ' '), model, error));
     }
+    void unchangedReloadDoesNotPublish() {
+        QTemporaryDir dir; const auto path = dir.filePath("config.toml");
+        writeFile(path, "[theme]\nname = 'forest'");
+        ConfigStore store(path); QVERIFY(store.reload()); store.startWatching();
+        QSignalSpy changes(&store, &ConfigStore::modelChanged);
+        QSignalSpy sourceChanges(&store, &ConfigStore::sourceChanged);
+        QVERIFY(store.reload()); QCOMPARE(changes.size(), 0); QCOMPARE(sourceChanges.size(), 0);
+        writeFile(dir.filePath("unrelated-screenshot.txt"), "not config");
+        QTest::qWait(350); QCOMPARE(changes.size(), 0); QCOMPARE(sourceChanges.size(), 0);
+        writeFile(path, "# comment only\n[theme]\nname = 'forest'");
+        QTest::qWait(350); QCOMPARE(changes.size(), 0);
+    }
     void watchesAtomicReplacementAndInvalid() {
         QTemporaryDir dir; const auto path = dir.filePath("config.toml");
         ConfigStore store(path); QVERIFY(store.reload()); store.startWatching();

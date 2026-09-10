@@ -1,8 +1,9 @@
-# Alure foundation. Missing keys use defaults; unknown keys are preserved.
+# Alure v0.1. Missing keys use defaults; unknown keys are preserved.
 version = 1
 [runtime]
 watch = true
 reload_delay_ms = 200
+trace_windows = false # diagnostic stderr for auxiliary focus/rebuilds
 [theme]
 name = "midnight" # midnight, dawn, forest
 font = "Sans Serif"
@@ -13,19 +14,40 @@ radius = 14
 border_width = 1
 opacity = 0.88
 icon_mode = "builtin" # builtin or theme (QIcon/qt6ct with SVG fallback)
-icon_size = 20
+icon_size = 18
+icon_theme = "" # empty respects the desktop / qt6ct default
 # Optional overrides: [theme.palette] background, surface, foreground, muted, accent, border
 [settings]
+controls_style = "Basic" # Basic or Fusion; restart settings/panels to change
 width = 900
 height = 680
 editor_font = "monospace"
 editor_font_size = 13
-[foundation]
+[ui]
+panel_padding = 6
+module_height = 30
+popup_width = 440
+popup_height = 560
+popup_gap = 8
+animation_ms = 140
+close_on_focus_loss = true
+escape_closes = true
+show_settings = true
+settings_icon = "settings"
+[ui.toast]
+enabled = true
+output = "primary"
+edge = "top" # top or bottom, right aligned
+width = 380
+height = 150
+margin = 64
+duration_ms = 5000
+[foundation] # deprecated compatibility keys; no longer rendered
 label = "Alure"
 bold = true
 show_icon = true
 icon = "alure"
-notice = "Foundation · module UI arrives in the next stage"
+notice = ""
 show_notice = true
 [[panels]]
 id = "main"
@@ -39,14 +61,21 @@ layer = "top" # background, bottom, top, overlay
 margins = { top = 8, right = 8, bottom = 8, left = 8 }
 modules = ["workspaces", "media", "tray", "volume", "updates", "wifi", "bluetooth", "notifications", "calendar", "battery"]
 
-# Live service contracts; UI styles/formats are consumed by the UI stage.
+# Module UI and live service contracts.
 # Commands are argv arrays, never shell text. Empty action commands disable actions.
 [modules.workspaces]
 enabled = true
 [modules.workspaces.style]
+icon = "workspaces"
+icon_size = 18
+max_width = 240
+min_width = 30
+foreground = "" # empty inherits theme
+background = "" # empty uses transparent
 show_icon = true
 show_label = true
 [modules.workspaces.behavior]
+popup_enabled = true
 allow_actions = true
 socket_path = "" # empty uses NIRI_SOCKET; reconnect at interval_ms
 interval_ms = 1000
@@ -56,9 +85,16 @@ format = "{name}"
 [modules.media]
 enabled = true
 [modules.media.style]
+icon = "media"
+icon_size = 18
+max_width = 240
+min_width = 30
+foreground = "" # empty inherits theme
+background = "" # empty uses transparent
 show_icon = true
 show_label = true
 [modules.media.behavior]
+popup_enabled = true
 allow_actions = true
 interval_ms = 1000
 timeout_ms = 3000
@@ -67,9 +103,16 @@ format = "{artist} — {title}"
 [modules.tray]
 enabled = true
 [modules.tray.style]
+icon = "tray"
+icon_size = 18
+max_width = 240
+min_width = 30
+foreground = "" # empty inherits theme
+background = "" # empty uses transparent
 show_icon = true
 show_label = false
 [modules.tray.behavior]
+popup_enabled = true
 allow_actions = true
 interval_ms = 1000
 timeout_ms = 3000
@@ -78,9 +121,16 @@ format = "{title}"
 [modules.volume]
 enabled = true
 [modules.volume.style]
+icon = "volume"
+icon_size = 18
+max_width = 140
+min_width = 30
+foreground = "" # empty inherits theme
+background = "" # empty uses transparent
 show_icon = true
 show_label = true
 [modules.volume.behavior]
+popup_enabled = true
 allow_actions = true
 set_volume_command = ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@"]
 mute_command = ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]
@@ -93,9 +143,16 @@ format = "{percent}%"
 [modules.updates]
 enabled = true
 [modules.updates.style]
+icon = "updates"
+icon_size = 18
+max_width = 140
+min_width = 30
+foreground = "" # empty inherits theme
+background = "" # empty uses transparent
 show_icon = true
 show_label = true
 [modules.updates.behavior]
+popup_enabled = true
 allow_actions = true
 update_command = [] # Explicit user action only; configure terminal + package manager argv
 interval_ms = 1800000
@@ -105,9 +162,16 @@ format = "{count}"
 [modules.wifi]
 enabled = true
 [modules.wifi.style]
+icon = "wifi"
+icon_size = 18
+max_width = 140
+min_width = 30
+foreground = "" # empty inherits theme
+background = "" # empty uses transparent
 show_icon = true
 show_label = true
 [modules.wifi.behavior]
+popup_enabled = true
 allow_actions = true
 radio_command = ["nmcli", "radio", "wifi"]
 radio_status_command = ["nmcli", "-t", "-f", "WIFI", "general"]
@@ -120,9 +184,16 @@ format = "{ssid}"
 [modules.bluetooth]
 enabled = true
 [modules.bluetooth.style]
+icon = "bluetooth"
+icon_size = 18
+max_width = 140
+min_width = 30
+foreground = "" # empty inherits theme
+background = "" # empty uses transparent
 show_icon = true
 show_label = true
 [modules.bluetooth.behavior]
+popup_enabled = true
 allow_actions = true
 interval_ms = 10000
 timeout_ms = 5000
@@ -131,10 +202,18 @@ format = "{status}"
 [modules.notifications]
 enabled = true
 [modules.notifications.style]
+icon = "notifications"
+icon_size = 18
+max_width = 140
+min_width = 30
+foreground = "" # empty inherits theme
+background = "" # empty uses transparent
 show_icon = true
 show_label = true
 [modules.notifications.behavior]
+popup_enabled = true
 allow_actions = true
+toast_enabled = true
 server_enabled = false # opt in; never replaces another notification daemon
 dnd = false
 history_limit = 100
@@ -147,9 +226,19 @@ format = "{count}"
 [modules.calendar]
 enabled = true
 [modules.calendar.style]
+icon = "calendar"
+icon_size = 18
+max_width = 240
+min_width = 30
+foreground = "" # empty inherits theme
+background = "" # empty uses transparent
 show_icon = true
 show_label = true
 [modules.calendar.behavior]
+popup_enabled = true
+allow_actions = true
+first_day_of_week = 1 # 0 Sunday, 1 Monday
+month_format = "MMMM yyyy"
 interval_ms = 1000
 timeout_ms = 3000
 command = []
@@ -157,9 +246,16 @@ format = "ddd dd MMM · HH:mm"
 [modules.battery]
 enabled = true
 [modules.battery.style]
+icon = "battery"
+icon_size = 18
+max_width = 140
+min_width = 30
+foreground = "" # empty inherits theme
+background = "" # empty uses transparent
 show_icon = true
 show_label = true
 [modules.battery.behavior]
+popup_enabled = true
 sysfs_path = "/sys/class/power_supply"
 interval_ms = 30000
 timeout_ms = 3000

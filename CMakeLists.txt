@@ -14,9 +14,33 @@ add_subdirectory(src/platform)
 add_subdirectory(src/services)
 qt_add_executable(alure src/app/main.cpp)
 target_link_libraries(alure PRIVATE alure_core alure_platform alure_services Qt6::QuickControls2)
-qt_add_resources(alure ui PREFIX / FILES qml/Panel.qml qml/Settings.qml assets/icons/alure.svg assets/icons/fallback.svg)
+set(ALURE_UI_FILES
+  qml/Panel.qml
+  qml/Settings.qml
+  qml/Ui.js
+  qml/ModuleStrip.qml
+  qml/ShellButton.qml
+  qml/Popup.qml
+  qml/CalendarView.qml
+  qml/InfoText.qml
+  qml/Toast.qml
+  assets/icons/settings.svg
+  assets/icons/battery.svg
+  assets/icons/media.svg
+  assets/icons/fallback.svg
+  assets/icons/wifi.svg
+  assets/icons/volume.svg
+  assets/icons/workspaces.svg
+  assets/icons/tray.svg
+  assets/icons/notifications.svg
+  assets/icons/bluetooth.svg
+  assets/icons/alure.svg
+  assets/icons/calendar.svg
+  assets/icons/updates.svg
+)
+qt_add_resources(alure ui PREFIX / FILES ${ALURE_UI_FILES})
 install(TARGETS alure RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES config/default.toml config/multi-panel.toml config/services-example.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/alure)
+install(FILES config/default.toml config/multi-panel.toml config/services-example.toml config/four-edge.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/alure)
 configure_file(packaging/alure.service.in alure.service @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/alure.service DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/user)
 if(BUILD_TESTING)

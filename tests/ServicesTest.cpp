@@ -27,6 +27,11 @@ QVariantMap module(const QString &name, QVariantMap overrides = {}) {
 QVariantList command(const QString &mode) { return {QString(SERVICE_FIXTURE), mode}; }
 void put(const QString &path, const QByteArray &text) { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); QCOMPARE(file.write(text), text.size()); }
 }
+class SnapshotFixture : public Service {
+public:
+    int polls = 0;
+    void poll() override { ++polls; publish({{"observed", true}}); }
+};
 class FakePlayer : public QObject {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.mpris.MediaPlayer2.Player")
@@ -109,6 +114,13 @@ public slots:
 class ServicesTest : public QObject {
     Q_OBJECT
 private slots:
+    void presentationChangesKeepSnapshot() {
+        SnapshotFixture service;
+        service.configure(module("notifications")); QCOMPARE(service.polls, 1);
+        const auto state = service.state();
+        service.configure(module("notifications", {{"format", "custom"}, {"popup_enabled", false}, {"toast_enabled", false}}));
+        QCOMPARE(service.polls, 1); QCOMPARE(service.state(), state);
+    }
     void initTestCase() {
         qDBusRegisterMetaType<TestPixmap>(); qDBusRegisterMetaType<TestPixmaps>();
         QVERIFY(!qEnvironmentVariable("DBUS_SESSION_BUS_ADDRESS").isEmpty());

@@ -1,7 +1,7 @@
 # System services — stage 2 handoff and readiness
 
-This stage implements real integrations, **not the module UI**. Panel.qml still
-shows the configurable foundation banner. Never present unavailable data as zero,
+This document describes the service-layer contracts. The subsequent v0.1
+[interface stage](interface.md) now renders these providers in Panel.qml and details. Never present unavailable data as zero,
 an empty successful result, a fake workspace, or a battery on a desktop machine.
 
 ## QML / ownership API
@@ -45,7 +45,7 @@ icons, ordering, popup geometry and interactions under the existing TOML UI mode
 | Bluetooth | state: `adapters` rows `path/Powered/Discovering/Alias/Name/Address`, `connectedCount`; items: `path/Adapter/Connected/Paired/Trusted/Alias/Name/Address/Icon`. `setPowered({path,powered:bool})`, `connect/disconnect({path})` | BlueZ ObjectManager on system bus. At most 32 adapters/256 known devices. Connect only paired observed devices. No pairing/trust modification, agent, discovery session or Bluetooth battery support; polkit errors exposed. Missing adapter is unavailable. |
 | Notifications | state: `dnd/count/activeCount`; chronological items: `id/sender/appName/icon/summary/body/actions/urgency/active/createdAt/expiresAt/suppressed`, `closeReason` after closure; actions are `key/label` rows. `setDnd({dnd:bool})`, `dismiss({id})`, `invoke({id,key})`, `clearHistory({})` | Opt-in freedesktop server, does not replace an existing daemon. GetCapabilities/GetServerInformation/Notify/CloseNotification and close/action signals implemented. Replacement requires same sender and active ID. Plain text only, no markup/image hints/sound. DND retains history with suppressed=true; UI must suppress banners. No persistence across process/reconfiguration. Runtime DND resets to configured value on execution-config reload. |
 | Battery | state: first readable battery `name/percent/status`; items: all readable batteries | Linux sysfs capacity/status, configurable root for fixtures. No UPower dependency; no fabricated average, power profile action or time-to-empty. Missing/invalid battery is unavailable; UI should choose a row or honestly show multiple. |
-| Calendar/clock | No service yet | UI stage uses configured interval/time format; not a fake system integration. |
+| Calendar/clock | Local-date QML calendar/clock | Configured interval/date patterns, 42-cell navigating month grid; no event provider. |
 
 Notification expiry 0 remains active until closed or bounded-history eviction;
 negative client expiry uses default_expire_ms; positive values clamp to max_expire_ms.
