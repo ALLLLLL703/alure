@@ -197,7 +197,13 @@ private slots:
         QTRY_VERIFY(entry = findItem(view.rootObject(), moduleName + "-entry-20"));
         QCOMPARE(entry->height(), vertical ? 64 : crossSize);
         QVERIFY(entry->isVisible()); QCOMPARE(entry->property("text").toString(), QString());
-        QCOMPARE(entry->property("iconName").toString(), showIcon ? QString("calendar") : QString());
+        QCOMPARE(entry->property("iconName").toString(), showIcon && moduleName == "tray" ? QString("calendar") : QString());
+        if (moduleName == "workspaces") {
+            auto *shared = itemNamed(view.rootObject(), "workspaces-shared-icon"); QVERIFY(shared);
+            QCOMPARE(shared->isVisible(), showIcon);
+            QCOMPARE(shared->property("iconName").toString(), "calendar");
+            QCOMPARE(entry->property("highlightBackground").toBool(), false);
+        }
         QCOMPARE(entry->property("iconSource").toString(), moduleName == "tray" ? pixmapUrl : QString());
         std::function<QQuickItem *(QQuickItem *)> findImage = [&](QQuickItem *item) -> QQuickItem * {
             if (item->property("source").isValid()) return item;
@@ -205,13 +211,34 @@ private slots:
             return nullptr;
         };
         auto *icon = findImage(entry); QVERIFY(icon);
-        QCOMPARE(icon->isVisible(), showIcon);
-        const QString expectedSource = !showIcon ? QString() : moduleName == "tray" ? pixmapUrl : "image://icons/builtin/calendar";
+        QCOMPARE(icon->isVisible(), showIcon && moduleName == "tray");
+        const QString expectedSource = showIcon && moduleName == "tray" ? pixmapUrl : QString();
         QCOMPARE(icon->property("source").toUrl().toString(), expectedSource);
         if (moduleName == "tray") {
             auto row = service.items.first().toMap(); row["iconUrl"] = ""; service.items = {row}; emit service.changed();
             QTRY_VERIFY(entry = findItem(view.rootObject(), moduleName + "-entry-20"));
             QCOMPARE(entry->property("iconSource").toString(), "image://icons/theme/battery");
+        }
+        QCOMPARE(warnings.size(), 0);
+    }
+    void workspaceStripLabels() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        FixtureService service;
+        for (int i = 1; i <= 5; ++i) service.items << QVariantMap{{"id", QString::number(i)}, {"idx", i}, {"name", ""}, {"output", "fixture"}, {"is_active", i == 1}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"workspaces", QVariant::fromValue(&service)}});
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(240, 32);
+        view.setInitialProperties({{"moduleName", "workspaces"}, {"vertical", false}, {"crossSize", 32}});
+        view.setSource(QUrl("qrc:/qml/ModuleStrip.qml")); view.show(); QTest::qWait(30);
+        auto *list = itemNamed(view.rootObject(), "workspaces-list"); QVERIFY(list);
+        QVERIFY(list->property("contentWidth").toDouble() <= list->width());
+        QVERIFY(itemNamed(view.rootObject(), "workspaces-shared-icon")->isVisible());
+        for (int i = 1; i <= 5; ++i) {
+            auto *entry = itemNamed(view.rootObject(), "workspaces-entry-" + QString::number(i)); QVERIFY(entry);
+            QCOMPARE(entry->property("text").toString(), QString::number(i));
+            QVERIFY(entry->property("iconName").toString().isEmpty());
         }
         QCOMPARE(warnings.size(), 0);
     }
@@ -370,6 +397,14 @@ private slots:
             QVERIFY(bar->isVisible()); QCOMPARE(lastClosed.size(), 0);
         }
         QVERIFY(positions[0] < positions[1]); QVERIFY(positions[1] < positions[2]);
+        // The same source button toggles closed, and reopening is a new click.
+        auto *toggle = itemNamed(bar->rootObject(), "calendar-button");
+        clickItem(bar, toggle); QTRY_VERIFY(popupWindow());
+        clickItem(bar, toggle); QTRY_VERIFY(!popupWindow());
+        // Escape also works after a child control takes focus.
+        clickItem(bar, toggle); QTRY_VERIFY(popupWindow());
+        itemNamed(popupWindow()->rootObject(), "popup-close")->forceActiveFocus();
+        QTest::keyClick(popupWindow(), Qt::Key_Escape); QTRY_VERIFY(!popupWindow());
         // Reopen and close via actual widget and native close event, without closing the shell's bar.
         auto *button = itemNamed(bar->rootObject(), "calendar-button");
         clickItem(bar, button); QTRY_VERIFY(popupWindow());

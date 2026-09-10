@@ -210,6 +210,36 @@ dropdown appeared beneath its tray icon; submenu navigation and action dismissal
 worked. Automated tests cover protocol updates/errors, disabled/hidden entries,
 owner loss, cancellation and the actual QML right-click route.
 
+## Dropdown dismissal and workspace presentation
+
+`ui.escape_closes=true` also handles Escape before focused child controls consume
+it. While a native dropdown is open, its layer parent temporarily uses on-demand
+keyboard interactivity (popup children inherit the parent's policy); closing
+restores a non-keyboard panel. `ui.toggle_on_click` is boolean, default `true`:
+pressing the source module again closes it. Both apply on reload; setting the
+latter false disables Alure's toggle, not the compositor's native outside dismissal.
+Dropdowns no longer contain an Open integration settings action; the panel's
+settings shortcut remains available.
+
+Workspace `style.show_icon` now shows one shared leading module icon, followed
+by the ordered workspace labels, without repeated per-workspace icons.
+`modules.workspaces.style.active_indicator` accepts `"underline"` (default flat
+selection) or `"pill"` (previous filled selection); invalid names/types are rejected.
+The existing `show_label`, format, min/max width and icon options still apply.
+
+```toml
+[ui]
+escape_closes = true
+toggle_on_click = true
+[modules.workspaces.style]
+show_icon = true
+active_indicator = "underline"
+```
+
+Verified with actual clicks/Escape in a nested Niri session and computer-use,
+including returning layer keyboard interactivity to none; QML tests cover child
+focus, repeated opens, source destruction and five unclipped workspace numbers.
+
 ## Additional built-in themes
 
 `theme.name` also accepts `onedark`, `catppuccin` (Mocha), and `tokyonight` (Night).

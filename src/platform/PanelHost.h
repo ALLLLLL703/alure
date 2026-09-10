@@ -5,6 +5,7 @@
 #include <QSize>
 #include <QVariantMap>
 #include <QSet>
+#include <QPointer>
 #include <memory>
 #include <vector>
 class QQmlEngine;
@@ -36,6 +37,8 @@ public:
     Q_INVOKABLE void closeToast();
     void syncNotifications(const QVariantList &items);
 private:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+    void releasePopupKeyboard();
     void createPopup(const QString &name, const QVariantMap &panel, QQuickView *parent, QQuickItem *anchor, const QString &trayItem);
     void createToast(const QVariantMap &properties, QScreen *screen);
     void scheduleRebuild();
@@ -48,6 +51,9 @@ private:
     std::unique_ptr<QQuickView> m_popup, m_toast;
     QSet<QString> m_seenNotifications;
     QString m_toastId;
+    QPointer<QQuickView> m_popupParent;
+    QPointer<QQuickItem> m_popupAnchor;
+    QString m_popupModule, m_popupTrayItem;
     bool m_popupHadFocus = false;
     quint64 m_popupRequest = 0;
 };

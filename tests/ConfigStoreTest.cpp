@@ -88,6 +88,9 @@ edge = "bottom"
     }
     void popupOptions() {
         QVariantMap model; QString error;
+        QVERIFY(ConfigStore::parse("[ui]\ntoggle_on_click=false\n[modules.workspaces.style]\nactive_indicator='pill'", model, error));
+        QVERIFY(!model.value("ui").toMap().value("toggle_on_click").toBool());
+        QCOMPARE(model.value("modules").toMap().value("workspaces").toMap().value("style").toMap().value("active_indicator").toString(), "pill");
         for (const auto &alignment : {"start", "center", "end"})
             for (const auto &direction : {"inward", "top", "bottom", "left", "right"}) {
                 QVERIFY(ConfigStore::parse(QString("[ui]\npopup_alignment='%1'\npopup_direction='%2'\npopup_gap=256\nclose_on_focus_loss=false\nescape_closes=false").arg(alignment, direction).toUtf8(), model, error));
@@ -98,6 +101,8 @@ edge = "bottom"
     void invalid_data() {
         QTest::addColumn<QByteArray>("source");
         for (const auto &[name, text] : std::initializer_list<std::pair<const char *, const char *>>{
+            {"toggle-type", "[ui]\ntoggle_on_click='yes'"},
+            {"workspace-indicator", "[modules.workspaces.style]\nactive_indicator='sunken'"},
             {"popup-align", "[ui]\npopup_alignment='middle'"}, {"popup-direction", "[ui]\npopup_direction='outward'"},
             {"popup-align-type", "[ui]\npopup_alignment=3"}, {"popup-gap", "[ui]\npopup_gap=257"},
             {"syntax", "[broken"}, {"version", "version = 2"}, {"version-type", "version = '1'"},

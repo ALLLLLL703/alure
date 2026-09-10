@@ -13,10 +13,13 @@ Item {
     readonly property var style: config.style
     readonly property var service: moduleName === "calendar" ? null : Services[moduleName] || null
     readonly property bool listMode: (moduleName === "workspaces" || moduleName === "tray") && service && service.available && service.items.length > 0
+    readonly property bool sharedIcon: listMode && moduleName === "workspaces" && style.show_icon
+    readonly property real iconExtent: sharedIcon ? style.icon_size + 2 * Config.model.ui.panel_padding : 0
+    readonly property real iconOffset: sharedIcon ? iconExtent + Config.model.theme.spacing / 2 : 0
     property date now: new Date()
     readonly property string summary: moduleName === "calendar" ? Qt.formatDateTime(now, config.behavior.format) : !service || !service.available ? "Unavailable" : Ui.format(config.behavior.format, Ui.values(moduleName, service.state, service.items))
-    implicitWidth: vertical ? crossSize : Math.min(style.max_width, listMode ? strip.contentWidth : Math.max(style.min_width, main.implicitWidth))
-    implicitHeight: vertical ? (listMode ? Math.min(style.max_width, strip.contentHeight) : Config.model.ui.module_height) : crossSize
+    implicitWidth: vertical ? crossSize : Math.min(style.max_width, listMode ? iconOffset + strip.contentWidth : Math.max(style.min_width, main.implicitWidth))
+    implicitHeight: vertical ? (listMode ? Math.min(style.max_width, iconOffset + strip.contentHeight) : Config.model.ui.module_height) : crossSize
     Timer { interval: root.config.behavior.interval_ms; running: root.moduleName === "calendar"; repeat: true; onTriggered: root.now = new Date() }
     ShellButton {
         id: main
@@ -32,10 +35,25 @@ Item {
         onClicked: root.requested(main)
         accessibleDescription: Ui.title(root.moduleName) + " · " + root.summary
     }
+    ShellButton {
+        id: workspaceIcon
+        objectName: "workspaces-shared-icon"
+        visible: root.sharedIcon
+        width: root.vertical ? root.crossSize : root.iconExtent
+        height: root.vertical ? root.iconExtent : root.crossSize
+        iconName: root.style.icon
+        iconSize: root.style.icon_size
+        foreground: root.style.foreground || Config.model.theme.palette.foreground
+        Accessible.name: "Workspace details"
+        onClicked: root.requested(workspaceIcon)
+    }
     Flickable {
         id: strip
         objectName: root.moduleName + "-list"
-        anchors.fill: parent
+        x: root.vertical ? 0 : root.iconOffset
+        y: root.vertical ? root.iconOffset : 0
+        width: Math.max(0, root.width - x)
+        height: Math.max(0, root.height - y)
         visible: root.listMode
         clip: true
         contentWidth: root.vertical ? width : items.implicitWidth
@@ -55,10 +73,19 @@ Item {
                     width: root.vertical ? root.width : Math.min(root.style.max_width, Math.max(root.style.min_width, implicitWidth))
                     height: root.vertical ? Config.model.ui.module_height : root.crossSize
                     text: root.style.show_label && root.moduleName === "workspaces" ? Ui.format(root.config.behavior.format, Object.assign({}, modelData, {name: modelData.name || String(modelData.idx)})) : root.style.show_label ? Ui.format(root.config.behavior.format, {title: modelData.Title || "Tray"}) : ""
-                    iconName: root.style.show_icon ? root.style.icon : ""
+                    iconName: root.moduleName !== "workspaces" && root.style.show_icon ? root.style.icon : ""
                     iconSource: root.moduleName !== "tray" ? "" : modelData.iconUrl || "image://icons/theme/" + (modelData.Status === "NeedsAttention" ? modelData.AttentionIconName || modelData.IconName || root.style.icon : modelData.IconName || root.style.icon)
                     iconSize: root.style.icon_size
                     accent: root.moduleName === "workspaces" && !!modelData.is_active
+                    highlightBackground: root.moduleName !== "workspaces" || root.style.active_indicator === "pill"
+                    Rectangle {
+                        visible: entry.accent && root.style.active_indicator === "underline"
+                        x: root.vertical ? 0 : entry.padding
+                        y: root.vertical ? entry.padding : entry.height - height
+                        width: root.vertical ? Math.max(1, Config.model.theme.border_width) : Math.max(0, entry.width - 2 * entry.padding)
+                        height: root.vertical ? Math.max(0, entry.height - 2 * entry.padding) : Math.max(1, Config.model.theme.border_width)
+                        color: Config.model.theme.palette.accent
+                    }
                     foreground: root.style.foreground || Config.model.theme.palette.foreground
                     baseColor: root.style.background || "transparent"
                     Accessible.name: root.moduleName === "workspaces" ? "Workspace " + (modelData.name || modelData.idx) + " · " + modelData.output : modelData.Title || modelData.id

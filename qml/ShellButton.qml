@@ -4,6 +4,7 @@ import QtQuick.Controls
 Button {
     id: control
     property bool accent: false
+    property bool highlightBackground: true
     property string accessibleDescription: ""
     property string iconName: ""
     property string iconSource: ""
@@ -20,7 +21,7 @@ Button {
     Accessible.name: text || iconName
     background: Rectangle {
         radius: Math.min(control.theme.radius, height / 2)
-        color: control.down ? Qt.alpha(control.theme.palette.accent, 0.3) : control.accent || control.hovered || control.visualFocus ? Qt.alpha(control.theme.palette.accent, 0.16) : control.baseColor
+        color: control.down ? Qt.alpha(control.theme.palette.accent, 0.3) : (control.accent && control.highlightBackground) || control.hovered || control.visualFocus ? Qt.alpha(control.theme.palette.accent, 0.16) : control.baseColor
         border.width: control.visualFocus ? control.theme.border_width : 0
         border.color: control.theme.palette.accent
         Behavior on color { ColorAnimation { duration: Config.model.ui.animation_ms } }

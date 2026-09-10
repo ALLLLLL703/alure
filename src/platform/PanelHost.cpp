@@ -11,6 +11,8 @@
 #include <QProcess>
 #include <QIcon>
 #include <QPointer>
+#include <QKeyEvent>
+#include <QMouseEvent>
 #include <QTextStream>
 #include <algorithm>
 namespace Alure {
@@ -78,6 +80,7 @@ void PanelHost::rebuild() {
             view->setScreen(screen);
             view->setProperty("panelId", panel.value("id"));
             view->setTitle("Alure · " + panel.value("id").toString());
+            view->installEventFilter(this);
             view->setColor(Qt::transparent);
             view->setResizeMode(QQuickView::SizeRootObjectToView);
             view->resize(placement.size);
@@ -108,12 +111,43 @@ void PanelHost::rebuild() {
         if (!matched) qWarning().noquote() << "Panel" << panel.value("id").toString() << "waiting for output" << output;
     }
 }
-void PanelHost::closePopup() { ++m_popupRequest; trace("hide details"); if (m_popup) m_popup->hide(); m_popupHadFocus = false; }
+void PanelHost::releasePopupKeyboard() {
+    if (!m_preview && m_popupParent) {
+        LayerShellQt::Window::get(m_popupParent)->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityNone);
+        m_popupParent->update();
+    }
+    m_popupParent.clear();
+    m_popupHadFocus = false;
+}
+void PanelHost::closePopup() {
+    ++m_popupRequest; trace("hide details");
+    if (m_popup) m_popup->hide();
+    releasePopupKeyboard();
+}
+bool PanelHost::eventFilter(QObject *watched, QEvent *event) {
+    if (!m_popup || !m_popup->isVisible()) return QObject::eventFilter(watched, event);
+    if (watched != m_popup.get() && watched != m_popupParent) return QObject::eventFilter(watched, event);
+    if ((event->type() == QEvent::KeyPress || event->type() == QEvent::ShortcutOverride) &&
+        static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape && m_config.model().value("ui").toMap().value("escape_closes").toBool()) {
+        event->accept();
+        if (event->type() == QEvent::KeyPress) closePopup();
+        return true;
+    }
+    if (event->type() == QEvent::MouseButtonPress && watched == m_popupParent && m_popupAnchor &&
+        m_config.model().value("ui").toMap().value("toggle_on_click").toBool()) {
+        const auto *mouse = static_cast<QMouseEvent *>(event);
+        if (visiblePopupAnchor(m_popupAnchor).contains(mouse->position().toPoint())) {
+            closePopup(); event->accept(); return true;
+        }
+    }
+    return QObject::eventFilter(watched, event);
+}
 void PanelHost::closeToast() { if (m_toast) m_toast->hide(); }
 bool PanelHost::openSettings() {
     return QProcess::startDetached(QCoreApplication::applicationFilePath(), {"--settings", "--config", m_config.path()});
 }
 void PanelHost::openModule(const QString &name, const QString &panelId, const QString &output, QQuickItem *anchor, const QString &trayItem) {
+    trace(QString("request %1 visible=%2").arg(name).arg(m_popup && m_popup->isVisible()));
     if (!anchor || m_rebuildPending) return; // Legacy callers without an actual source cannot be placed safely.
     const auto module = m_config.model().value("modules").toMap().value(name).toMap();
     if (!module.value("enabled").toBool() || !module.value("behavior").toMap().value("popup_enabled").toBool()) return;
@@ -123,14 +157,25 @@ void PanelHost::openModule(const QString &name, const QString &panelId, const QS
         for (const auto &entry : m_config.model().value("panels").toList()) {
             const auto panel = entry.toMap();
             if (panel.value("id").toString() != panelId) continue;
+            if (m_popup && m_popup->isVisible() && m_popupAnchor == anchor && m_popupModule == name && m_popupTrayItem == trayItem &&
+                m_config.model().value("ui").toMap().value("toggle_on_click").toBool()) { closePopup(); return; }
             closePopup();
             const auto request = ++m_popupRequest;
+            m_popupParent = window.get();
+            if (!m_preview) {
+                // xdg_popup children inherit their layer parent's keyboard policy.
+                // Grant keyboard focus only while details are open, not to idle bars.
+                LayerShellQt::Window::get(window.get())->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityOnDemand);
+                window->update();
+            }
             // A config reload, output removal, source destruction or later click cancels this request.
             QTimer::singleShot(0, this, [this, name, panel, request, trayItem, parent = QPointer<QQuickView>(window.get()),
                                        item = QPointer<QQuickItem>(anchor), screen = QPointer<QScreen>(window->screen())] {
-                if (request == m_popupRequest && !m_rebuildPending && parent && item && screen &&
-                    parent->isVisible() && parent->screen() == screen && item->window() == parent &&
+                trace(QString("queued request=%1 current=%2 rebuilding=%3").arg(request).arg(m_popupRequest).arg(m_rebuildPending));
+                if (request != m_popupRequest || m_rebuildPending) return;
+                if (parent && item && screen && parent->isVisible() && parent->screen() == screen && item->window() == parent &&
                     QGuiApplication::screens().contains(screen)) createPopup(name, panel, parent, item, trayItem);
+                else releasePopupKeyboard();
             });
             return;
         }
@@ -146,10 +191,12 @@ void PanelHost::createPopup(const QString &name, const QVariantMap &panel, QQuic
     }
     const auto p = popupPlacement(visiblePopupAnchor(anchor), parent->size(), parent->screen()->size(),
                                   panel.value("edge").toString(), options);
-    if (p.anchorRect.isEmpty()) return;
+    if (p.anchorRect.isEmpty()) { releasePopupKeyboard(); return; }
     m_popup.reset();
     m_popupHadFocus = false;
+    m_popupParent = parent; m_popupAnchor = anchor; m_popupModule = name; m_popupTrayItem = trayItem;
     auto view = std::make_unique<QQuickView>(&m_engine, nullptr);
+    view->installEventFilter(this);
     view->setFlags(Qt::Popup | Qt::FramelessWindowHint);
     view->setTransientParent(parent);
     view->setScreen(parent->screen());
@@ -169,9 +216,12 @@ void PanelHost::createPopup(const QString &name, const QVariantMap &panel, QQuic
     view->setInitialProperties(trayMenu ? QVariantMap{{"trayItem", trayItem}, {"popupPadding", p.padding}, {"bottomAligned", p.gravity.testFlag(Qt::TopEdge)}}
                                        : QVariantMap{{"moduleName", name}, {"popupPadding", p.padding}});
     view->setSource(QUrl(trayMenu ? "qrc:/qml/TrayMenu.qml" : "qrc:/qml/ModulePopup.qml"));
-    if (view->status() == QQuickView::Error) { qWarning() << view->errors(); return; }
-    connect(view.get(), &QWindow::activeChanged, this, [this] {
-        if (!m_popup) return;
+    if (view->status() == QQuickView::Error) { qWarning() << view->errors(); releasePopupKeyboard(); return; }
+    connect(view.get(), &QWindow::visibleChanged, this, [this, popup = view.get()](bool visible) {
+        if (m_popup.get() == popup && !visible) releasePopupKeyboard();
+    });
+    connect(view.get(), &QWindow::activeChanged, this, [this, popup = view.get()] {
+        if (m_popup.get() != popup) return;
         if (m_popup->isActive()) m_popupHadFocus = true;
         else if (m_popupHadFocus && m_config.model().value("ui").toMap().value("close_on_focus_loss").toBool()) closePopup();
     });

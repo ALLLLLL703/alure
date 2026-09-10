@@ -212,7 +212,6 @@ Control {
                     }
                 }
                 InfoText { visible: root.ready && root.moduleName !== "volume" && root.service.items.length === 0; text: "No items reported."; color: root.theme.palette.muted; Layout.fillWidth: true }
-                ShellButton { visible: Config.model.ui.show_settings; text: "Open integration settings"; onClicked: Shell.openSettings() }
             }
         }
     }

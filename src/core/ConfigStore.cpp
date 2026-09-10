@@ -163,6 +163,7 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
             auto module = merge(moduleDefaults, table(it.value(), "modules." + it.key()), "modules." + it.key() + '.');
             const auto style = module.value("style").toMap();
             const QString stylePath = "modules." + it.key() + ".style.";
+            if (it.key() == "workspaces") choice(style, "active_indicator", {"underline", "pill"}, stylePath);
             range(style, "icon_size", 8, 128, stylePath);
             range(style, "min_width", 16, 1024, stylePath);
             range(style, "max_width", 16, 2048, stylePath);
