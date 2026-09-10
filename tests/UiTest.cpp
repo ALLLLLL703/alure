@@ -18,14 +18,38 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+class FixtureMenu : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QVariantList items MEMBER items NOTIFY changed)
+    Q_PROPERTY(bool loading MEMBER loading NOTIFY changed)
+    Q_PROPERTY(QString error MEMBER error NOTIFY changed)
+    Q_PROPERTY(bool canGoBack MEMBER canGoBack NOTIFY changed)
+public:
+    QVariantList items{QVariantMap{{"id", 1}, {"label", "_Open"}, {"enabled", true}},
+                       QVariantMap{{"id", 2}, {"label", "Disabled"}, {"enabled", false}}};
+    bool loading = false, canGoBack = false;
+    QString error;
+    int selected = -1;
+    Q_INVOKABLE void select(int id) { selected = id; emit activated(); }
+    Q_INVOKABLE void back() {}
+    Q_INVOKABLE void close() {}
+signals:
+    void changed();
+    void activated();
+};
 class FixtureService : public QObject {
     Q_OBJECT
+    Q_PROPERTY(QObject *menu READ menu CONSTANT)
     Q_PROPERTY(bool available MEMBER available NOTIFY changed)
     Q_PROPERTY(bool busy MEMBER busy NOTIFY changed)
     Q_PROPERTY(QString diagnostic MEMBER diagnostic NOTIFY changed)
     Q_PROPERTY(QVariantMap state MEMBER state NOTIFY changed)
     Q_PROPERTY(QVariantList items MEMBER items NOTIFY changed)
 public:
+    FixtureMenu menuModel;
+    QObject *menu() { return &menuModel; }
+    QString openedMenu;
+    Q_INVOKABLE void openMenu(const QString &id) { openedMenu = id; }
     bool available = true, busy = false;
     QString diagnostic;
     QVariantMap state;
@@ -189,6 +213,31 @@ private slots:
             QTRY_VERIFY(entry = findItem(view.rootObject(), moduleName + "-entry-20"));
             QCOMPARE(entry->property("iconSource").toString(), "image://icons/theme/battery");
         }
+        QCOMPARE(warnings.size(), 0);
+    }
+    void trayRightClickMenu() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QVERIFY(config.previewText("[ui]\nshow_settings=false\n[[panels]]\nmodules=['tray']"));
+        FixtureService service;
+        service.items = {QVariantMap{{"id", "fixture"}, {"Title", "Fixture tray"}}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"tray", QVariant::fromValue(&service)}});
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        Alure::PanelHost host(config, engine, true);
+        QQuickView *bar = nullptr;
+        for (auto *w : QGuiApplication::topLevelWindows()) if (w->title() == "Alure · main") bar = qobject_cast<QQuickView *>(w);
+        QVERIFY(bar); QTest::qWait(20);
+        auto *entry = itemNamed(bar->rootObject(), "tray-entry-fixture"); QVERIFY(entry);
+        QTest::mouseClick(bar, Qt::RightButton, Qt::NoModifier, entry->mapToScene(QPointF(entry->width()/2, entry->height()/2)).toPoint());
+        QQuickView *popup = nullptr;
+        QTRY_VERIFY(([&] { for (auto *w : QGuiApplication::topLevelWindows()) if (w->title() == "Alure tray menu" && w->isVisible()) popup = qobject_cast<QQuickView *>(w); return popup; })());
+        QCOMPARE(popup->type(), Qt::Popup); QCOMPARE(popup->transientParent(), bar);
+        QCOMPARE(service.openedMenu, "fixture"); QVERIFY(service.lastAction.isEmpty());
+        QTest::qWait(20);
+        auto *disabled = itemNamed(popup->rootObject(), "tray-menu-item-2"); QVERIFY(disabled); QVERIFY(!disabled->isEnabled());
+        auto *open = itemNamed(popup->rootObject(), "tray-menu-item-1"); QVERIFY(open); QCOMPARE(open->property("text").toString(), "Open");
+        clickItem(popup, open); QTRY_VERIFY(!popup->isVisible()); QCOMPARE(service.menuModel.selected, 1);
         QCOMPARE(warnings.size(), 0);
     }
     void panelClickOpensPopup() {

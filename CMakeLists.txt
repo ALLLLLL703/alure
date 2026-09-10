@@ -23,6 +23,7 @@ set(ALURE_UI_FILES
   qml/ModuleStrip.qml
   qml/ShellButton.qml
   qml/ModulePopup.qml
+  qml/TrayMenu.qml
   qml/Popup.qml
   qml/CalendarView.qml
   qml/InfoText.qml

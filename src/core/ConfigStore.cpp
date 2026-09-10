@@ -181,6 +181,10 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
                 if (!argv.isEmpty() && argv.first().toString().trimmed().isEmpty()) invalid(path + option.key(), "executable must not be empty");
             }
             if (it.key() == "calendar") range(behavior, "first_day_of_week", 0, 1, path);
+            if (it.key() == "tray") {
+                range(behavior, "menu_width", 160, 1920, path);
+                range(behavior, "menu_height", 100, 2160, path);
+            }
             if (it.key() == "volume") {
                 range(behavior, "max_percent", 1, 150, path);
                 range(behavior, "debounce_ms", 10, 2000, path);

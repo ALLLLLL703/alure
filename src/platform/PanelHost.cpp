@@ -113,7 +113,7 @@ void PanelHost::closeToast() { if (m_toast) m_toast->hide(); }
 bool PanelHost::openSettings() {
     return QProcess::startDetached(QCoreApplication::applicationFilePath(), {"--settings", "--config", m_config.path()});
 }
-void PanelHost::openModule(const QString &name, const QString &panelId, const QString &output, QQuickItem *anchor) {
+void PanelHost::openModule(const QString &name, const QString &panelId, const QString &output, QQuickItem *anchor, const QString &trayItem) {
     if (!anchor || m_rebuildPending) return; // Legacy callers without an actual source cannot be placed safely.
     const auto module = m_config.model().value("modules").toMap().value(name).toMap();
     if (!module.value("enabled").toBool() || !module.value("behavior").toMap().value("popup_enabled").toBool()) return;
@@ -126,19 +126,26 @@ void PanelHost::openModule(const QString &name, const QString &panelId, const QS
             closePopup();
             const auto request = ++m_popupRequest;
             // A config reload, output removal, source destruction or later click cancels this request.
-            QTimer::singleShot(0, this, [this, name, panel, request, parent = QPointer<QQuickView>(window.get()),
+            QTimer::singleShot(0, this, [this, name, panel, request, trayItem, parent = QPointer<QQuickView>(window.get()),
                                        item = QPointer<QQuickItem>(anchor), screen = QPointer<QScreen>(window->screen())] {
                 if (request == m_popupRequest && !m_rebuildPending && parent && item && screen &&
                     parent->isVisible() && parent->screen() == screen && item->window() == parent &&
-                    QGuiApplication::screens().contains(screen)) createPopup(name, panel, parent, item);
+                    QGuiApplication::screens().contains(screen)) createPopup(name, panel, parent, item, trayItem);
             });
             return;
         }
     }
 }
-void PanelHost::createPopup(const QString &name, const QVariantMap &panel, QQuickView *parent, QQuickItem *anchor) {
+void PanelHost::createPopup(const QString &name, const QVariantMap &panel, QQuickView *parent, QQuickItem *anchor, const QString &trayItem) {
+    const bool trayMenu = name == "tray" && !trayItem.isEmpty();
+    auto options = m_config.model().value("ui").toMap();
+    if (trayMenu) {
+        const auto behavior = m_config.model().value("modules").toMap().value("tray").toMap().value("behavior").toMap();
+        options["popup_width"] = behavior.value("menu_width");
+        options["popup_height"] = behavior.value("menu_height");
+    }
     const auto p = popupPlacement(visiblePopupAnchor(anchor), parent->size(), parent->screen()->size(),
-                                  panel.value("edge").toString(), m_config.model().value("ui").toMap());
+                                  panel.value("edge").toString(), options);
     if (p.anchorRect.isEmpty()) return;
     m_popup.reset();
     m_popupHadFocus = false;
@@ -146,7 +153,7 @@ void PanelHost::createPopup(const QString &name, const QVariantMap &panel, QQuic
     view->setFlags(Qt::Popup | Qt::FramelessWindowHint);
     view->setTransientParent(parent);
     view->setScreen(parent->screen());
-    view->setTitle("Alure details");
+    view->setTitle(trayMenu ? "Alure tray menu" : "Alure details");
     view->setColor(Qt::transparent);
     view->setResizeMode(QQuickView::SizeRootObjectToView);
     view->resize(p.size);
@@ -159,8 +166,9 @@ void PanelHost::createPopup(const QString &name, const QVariantMap &panel, QQuic
         pos.setY(std::clamp(pos.y(), available.top(), std::max(available.top(), available.bottom() + 1 - p.size.height())));
         view->setPosition(pos);
     }
-    view->setInitialProperties({{"moduleName", name}, {"popupPadding", p.padding}});
-    view->setSource(QUrl("qrc:/qml/ModulePopup.qml"));
+    view->setInitialProperties(trayMenu ? QVariantMap{{"trayItem", trayItem}, {"popupPadding", p.padding}, {"bottomAligned", p.gravity.testFlag(Qt::TopEdge)}}
+                                       : QVariantMap{{"moduleName", name}, {"popupPadding", p.padding}});
+    view->setSource(QUrl(trayMenu ? "qrc:/qml/TrayMenu.qml" : "qrc:/qml/ModulePopup.qml"));
     if (view->status() == QQuickView::Error) { qWarning() << view->errors(); return; }
     connect(view.get(), &QWindow::activeChanged, this, [this] {
         if (!m_popup) return;

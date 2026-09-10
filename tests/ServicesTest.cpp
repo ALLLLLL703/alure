@@ -1,4 +1,5 @@
 #include "Services.h"
+#include "TrayMenuFixture.h"
 #include <QtTest>
 #include <QDBusMessage>
 #include <QDBusMetaType>
@@ -114,6 +115,31 @@ public slots:
 class ServicesTest : public QObject {
     Q_OBJECT
 private slots:
+    void trayMenuProtocol() {
+        auto bus = QDBusConnection::sessionBus();
+        QVERIFY(bus.registerService("org.alure.MenuFixture"));
+        FakeTrayMenu fixture;
+        QVERIFY(bus.registerObject("/Menu", &fixture, QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllSignals));
+        TrayMenu menu;
+        menu.open("org.alure.MenuFixture", "/Menu", 500);
+        QTRY_VERIFY(!menu.loading()); QVERIFY2(menu.error().isEmpty(), qPrintable(menu.error()));
+        QCOMPARE(menu.items().size(), 5); QCOMPARE(fixture.shown, 0);
+        QVERIFY(!menu.select(2)); QVERIFY(!menu.select(3)); QVERIFY(!menu.select(6)); QVERIFY(!menu.select(99));
+        fixture.checked = false; emit fixture.LayoutUpdated(2, 0);
+        QTRY_COMPARE(menu.items().at(3).toMap().value("toggle-state").toInt(), 0);
+        QVERIFY(menu.select(5)); QTRY_VERIFY(!menu.loading()); QCOMPARE(fixture.shown, 5);
+        QVERIFY(menu.canGoBack()); QCOMPARE(menu.items().size(), 1);
+        menu.back(); QTRY_VERIFY(!menu.loading()); QCOMPARE(menu.items().size(), 5);
+        QVERIFY(menu.select(5)); QTRY_VERIFY(!menu.loading());
+        QSignalSpy activated(&menu, &TrayMenu::activated);
+        QVERIFY(menu.select(7)); QTRY_COMPARE(activated.size(), 1); QCOMPARE(fixture.clicked, 7);
+        QVERIFY(!menu.select(7));
+        menu.open("org.alure.MenuFixture", "/missing", 500); QTRY_VERIFY(!menu.loading()); QVERIFY(!menu.error().isEmpty());
+        menu.open("org.alure.MenuFixture", "/Menu", 500); menu.clear(); QTest::qWait(20); QVERIFY(menu.items().isEmpty());
+        menu.open("org.alure.MenuFixture", "/Menu", 500); QTRY_VERIFY(!menu.loading());
+        bus.unregisterService("org.alure.MenuFixture"); QTRY_VERIFY(menu.error().contains("disconnected"));
+        bus.unregisterObject("/Menu");
+    }
     void presentationChangesKeepSnapshot() {
         SnapshotFixture service;
         service.configure(module("notifications")); QCOMPARE(service.polls, 1);
@@ -137,7 +163,7 @@ private slots:
         }
         QVERIFY(ConfigStore::parse("[modules.workspaces.behavior]\nordering='provider'", config, error));
         QCOMPARE(config.value("modules").toMap().value("workspaces").toMap().value("behavior").toMap().value("ordering").toString(), "provider");
-        for (const QByteArray &text : {QByteArray("[modules.volume.behavior]\ndebounce_ms=0"), QByteArray("[modules.volume.behavior]\nmax_percent=151"),
+        for (const QByteArray &text : {QByteArray("[modules.tray.behavior]\nmenu_width=0"), QByteArray("[modules.tray.behavior]\nmenu_height=2161"), QByteArray("[modules.tray.behavior]\nmenu_width='280'"), QByteArray("[modules.volume.behavior]\ndebounce_ms=0"), QByteArray("[modules.volume.behavior]\nmax_percent=151"),
              QByteArray("[modules.notifications.behavior]\nhistory_limit=0"), QByteArray("[modules.notifications.behavior]\nserver_enabled=1"),
              QByteArray("[modules.wifi.behavior]\nradio_command=[1]"), QByteArray("[modules.battery.behavior]\nsysfs_path=\"relative\"")})
             QVERIFY2(!ConfigStore::parse(text, config, error), text.constData());

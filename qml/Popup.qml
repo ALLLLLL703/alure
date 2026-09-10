@@ -176,7 +176,7 @@ Control {
                                     case "bluetooth": return (d.Connected ? "Connected" : "Disconnected") + (d.Paired ? " · Paired" : " · Not paired")
                                     case "notifications": return d.appName + " · " + Qt.formatDateTime(new Date(Number(d.createdAt)), "HH:mm") + (d.suppressed ? " · Suppressed" : "") + "\n" + d.body
                                     case "battery": return d.status
-                                    case "tray": return "Primary / secondary activation; menu delegated to client. Native DBusMenu rendering is not supported."
+                                    case "tray": return "Primary / secondary activation. Right-click the tray icon in the panel to open its menu."
                                     default: return ""
                                     }
                                 }
@@ -190,7 +190,7 @@ Control {
                                 ShellButton { visible: root.moduleName === "media"; text: card.modelData.playbackStatus === "Playing" ? "Pause" : "Play"; enabled: root.canAct && !!card.modelData.CanControl && (card.modelData.playbackStatus === "Playing" ? !!card.modelData.CanPause : !!card.modelData.CanPlay); onClicked: root.act("playPause", {service: card.modelData.service}) }
                                 ShellButton { visible: root.moduleName === "media"; text: "Next"; enabled: root.canAct && !!card.modelData.CanGoNext; onClicked: root.act("next", {service: card.modelData.service}) }
                                 Repeater {
-                                    model: root.moduleName === "tray" ? ["activate", "secondaryActivate", "contextMenu"] : []
+                                    model: root.moduleName === "tray" ? ["activate", "secondaryActivate"] : []
                                     ShellButton {
                                         required property string modelData
                                         text: modelData; enabled: root.canAct

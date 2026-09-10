@@ -19,7 +19,7 @@ Service::Service(QObject *parent) : QObject(parent) {
 void Service::configure(const QVariantMap &module) {
     auto behavior = module.value("behavior").toMap();
     // Presentation-only behavior must not reset notification history or in-flight reads.
-    for (const auto &key : {"format", "popup_enabled", "toast_enabled"}) behavior.remove(key);
+    for (const auto &key : {"format", "popup_enabled", "toast_enabled", "menu_width", "menu_height"}) behavior.remove(key);
     const QVariantMap executionConfig{{"enabled", module.value("enabled")}, {"behavior", behavior}};
     if (executionConfig == m_config) return;
     m_config = executionConfig; ++m_generation; m_timer.stop();

@@ -1,5 +1,6 @@
 #pragma once
 #include "Service.h"
+#include "TrayMenu.h"
 #include <QDBusContext>
 namespace Alure {
 class TrayService;
@@ -30,16 +31,20 @@ private:
 };
 class TrayService : public Service {
     Q_OBJECT
+    Q_PROPERTY(Alure::TrayMenu *menu READ menu CONSTANT)
 public:
     explicit TrayService(QObject *parent = nullptr);
     ~TrayService() override;
     void registerItem(const QString &service, const QString &sender);
+    TrayMenu *menu() { return &m_menu; }
+    Q_INVOKABLE void openMenu(const QString &id);
 protected:
     void poll() override;
     void stop() override;
     bool act(const QString &, const QVariantMap &) override;
 private:
     void readItems(QStringList ids, QVariantList rows);
+    TrayMenu m_menu;
     TrayWatcher m_watcher;
     bool m_ownsWatcher = false, m_hostRegistered = false;
     QString m_hostName;

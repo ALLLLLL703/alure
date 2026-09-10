@@ -39,6 +39,7 @@ Item {
                     vertical: root.vertical
                     crossSize: root.vertical ? modules.width : modules.height
                     onRequested: anchor => Shell.openModule(moduleName, root.panel.id, root.outputName, anchor)
+                    onMenuRequested: (itemId, anchor) => Shell.openModule("tray", root.panel.id, root.outputName, anchor, itemId)
                 }
             }
             ShellButton {

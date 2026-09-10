@@ -190,3 +190,22 @@ Preview validates and applies it to the settings process; Save & apply uses the
 existing atomic source-preserving save/conflict checks. See
 [typed controls and preservation boundaries](interface.md#settings-one-draft-no-silent-rewrites).
 The system Qt QuickDialogs2 module is required for the themed nonnative color picker.
+
+Tray dropdowns use `modules.tray.behavior.menu_width` (integer 160..1920, default
+280) and `menu_height` (integer 100..2160, default 420; scrolls beyond this limit).
+Both are logical pixels, clamp to the output and apply on config reload. The
+existing popup gap/alignment/direction, theme, `popup_enabled` and `allow_actions`
+settings apply. Settings exposes the dimensions under Integrations → tray.
+
+```toml
+[modules.tray.behavior]
+menu_width = 320
+menu_height = 480
+```
+
+Protocol reference: [DBusMenu specification](https://github.com/gnustep/libs-dbuskit/blob/master/Bundles/DBusMenu/com.canonical.dbusmenu.xml)
+(LGPL-2.1/3 specification consulted; no upstream implementation copied).
+Nested Wayland computer-use check: a synthetic DBusMenu provider's right-click
+dropdown appeared beneath its tray icon; submenu navigation and action dismissal
+worked. Automated tests cover protocol updates/errors, disabled/hidden entries,
+owner loss, cancellation and the actual QML right-click route.

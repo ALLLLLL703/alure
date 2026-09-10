@@ -117,6 +117,8 @@ background = "" # empty uses transparent
 show_icon = true
 show_label = false
 [modules.tray.behavior]
+menu_width = 280 # anchored DBusMenu dropdown; logical pixels
+menu_height = 420 # maximum dropdown height; scrolls on overflow
 popup_enabled = true
 allow_actions = true
 interval_ms = 1000

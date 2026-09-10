@@ -19,10 +19,13 @@ still requires explicit opt-in and never replaces another daemon.
 - Media displays the first observed player in the bar and **all** players with
   capability-checked transport in details. No artwork URLs are downloaded.
 - Tray displays service-provided PNGs, otherwise freedesktop icon-theme names
-  (attention name when provided), with original fallback. Left/middle/right click
-  sends primary/secondary/menu actions with global coordinates. Theme resolution
-  for *application tray icons* is used even with built-in shell icons selected.
-  Native DBusMenu layout rendering is not implemented; some menus need another host.
+  (attention name when provided), with original fallback. Left/middle click sends
+  primary/secondary actions. Right click (also left click for ItemIsMenu) opens an
+  Alure DBusMenu dropdown anchored to the icon, not a provider-owned window.
+  Theme resolution for *application tray icons* applies even in built-in mode.
+  Submenus navigate inside the dropdown with Back/Left; Up/Down and Enter select.
+  Disabled/hidden entries, separators, checkmarks/radio states and live menu updates
+  are supported. A missing menu is reported in place; no detached-window fallback.
 - Sound exposes default-sink volume and mute. Movement submits the configured
   debounced setter, with controls disabled while the service is busy. No mixer.
 - Updates displays the count/list and an explicit inline confirmation before

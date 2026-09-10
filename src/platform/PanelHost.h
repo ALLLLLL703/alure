@@ -30,13 +30,13 @@ public:
     PanelHost(ConfigStore &config, QQmlEngine &engine, bool preview, QObject *parent = nullptr);
     ~PanelHost() override;
     void rebuild();
-    Q_INVOKABLE void openModule(const QString &name, const QString &panelId, const QString &output, QQuickItem *anchor = nullptr);
+    Q_INVOKABLE void openModule(const QString &name, const QString &panelId, const QString &output, QQuickItem *anchor = nullptr, const QString &trayItem = {});
     Q_INVOKABLE void closePopup();
     Q_INVOKABLE bool openSettings();
     Q_INVOKABLE void closeToast();
     void syncNotifications(const QVariantList &items);
 private:
-    void createPopup(const QString &name, const QVariantMap &panel, QQuickView *parent, QQuickItem *anchor);
+    void createPopup(const QString &name, const QVariantMap &panel, QQuickView *parent, QQuickItem *anchor, const QString &trayItem);
     void createToast(const QVariantMap &properties, QScreen *screen);
     void scheduleRebuild();
     void trace(const QString &message) const;

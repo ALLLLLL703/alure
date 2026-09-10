@@ -8,6 +8,7 @@ Item {
     required property bool vertical
     required property real crossSize
     signal requested(Item anchor)
+    signal menuRequested(string itemId, Item anchor)
     readonly property var config: Config.model.modules[moduleName]
     readonly property var style: config.style
     readonly property var service: moduleName === "calendar" ? null : Services[moduleName] || null
@@ -63,6 +64,7 @@ Item {
                     Accessible.name: root.moduleName === "workspaces" ? "Workspace " + (modelData.name || modelData.idx) + " · " + modelData.output : modelData.Title || modelData.id
                     onClicked: {
                         if (!root.config.behavior.allow_actions) { root.requested(entry); return }
+                        if (root.moduleName === "tray" && modelData.ItemIsMenu) { root.menuRequested(modelData.id, entry); return }
                         const point = mapToGlobal(width / 2, height / 2)
                         root.service.action("activate", {id: modelData.id, x: Math.round(point.x), y: Math.round(point.y)})
                     }
@@ -70,8 +72,9 @@ Item {
                         acceptedButtons: Qt.RightButton | Qt.MiddleButton
                         onTapped: function(eventPoint, button) {
                             if (root.moduleName !== "tray" || !root.config.behavior.allow_actions) { root.requested(entry); return }
+                            if (button === Qt.RightButton) { root.menuRequested(entry.modelData.id, entry); return }
                             const point = entry.mapToGlobal(entry.width / 2, entry.height / 2)
-                            root.service.action(button === Qt.MiddleButton ? "secondaryActivate" : "contextMenu", {id: entry.modelData.id, x: Math.round(point.x), y: Math.round(point.y)})
+                            root.service.action("secondaryActivate", {id: entry.modelData.id, x: Math.round(point.x), y: Math.round(point.y)})
                         }
                     }
                     accessibleDescription: Accessible.name

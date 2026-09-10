@@ -56,6 +56,7 @@ TrayService::TrayService(QObject *parent) : Service(parent), m_watcher(this),
 }
 TrayService::~TrayService() { stop(); }
 void TrayService::stop() {
+    m_menu.clear();
     auto bus = QDBusConnection::sessionBus();
     if (m_ownsWatcher) { bus.unregisterService(watcherName); bus.unregisterObject(watcherPath); }
     if (m_hostRegistered) bus.unregisterService(m_hostName);
@@ -99,16 +100,26 @@ void TrayService::readItems(QStringList ids, QVariantList rows) {
         rows << row; readItems(ids, rows);
     });
 }
+void TrayService::openMenu(const QString &id) {
+    m_menu.clear();
+    if (!enabled() || !m_options.value("allow_actions", true).toBool()) return;
+    for (const auto &entry : items()) {
+        const auto row = entry.toMap();
+        if (row.value("id").toString() != id) continue;
+        m_menu.open(splitId(id).first, row.value("Menu").toString(), timeout());
+        return;
+    }
+    m_menu.clear("Tray application is no longer available.");
+}
 bool TrayService::act(const QString &name, const QVariantMap &args) {
     QString method;
     if (name == "activate") method = "Activate";
     else if (name == "secondaryActivate") method = "SecondaryActivate";
-    else if (name == "contextMenu") method = "ContextMenu";
     else return false;
     for (const auto &entry : items()) {
         const auto row = entry.toMap(); const auto id = row.value("id").toString();
         if (id != args.value("id").toString()) continue;
-        if (name == "activate" && row.value("ItemIsMenu").toBool()) method = "ContextMenu";
+        if (name == "activate" && row.value("ItemIsMenu").toBool()) return false; // The panel opens the anchored menu.
         const auto [destination, path] = splitId(id);
         return dbusAction(QDBusConnection::sessionBus(), destination, path, "org.kde.StatusNotifierItem", method, {args.value("x", 0).toInt(), args.value("y", 0).toInt()});
     }
