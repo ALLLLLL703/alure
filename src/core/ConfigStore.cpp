@@ -1,5 +1,6 @@
 #include "ConfigStore.h"
 #include <QColor>
+#include <QKeySequence>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -138,6 +139,10 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
         range(settings, "height", 300, 4320, "settings.");
         range(settings, "editor_font_size", 6, 72, "settings.");
         nonempty(settings, "editor_font", "settings.");
+        const auto shortcut = settings.value("close_shortcut").toString();
+        const auto sequence = QKeySequence::fromString(shortcut, QKeySequence::PortableText);
+        if (!shortcut.isEmpty() && (sequence.isEmpty() || sequence.toString(QKeySequence::PortableText) != shortcut))
+            invalid("settings.close_shortcut", "expected a canonical Qt portable shortcut, e.g. Ctrl+W, or empty to disable");
         const auto foundation = result.value("foundation").toMap();
         static const QRegularExpression iconName(QStringLiteral("^[A-Za-z0-9_.-]+$"));
         if (!iconName.match(foundation.value("icon").toString()).hasMatch())

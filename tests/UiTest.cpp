@@ -41,6 +41,26 @@ public:
     Q_INVOKABLE bool openSettings() { return true; }
     Q_INVOKABLE void openModule(const QString &, const QString &, const QString &) {}
 };
+namespace {
+QQuickItem *itemNamed(QQuickItem *item, const QString &name) {
+    if (item->objectName() == name) return item;
+    for (auto *child : item->childItems()) if (auto *found = itemNamed(child, name)) return found;
+    return nullptr;
+}
+void clickItem(QQuickWindow *window, QQuickItem *item) {
+    QVERIFY(item); QVERIFY(item->isVisible());
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, item->mapToScene(QPointF(item->width()/2, item->height()/2)).toPoint());
+}
+void replaceText(QQuickWindow *window, QQuickItem *item, const QString &text) {
+    QVERIFY(item);
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, item->mapToScene(QPointF(10, 10)).toPoint());
+    QTest::keyClick(window, Qt::Key_A, Qt::ControlModifier);
+    QKeyEvent press(QEvent::KeyPress, 0, Qt::NoModifier, text);
+    QCoreApplication::sendEvent(window, &press);
+    QKeyEvent release(QEvent::KeyRelease, 0, Qt::NoModifier, text);
+    QCoreApplication::sendEvent(window, &release);
+}
+}
 class UiTest : public QObject {
     Q_OBJECT
 private slots:
@@ -179,6 +199,58 @@ private slots:
         QVERIFY2(popup, "A real calendar button click must create a visible details window through PanelHost");
         QCOMPARE(popup->rootObject()->property("moduleName").toString(), "calendar");
         QTest::keyClick(popup, Qt::Key_Escape); QTest::qWait(10); QVERIFY(!popup->isVisible());
+    }
+    void settingsClose_data() {
+        QTest::addColumn<QString>("draftKind"); QTest::addColumn<QString>("action");
+        for (const auto &kind : {"clean", "raw", "pending", "invalid", "conflict"})
+            for (const auto &action : {"save", "discard", "cancel"})
+                QTest::newRow(qPrintable(QString(kind) + "-" + action)) << QString(kind) << QString(action);
+    }
+    void settingsClose() {
+        QFETCH(QString, draftKind); QFETCH(QString, action);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider); engine.rootContext()->setContextProperty("Config", &config);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        engine.load(QUrl("qrc:/qml/Settings.qml")); QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window);
+        window->requestActivate(); QTest::qWait(30);
+        const auto find = [&](const QString &name) { return itemNamed(window->contentItem(), name); };
+        const bool dirty = draftKind != "clean";
+        if (dirty) {
+            clickItem(window, find("settings-section-4")); QTest::qWait(20);
+            replaceText(window, find("settings-raw-editor"), draftKind == "invalid" ? "[broken" : "# retained\n[theme]\nname = 'dawn'\n");
+            QTRY_VERIFY(window->property("dirty").toBool());
+            if (draftKind == "pending") {
+                // Pending form text is staged without changing the raw draft.
+                window->setProperty("pendingFields", QVariantMap{{"theme.font_size", "19"}});
+            }
+            if (draftKind == "conflict") {
+                QFile file(config.path()); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("# external\nversion=1\n"); file.close();
+            }
+        }
+        QSignalSpy lastClosed(qGuiApp, &QGuiApplication::lastWindowClosed);
+        if (action == "cancel") QTest::keyClick(window, Qt::Key_W, Qt::ControlModifier);
+        else if (action == "discard") window->close(); // Native close event, as used by the compositor.
+        else clickItem(window, find("settings-close"));
+        if (!dirty) { QTRY_VERIFY(!window->isVisible()); return; }
+        auto *dialog = window->findChild<QObject *>("settings-unsaved"); QVERIFY(dialog);
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        clickItem(window, find("unsaved-" + action));
+        const bool refused = action == "save" && (draftKind == "invalid" || draftKind == "conflict");
+        if (action == "cancel" || refused) {
+            QTest::qWait(50); QVERIFY(window->isVisible()); QCOMPARE(lastClosed.size(), 0);
+            QCOMPARE(dialog->property("visible").toBool(), refused);
+            QVERIFY(window->property("dirty").toBool());
+            if (refused) clickItem(window, find("unsaved-cancel"));
+            QTRY_VERIFY(!dialog->property("visible").toBool());
+            replaceText(window, find("settings-raw-editor"), "# continued editing\nversion = 1\n");
+            QVERIFY(find("settings-raw-editor")->property("text").toString().contains("continued editing"));
+        } else {
+            QTRY_VERIFY(!window->isVisible());
+            if (action == "save") { QVERIFY(QFile::exists(config.path())); QCOMPARE(config.model().value("theme").toMap().value("name").toString(), "dawn"); }
+        }
+        if (action != "save" && draftKind != "conflict") QVERIFY(!QFile::exists(config.path()));
+        QCOMPARE(warnings.size(), 0);
     }
     void settingsDraft() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());

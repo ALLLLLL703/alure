@@ -272,3 +272,23 @@ installation and syntax checks are not an enabled-service test. Polling, DBusMen
 pairing-agent and calendar-provider limitations in [services.md](services.md)
 remain. Temporary screenshot/log paths above are local evidence, not committed
 build products or portable test fixtures.
+
+### Settings close lifecycle
+
+The header **Close** button is available even on undecorated compositor windows.
+It, the configured shortcut (default Ctrl+W), and compositor close events share the
+same unsaved-draft guard. Save validates and checks disk conflicts; failures leave
+the modal and draft open. Cancel returns to editing. Discard never writes disk.
+Successful Save/Discard closes the modal first, then defers the window close to
+avoid closing recursively inside a modal callback. Settings retains Qt's normal
+last-window-closed process exit policy; it does not force quit or discard edits.
+
+Regressions: `QuickUi` sends real close/key/pointer events and clicks modal buttons;
+`SettingsCloseE2e` (when system Xvfb and xdotool exist) launches a private X server
+and the actual settings process without a quit timer, exercising clean shortcut
+close and dirty Discard. It never targets the host desktop. This is not Niri
+validation, nor proof of the original user's compositor-specific failure cause.
+
+Official references consulted (2026-07-17; no copied implementation):
+- https://doc.qt.io/qt-6/qml-qtquick-controls-dialog.html (automatic accept/reject roles)
+- https://doc.qt.io/qt-6/qguiapplication.html#quitOnLastWindowClosed-prop

@@ -174,3 +174,9 @@ Do not verify custom update/power/connect actions on a live desktop inadvertentl
 
 The service layer returns raw data only. The v0.1 interface consumes module style
 and formatting; see [interface.md](interface.md) for supported boundaries.
+
+Settings close controls (take effect on Preview in settings, or next settings launch):
+`settings.show_close_button` is a boolean, default `true`.
+`settings.close_shortcut` is a canonical Qt portable key sequence string, default
+`"Ctrl+W"`; `""` disables it. Invalid types/sequences produce diagnostics. Compositor
+close handling remains available independently; all routes guard unsaved edits.

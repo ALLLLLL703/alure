@@ -19,6 +19,8 @@ private slots:
     void defaults() {
         QVariantMap model; QString error;
         QVERIFY2(ConfigStore::parse({}, model, error), qPrintable(error));
+        QCOMPARE(model.value("settings").toMap().value("show_close_button").toBool(), true);
+        QCOMPARE(model.value("settings").toMap().value("close_shortcut").toString(), "Ctrl+W");
         QCOMPARE(model.value("panels").toList().size(), 1);
         QCOMPARE(model.value("modules").toMap().size(), 10);
         QCOMPARE(model.value("theme").toMap().value("palette").toMap().value("background").toString(), "#151923");
@@ -56,6 +58,12 @@ edge = "bottom"
         QVERIFY(ConfigStore::parse("panels = []", model, error));
         QVERIFY(model.value("panels").toList().isEmpty());
     }
+    void settingsCloseOverrides() {
+        QVariantMap model; QString error;
+        QVERIFY(ConfigStore::parse("[settings]\nshow_close_button=false\nclose_shortcut='Alt+F4'", model, error));
+        QVERIFY(!model.value("settings").toMap().value("show_close_button").toBool());
+        QVERIFY(ConfigStore::parse("[settings]\nclose_shortcut=''", model, error));
+    }
     void invalid_data() {
         QTest::addColumn<QByteArray>("source");
         for (const auto &[name, text] : std::initializer_list<std::pair<const char *, const char *>>{
@@ -66,6 +74,7 @@ edge = "bottom"
             {"font", "[theme]\nfont = ''"}, {"font-size-type", "[theme]\nfont_size = 12.5"},
             {"icon-mode", "[theme]\nicon_mode = 'download'"}, {"watch-type", "[runtime]\nwatch = 'yes'"},
             {"delay", "[runtime]\nreload_delay_ms = 0"}, {"settings-size", "[settings]\nwidth = 20"},
+            {"close-button-type", "[settings]\nshow_close_button = 1"}, {"close-shortcut", "[settings]\nclose_shortcut = 'nonsense'"},
             {"panel-type", "panels = [1]"}, {"edge", "[[panels]]\nedge = 'center'"},
             {"duplicate", "[[panels]]\nid = 'a'\n[[panels]]\nid = 'a'"},
             {"margin-type", "[[panels]]\nmargins = {left = '8'}"}, {"margin", "[[panels]]\nmargins = {left = -1}"},

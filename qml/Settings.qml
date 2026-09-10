@@ -59,6 +59,13 @@ ApplicationWindow {
         const valid = Config.reload(); editor.text = Config.source; savedText = Config.source; inspect()
         statusText = valid ? "Reloaded disk configuration." : "Invalid disk text loaded for repair; runtime retains last valid model."
     }
+    function finishAction() {
+        if (pendingAction === "close") {
+            // Close only after the modal has left the popup stack. Never recurse in onClosing.
+            closingApproved = true
+            Qt.callLater(function() { window.close() })
+        } else reload()
+    }
     function confirmDiscard(action) {
         if (!dirty) { if (action === "close") { closingApproved = true; close() } else reload(); return }
         pendingAction = action; unsaved.open()
@@ -80,6 +87,7 @@ ApplicationWindow {
     palette.buttonText: theme.palette.foreground
     palette.highlight: theme.palette.accent
     onClosing: event => { if (dirty && !closingApproved) { event.accepted = false; confirmDiscard("close") } }
+    Shortcut { sequence: Config.model.settings.close_shortcut; enabled: sequence.length > 0 && !unsaved.visible; onActivated: window.close() }
     Timer { id: parseDelay; interval: Config.model.runtime.reload_delay_ms; onTriggered: window.inspect() }
     ColumnLayout {
         anchors.fill: parent
@@ -93,6 +101,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
             }
             InfoText { text: window.dirty ? "Unsaved draft" : "Saved"; color: window.theme.palette.muted }
+            ShellButton { objectName: "settings-close"; text: "Close"; visible: Config.model.settings.show_close_button; onClicked: window.close() }
         }
         RowLayout {
             Layout.fillWidth: true
@@ -107,6 +116,7 @@ ApplicationWindow {
                         required property int index
                         required property string modelData
                         text: modelData
+                        objectName: "settings-section-" + index
                         accent: window.section === index
                         Layout.fillWidth: true
                         onClicked: { if (window.flushFields()) { window.inspect(); window.section = index } }
@@ -207,6 +217,7 @@ ApplicationWindow {
                     Layout.fillHeight: true
                     TextArea {
                         id: editor
+                        objectName: "settings-raw-editor"
                         text: Config.source
                         textFormat: TextEdit.PlainText
                         font.family: Config.model.settings.editor_font
@@ -240,17 +251,27 @@ ApplicationWindow {
         id: unsaved
         anchors.centerIn: parent
         width: Math.min(window.width - window.theme.padding * 2, window.theme.font_size * 32)
+        implicitHeight: Math.min(window.height - window.theme.padding * 2, window.theme.font_size * 20)
         title: "Unsaved configuration"
         modal: true
-        standardButtons: Dialog.Save | Dialog.Discard | Dialog.Cancel
-        contentItem: InfoText { text: "Save this draft, discard it, or cancel. External file conflicts will stop Save without losing your draft." }
-        onAccepted: { if (window.save()) { if (window.pendingAction === "close") { window.closingApproved = true; window.close() } else window.reload() } }
-        onDiscarded: { if (window.pendingAction === "close") { window.closingApproved = true; window.close() } else window.reload() }
+        objectName: "settings-unsaved"
+        closePolicy: Popup.NoAutoClose
+        property bool completed: false
+        onOpened: completed = false
+        onClosed: { if (completed) window.finishAction() }
+        contentItem: InfoText { text: "Save this draft, discard it, or cancel. External file conflicts will stop Save without losing your draft.\n" + Config.diagnostic + "\n" + window.statusText }
+        // Explicit buttons keep validation/conflict failures in the modal, unlike automatic AcceptRole.
+        footer: RowLayout {
+            ShellButton { objectName: "unsaved-save"; text: "Save"; onClicked: { if (window.save()) { unsaved.completed = true; unsaved.close() } } }
+            ShellButton { objectName: "unsaved-discard"; text: "Discard"; onClicked: { unsaved.completed = true; unsaved.close() } }
+            ShellButton { objectName: "unsaved-cancel"; text: "Cancel"; onClicked: unsaved.close() }
+        }
     }
     Dialog {
         id: panelNotice
         anchors.centerIn: parent
         width: Math.min(window.width - window.theme.padding * 2, window.theme.font_size * 34)
+        implicitHeight: Math.min(window.height - window.theme.padding * 2, window.theme.font_size * 20)
         title: "Change panel definitions?"
         modal: true
         standardButtons: Dialog.Ok | Dialog.Cancel
