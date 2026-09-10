@@ -56,7 +56,8 @@ public:
     QVariantList items;
     QString lastAction;
     QVariantMap lastArguments;
-    Q_INVOKABLE bool action(const QString &name, const QVariantMap &arguments) { lastAction = name; lastArguments = arguments; return true; }
+    int actionCount = 0;
+    Q_INVOKABLE bool action(const QString &name, const QVariantMap &arguments) { ++actionCount; lastAction = name; lastArguments = arguments; return true; }
     Q_INVOKABLE void refresh() {}
 signals:
     void changed();
@@ -135,7 +136,8 @@ private slots:
         connect(&engine, &QQmlEngine::warnings, this, [&warnings](const auto &list) { warnings += list; });
         for (const auto &name : config.model().value("modules").toMap().keys()) {
             QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(440, 560);
-            view.setInitialProperties({{"moduleName", name}}); view.setSource(QUrl("qrc:/qml/Popup.qml"));
+            if (name != "media") view.setInitialProperties({{"moduleName", name}});
+            view.setSource(QUrl(name == "media" ? "qrc:/qml/MediaPopup.qml" : "qrc:/qml/Popup.qml"));
             QVERIFY2(view.status() == QQuickView::Ready, qPrintable(view.errors().isEmpty() ? "unknown load failure" : view.errors().first().toString()));
             view.show(); QTest::qWait(20); QVERIFY(view.rootObject()->width() > 0);
             if (name == "volume") {
@@ -219,6 +221,44 @@ private slots:
             QTRY_VERIFY(entry = findItem(view.rootObject(), moduleName + "-entry-20"));
             QCOMPARE(entry->property("iconSource").toString(), "image://icons/theme/battery");
         }
+        QCOMPARE(warnings.size(), 0);
+    }
+    void mediaCardControls() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QVERIFY(config.previewText("[modules.media.behavior]\nartwork_remote=false"));
+        FixtureService service;
+        QVariantMap row{{"service", "fixture.player"}, {"identity", "Fixture player"}, {"title", "Fixture track"}, {"artist", QStringList{"Artist A", "Artist B"}}, {"album", "Fixture album"},
+                        {"artUrl", "https://example.invalid/cover.png"}, {"trackId", "/fixture/track"}, {"lengthUs", 150000000LL}, {"positionUs", 10000000LL},
+                        {"playbackStatus", "Playing"}, {"CanControl", true}, {"CanPlay", true}, {"CanPause", true}, {"CanSeek", true}, {"CanGoPrevious", true}, {"CanGoNext", false},
+                        {"hasShuffle", true}, {"shuffle", false}, {"hasLoopStatus", true}, {"loopStatus", "None"}};
+        service.items = {row}; FixtureShell shell;
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Shell", &shell);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"media", QVariant::fromValue(&service)}});
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(440, 560);
+        view.setSource(QUrl("qrc:/qml/MediaPopup.qml")); QVERIFY(view.status() == QQuickView::Ready); view.show(); QTest::qWait(40);
+        const auto find = [&](const QString &name) { return itemNamed(view.rootObject(), name); };
+        QCOMPARE(find("media-title")->property("text").toString(), "Fixture track");
+        QCOMPARE(find("media-artist")->property("text").toString(), "Artist A, Artist B");
+        QVERIFY(find("media-artwork")->property("source").toUrl().isEmpty());
+        auto *play = find("media-play-pause"); revealItem(play); clickItem(&view, play); QCOMPARE(service.lastAction, "playPause");
+        QVERIFY(!find("media-next")->isEnabled());
+        clickItem(&view, find("media-shuffle")); QCOMPARE(service.lastArguments.value("shuffle").toBool(), true);
+        clickItem(&view, find("media-repeat")); QCOMPARE(service.lastArguments.value("loopStatus").toString(), "Playlist");
+        auto *slider = find("media-progress"); revealItem(slider);
+        const auto start = slider->mapToScene(QPointF(slider->width() * .6, slider->height()/2)).toPoint();
+        const auto end = slider->mapToScene(QPointF(slider->width() * .75, slider->height()/2)).toPoint();
+        const int before = service.actionCount;
+        QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, start); QTest::mouseMove(&view, end);
+        row["positionUs"] = 2000000LL; service.items = {row}; emit service.changed(); QTest::qWait(10);
+        QVERIFY(slider->property("pressed").toBool()); QVERIFY(slider->property("value").toDouble() > 80.);
+        QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, end);
+        QCOMPARE(service.actionCount, before + 1); QCOMPARE(service.lastAction, "setPosition");
+        QCOMPARE(service.lastArguments.value("trackId").toString(), "/fixture/track");
+        QVERIFY(service.lastArguments.value("positionUs").toDouble() > 80000000.);
+        QVERIFY(config.previewText("[modules.media.behavior]\nshow_artwork=false\nshow_progress=false\nshow_shuffle=false\nshow_repeat=false"));
+        QVERIFY(!slider->isVisible()); QVERIFY(!find("media-shuffle")->isVisible());
         QCOMPARE(warnings.size(), 0);
     }
     void workspaceStripLabels() {

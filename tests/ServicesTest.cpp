@@ -43,15 +43,23 @@ class FakePlayer : public QObject {
     Q_PROPERTY(bool CanPause READ yes)
     Q_PROPERTY(bool CanGoNext READ no)
     Q_PROPERTY(bool CanGoPrevious READ yes)
+    Q_PROPERTY(bool CanSeek READ yes)
+    Q_PROPERTY(qlonglong Position MEMBER position)
+    Q_PROPERTY(bool Shuffle MEMBER shuffled)
+    Q_PROPERTY(QString LoopStatus MEMBER loop)
 public:
-    QVariantMap metadata() const { return {{"xesam:title", "Fixture Song"}, {"xesam:artist", QStringList{"Fixture Artist"}}}; }
-    QString playbackStatus() const { return "Playing"; }
+    QString status = "Playing", song = "Fixture Song", loop = "None";
+    qlonglong position = 3000000;
+    bool shuffled = false;
+    QVariantMap metadata() const { return {{"xesam:title", song}, {"xesam:artist", QStringList{"Fixture Artist"}}, {"mpris:length", 271000000LL}, {"mpris:trackid", QVariant::fromValue(QDBusObjectPath("/fixture/track"))}}; }
+    QString playbackStatus() const { return status; }
     bool yes() const { return true; }
     bool no() const { return false; }
     int played = 0;
 public slots:
     void PlayPause() { ++played; }
     void Previous() {}
+    void SetPosition(const QDBusObjectPath &track, qlonglong value) { if (track.path() == "/fixture/track") position = value; }
 };
 class FakeBluez : public QObject {
     Q_OBJECT
@@ -163,7 +171,7 @@ private slots:
         }
         QVERIFY(ConfigStore::parse("[modules.workspaces.behavior]\nordering='provider'", config, error));
         QCOMPARE(config.value("modules").toMap().value("workspaces").toMap().value("behavior").toMap().value("ordering").toString(), "provider");
-        for (const QByteArray &text : {QByteArray("[modules.tray.behavior]\nmenu_width=0"), QByteArray("[modules.tray.behavior]\nmenu_height=2161"), QByteArray("[modules.tray.behavior]\nmenu_width='280'"), QByteArray("[modules.volume.behavior]\ndebounce_ms=0"), QByteArray("[modules.volume.behavior]\nmax_percent=151"),
+        for (const QByteArray &text : {QByteArray("[modules.media.behavior]\nartwork_height=0"), QByteArray("[modules.media.behavior]\nartwork_remote='yes'"), QByteArray("[modules.media.behavior]\npreferred_player='random'"), QByteArray("[modules.tray.behavior]\nmenu_width=0"), QByteArray("[modules.tray.behavior]\nmenu_height=2161"), QByteArray("[modules.tray.behavior]\nmenu_width='280'"), QByteArray("[modules.volume.behavior]\ndebounce_ms=0"), QByteArray("[modules.volume.behavior]\nmax_percent=151"),
              QByteArray("[modules.notifications.behavior]\nhistory_limit=0"), QByteArray("[modules.notifications.behavior]\nserver_enabled=1"),
              QByteArray("[modules.wifi.behavior]\nradio_command=[1]"), QByteArray("[modules.battery.behavior]\nsysfs_path=\"relative\"")})
             QVERIFY2(!ConfigStore::parse(text, config, error), text.constData());
@@ -303,7 +311,14 @@ private slots:
         config["enabled"] = false; service.configure(config); QSignalSpy changed(&service, &Service::changed); QTest::qWait(250); QCOMPARE(changed.size(), 0);
     }
     void mediaAndBluetooth() {
-        auto bus = QDBusConnection::sessionBus(); FakePlayer player;
+        auto bus = QDBusConnection::sessionBus(); FakePlayer player, stopped;
+        auto stoppedBus = QDBusConnection::connectToBus(QDBusConnection::SessionBus, "media-stopped");
+        stopped.status = "Stopped"; stopped.song.clear();
+        QVERIFY(stoppedBus.registerService("org.mpris.MediaPlayer2.aaStopped"));
+        QVERIFY(stoppedBus.registerObject("/org/mpris/MediaPlayer2", &stopped, QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllProperties));
+        // A registered but broken provider must not hide the playing one.
+        auto brokenBus = QDBusConnection::connectToBus(QDBusConnection::SessionBus, "media-broken");
+        QVERIFY(brokenBus.registerService("org.mpris.MediaPlayer2.aBroken"));
         QVERIFY(bus.registerService("org.mpris.MediaPlayer2.alureFixture"));
         QVERIFY(bus.registerObject("/org/mpris/MediaPlayer2", &player, QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllProperties));
         MediaService media; media.configure(module("media")); QTRY_VERIFY(media.available());
@@ -311,6 +326,19 @@ private slots:
         QCOMPARE(media.items().first().toMap().value("artist").toStringList(), QStringList{"Fixture Artist"});
         const QVariantMap target{{"service", "org.mpris.MediaPlayer2.alureFixture"}};
         QVERIFY(!media.action("next", target)); QVERIFY(media.action("playPause", target)); QTRY_COMPARE(player.played, 1); QTRY_VERIFY(!media.busy());
+        QVERIFY(media.action("setPosition", {{"service", target.value("service")}, {"trackId", "/fixture/track"}, {"positionUs", 9000000LL}}));
+        QTRY_COMPARE(player.position, 9000000LL); QTRY_VERIFY(!media.busy());
+        QVERIFY(!media.action("setPosition", {{"service", target.value("service")}, {"trackId", "/old/track"}, {"positionUs", 9000000LL}}));
+        QVERIFY(!media.action("setPosition", {{"service", target.value("service")}, {"trackId", "/fixture/track"}, {"positionUs", "bad"}}));
+        QVERIFY(!media.action("setPosition", {{"service", target.value("service")}, {"trackId", "/fixture/track"}, {"positionUs", 271000000LL}}));
+        QVERIFY(media.action("setShuffle", {{"service", target.value("service")}, {"shuffle", true}})); QTRY_VERIFY(player.shuffled); QTRY_VERIFY(!media.busy());
+        QVERIFY(media.action("setLoopStatus", {{"service", target.value("service")}, {"loopStatus", "Track"}})); QTRY_COMPARE(player.loop, "Track"); QTRY_VERIFY(!media.busy());
+        QVERIFY(!media.action("setLoopStatus", {{"service", target.value("service")}, {"loopStatus", "Random"}}));
+        media.configure(module("media", {{"preferred_player", "org.mpris.MediaPlayer2.aaStopped"}})); QTRY_VERIFY(media.available());
+        QCOMPARE(media.items().first().toMap().value("service").toString(), "org.mpris.MediaPlayer2.aaStopped");
+        stoppedBus.unregisterObject("/org/mpris/MediaPlayer2"); stoppedBus.unregisterService("org.mpris.MediaPlayer2.aaStopped");
+        brokenBus.unregisterService("org.mpris.MediaPlayer2.aBroken");
+        QDBusConnection::disconnectFromBus("media-stopped"); QDBusConnection::disconnectFromBus("media-broken");
         bus.unregisterObject("/org/mpris/MediaPlayer2"); bus.unregisterService("org.mpris.MediaPlayer2.alureFixture");
         media.refresh(); QTRY_VERIFY(!media.available());
         BluetoothService bluetooth; FakeBluez bluez;

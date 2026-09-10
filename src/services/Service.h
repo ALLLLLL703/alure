@@ -42,9 +42,11 @@ protected:
     // Async callbacks are tied to QObject lifetime and config generation.
     void call(const QDBusConnection &bus, const QString &destination, const QString &path,
               const QString &interface, const QString &method, const QVariantList &arguments,
-              std::function<void(const QVariantList &)> success);
+              std::function<void(const QVariantList &)> success,
+              std::function<void(const QString &)> failure = {});
     void properties(const QDBusConnection &bus, const QString &destination, const QString &path,
-                    const QString &interface, std::function<void(QVariantMap)> success);
+                    const QString &interface, std::function<void(QVariantMap)> success,
+                    std::function<void(const QString &)> failure = {});
     bool dbusAction(const QDBusConnection &bus, const QString &destination, const QString &path,
                     const QString &interface, const QString &method, const QVariantList &arguments = {});
 private:

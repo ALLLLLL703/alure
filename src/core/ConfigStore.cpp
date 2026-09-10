@@ -190,6 +190,12 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
                 range(behavior, "menu_width", 160, 1920, path);
                 range(behavior, "menu_height", 100, 2160, path);
             }
+            if (it.key() == "media") {
+                range(behavior, "artwork_height", 80, 720, path);
+                const auto preferred = behavior.value("preferred_player").toString();
+                if (!preferred.isEmpty() && !QRegularExpression("^org\\.mpris\\.MediaPlayer2\\.[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$").match(preferred).hasMatch())
+                    invalid(path + "preferred_player", "expected empty or a full MPRIS service name/prefix");
+            }
             if (it.key() == "volume") {
                 range(behavior, "max_percent", 1, 150, path);
                 range(behavior, "debounce_ms", 10, 2000, path);

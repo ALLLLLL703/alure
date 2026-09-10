@@ -37,7 +37,7 @@ icons, ordering, popup geometry and interactions under the existing TOML UI mode
 | Service | Live snapshot and actions | Supported boundary / readiness |
 |---|---|---|
 | Niri | items: `id` **string**, `idx`, nullable `name`, `output`, `is_active`, `is_focused` and upstream workspace fields. `activate({id})` | Native newline JSON socket requests, stable **ID** activation across outputs. Poll/reconnect at interval (not event stream). `ordering="output-index"` sorts ascending output/numeric idx/numeric ID before publication; `"provider"` preserves IPC order (see configuration.md). Missing socket, disconnect, invalid replies and timeout clear data. Fixture has duplicate idx=1 on DP-1 and DP-2 and verifies ID=20, not idx. |
-| MPRIS | items: `service`, `title`, `artist` string list, `album`, `artUrl`, `playbackStatus`, `CanControl/CanPlay/CanPause/CanGoNext/CanGoPrevious`. `playPause/next/previous({service})` | Session-bus player discovery/GetAll polling, maximum 64 players. Capability checks before calls. No seek, queue, position clock or player launching. Art URL is metadata only; no downloads by service. UI must handle untrusted remote URLs deliberately. |
+| MPRIS | items: `service`, derived `identity`, `title`, `artist` string list, `album`, `artUrl`, `playbackStatus`, `trackId`, `positionUs/lengthUs`, `shuffle/loopStatus`, `hasShuffle/hasLoopStatus`, `CanControl/CanPlay/CanPause/CanGoNext/CanGoPrevious/CanSeek`. `playPause/next/previous({service})`, `setPosition({service,trackId,positionUs})`, `setShuffle({service,shuffle:bool})`, `setLoopStatus({service,loopStatus})` | Session-bus discovery/GetAll polling, maximum 64 players. Playing-first selection (then Paused/Stopped); optional preferred service/prefix overrides it. Unreadable players are skipped rather than hiding healthy ones. Capability checks, signed microseconds and current track-path validation before seek. No queue/player launching. QML only loads local file or opted-in HTTP(S) covers while the dropdown is visible, with bounded decode dimensions and no image cache. |
 | SNI tray | items: `id` (bus name + path), `Title`, `Status`, `IconName`, `AttentionIconName`, `ItemIsMenu`, `Menu` path string, `IconThemePath`, `iconUrl` PNG data URL. `activate/secondaryActivate({id,x,y})`; `openMenu(id)` exposes `menu.items/loading/error/canGoBack`, `menu.select(id)/back()/close()` | Hosts org.kde.StatusNotifierWatcher when free; otherwise cooperates with existing watcher and registers a host. No name stealing/queueing. Registration/removal and polling property changes; max 128 items. ARGB network-order pixmaps converted to PNG, largest valid image up to 512×512. ItemIsMenu routes primary clicks to the anchored host-side DBusMenu. GetLayout/AboutToShow/Event, LayoutUpdated/ItemsPropertiesUpdated are supported; 512 entries per level, 32 submenu levels. No provider ContextMenu calls, overlays, tooltip rendering, Scroll or legacy XEmbed. IconThemePath exposed but not searched by current icon provider. |
 | Volume | state: `percent`, `muted`. `setVolume({percent})`, `toggleMute({})` | Async wpctl with C-locale strict parser; debounced setter, configurable maximum. Default sink only; no sink selector, microphone or stream mixer. Reading can show existing >100% volume even if setter capped at 100. |
 | Updates | state: `count`; items: `name/current/next`. `update({})` | Async checkupdates; exit 2 is successful zero. Other nonzero exits fail. Only explicit action executes update_command, empty by default. No automatic install, AUR provider, privilege prompt or upgrade-output UI. Terminal argv can be configured by user; not run during tests. |
@@ -80,8 +80,8 @@ Niri responses have a 1 MiB cap and deadline. Sysfs reads are bounded 4096-byte
 local files, not network filesystem support.
 
 MPRIS/tray/BlueZ and WiFi are periodic snapshots, not instant signal-driven models.
-An item/player disappearing during a batch can fail that snapshot; next successful
-poll recovers. A permanently broken tray item can make that batch unavailable.
+An item disappearing during a tray/BlueZ batch can fail that snapshot; next successful
+poll recovers. MPRIS skips individual unreadable players; an all-failed batch is unavailable. A permanently broken tray item can make that batch unavailable.
 A session/system bus disconnect is reported, not faked. Qt default connection
 recovery after a **bus daemon restart** is not guaranteed: restart Alure then.
 Normal player/BlueZ service/Niri disappearance is retried without shell restart.
@@ -120,6 +120,8 @@ That single-output check does not validate physical providers or these new fixes
   https://github.com/YaLTeR/niri/blob/main/niri-ipc/src/lib.rs
 - MPRIS Player interface / capability requirements:
   https://specifications.freedesktop.org/mpris-spec/latest/Player_Interface.html
+  (legacy URL now redirects/404s; current page inspected for seek/optional properties:
+  https://specifications.freedesktop.org/mpris/latest/Player_Interface.html)
 - StatusNotifierWatcher / item specification:
   https://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/StatusNotifierWatcher/
   and https://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/StatusNotifierItem/

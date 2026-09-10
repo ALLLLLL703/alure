@@ -2,6 +2,9 @@
 #include <QDBusArgument>
 #include <QDBusMetaType>
 #include <QDBusVariant>
+#include <algorithm>
+#include <cmath>
+#include <tuple>
 namespace Alure {
 void MediaService::poll() {
     setBusy(true);
@@ -16,29 +19,63 @@ void MediaService::poll() {
 void MediaService::readPlayers(QStringList names, QVariantList rows) {
     if (names.isEmpty()) {
         setBusy(false);
-        if (rows.isEmpty()) fail("No MPRIS players"); else publish({{"count", rows.size()}}, rows);
+        const auto preferred = m_options.value("preferred_player").toString();
+        const auto rank = [&preferred](const QVariant &entry) {
+            const auto row = entry.toMap(); const auto name = row.value("service").toString();
+            const auto status = row.value("playbackStatus").toString();
+            const bool match = !preferred.isEmpty() && (name == preferred || name.startsWith(preferred + '.'));
+            return std::tuple{!match, status == "Playing" ? 0 : status == "Paused" ? 1 : 2, name};
+        };
+        std::stable_sort(rows.begin(), rows.end(), [&rank](const auto &a, const auto &b) { return rank(a) < rank(b); });
+        if (rows.isEmpty()) fail("No readable MPRIS players"); else publish({{"count", rows.size()}}, rows);
         return;
     }
     const auto name = names.takeFirst();
     properties(QDBusConnection::sessionBus(), name, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player",
                [this, name, names, rows](QVariantMap props) mutable {
+        if (!props.contains("PlaybackStatus")) { readPlayers(names, rows); return; }
         const auto metadata = dbusMap(unbox(props.value("Metadata")));
-        QVariantMap row{{"service", name}, {"title", metadata.value("xesam:title")}, {"artist", qdbus_cast<QStringList>(metadata.value("xesam:artist"))},
+        QVariantMap row{{"service", name}, {"identity", name.section('.', 3).section(".instance", 0, 0)},
+                        {"title", metadata.value("xesam:title")}, {"artist", qdbus_cast<QStringList>(metadata.value("xesam:artist"))},
                         {"album", metadata.value("xesam:album")}, {"artUrl", metadata.value("mpris:artUrl")},
+                        {"trackId", qvariant_cast<QDBusObjectPath>(unbox(metadata.value("mpris:trackid"))).path()},
+                        {"lengthUs", qMax<qint64>(0, metadata.value("mpris:length").toLongLong())},
+                        {"positionUs", qMax<qint64>(0, props.value("Position").toLongLong())},
+                        {"shuffle", props.value("Shuffle").toBool()}, {"loopStatus", props.value("LoopStatus").toString()},
+                        {"hasShuffle", props.contains("Shuffle")}, {"hasLoopStatus", props.contains("LoopStatus")},
                         {"playbackStatus", props.value("PlaybackStatus")}};
-        for (const auto &key : {"CanControl", "CanPlay", "CanPause", "CanGoNext", "CanGoPrevious"}) row[key] = props.value(key).toBool();
+        for (const auto &key : {"CanControl", "CanPlay", "CanPause", "CanGoNext", "CanGoPrevious", "CanSeek"}) row[key] = props.value(key).toBool();
         rows << row; readPlayers(names, rows);
-    });
+    }, [this, names, rows](const QString &) { readPlayers(names, rows); });
 }
 bool MediaService::act(const QString &name, const QVariantMap &args) {
     QString method, capability;
     if (name == "playPause") { method = "PlayPause"; }
     else if (name == "next") { method = "Next"; capability = "CanGoNext"; }
     else if (name == "previous") { method = "Previous"; capability = "CanGoPrevious"; }
-    else return false;
+    else if (name != "setPosition" && name != "setShuffle" && name != "setLoopStatus") return false;
     for (const auto &entry : items()) {
         const auto row = entry.toMap();
         if (row.value("service") != args.value("service") || !row.value("CanControl").toBool()) continue;
+        const auto destination = row.value("service").toString();
+        if (name == "setPosition") {
+            const auto value = args.value("positionUs");
+            if (value.metaType().id() != QMetaType::Double && value.metaType().id() != QMetaType::LongLong && value.metaType().id() != QMetaType::Int) return false;
+            const double position = value.toDouble();
+            const auto track = row.value("trackId").toString();
+            if (!row.value("CanSeek").toBool() || track.isEmpty() || track == "/org/mpris/MediaPlayer2/TrackList/NoTrack" ||
+                args.value("trackId").toString() != track || !std::isfinite(position) || position < 0 || position >= row.value("lengthUs").toDouble()) return false;
+            return dbusAction(QDBusConnection::sessionBus(), destination, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "SetPosition",
+                              {QVariant::fromValue(QDBusObjectPath(track)), QVariant::fromValue(static_cast<qlonglong>(position))});
+        }
+        if (name == "setShuffle" || name == "setLoopStatus") {
+            const bool shuffle = name == "setShuffle";
+            const auto value = args.value(shuffle ? "shuffle" : "loopStatus");
+            if (shuffle ? !row.value("hasShuffle").toBool() || value.metaType().id() != QMetaType::Bool :
+                !row.value("hasLoopStatus").toBool() || !QStringList{"None", "Track", "Playlist"}.contains(value.toString())) return false;
+            return dbusAction(QDBusConnection::sessionBus(), destination, "/org/mpris/MediaPlayer2", "org.freedesktop.DBus.Properties", "Set",
+                              {"org.mpris.MediaPlayer2.Player", shuffle ? "Shuffle" : "LoopStatus", QVariant::fromValue(QDBusVariant(value))});
+        }
         if (name == "playPause") capability = row.value("playbackStatus") == "Playing" ? "CanPause" : "CanPlay";
         if (!row.value(capability).toBool()) return false;
         return dbusAction(QDBusConnection::sessionBus(), row.value("service").toString(), "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", method);

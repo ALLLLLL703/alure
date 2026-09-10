@@ -19,7 +19,7 @@ Service::Service(QObject *parent) : QObject(parent) {
 void Service::configure(const QVariantMap &module) {
     auto behavior = module.value("behavior").toMap();
     // Presentation-only behavior must not reset notification history or in-flight reads.
-    for (const auto &key : {"format", "popup_enabled", "toast_enabled", "menu_width", "menu_height"}) behavior.remove(key);
+    for (const auto &key : {"format", "popup_enabled", "toast_enabled", "menu_width", "menu_height", "show_artwork", "artwork_remote", "artwork_height", "show_artist", "show_album", "show_progress", "show_shuffle", "show_repeat"}) behavior.remove(key);
     const QVariantMap executionConfig{{"enabled", module.value("enabled")}, {"behavior", behavior}};
     if (executionConfig == m_config) return;
     m_config = executionConfig; ++m_generation; m_timer.stop();
@@ -48,7 +48,7 @@ void Service::fail(const QString &message) {
 void Service::setBusy(bool value) { m_busy = value; emit changed(); }
 void Service::call(const QDBusConnection &bus, const QString &destination, const QString &path,
                    const QString &interface, const QString &method, const QVariantList &args,
-                   std::function<void(const QVariantList &)> success) {
+                   std::function<void(const QVariantList &)> success, std::function<void(const QString &)> failure) {
     if (findChildren<QDBusPendingCallWatcher *>(QString(), Qt::FindDirectChildrenOnly).size() >= 128) {
         setBusy(false); fail("Too many pending DBus requests"); return;
     }
@@ -56,17 +56,21 @@ void Service::call(const QDBusConnection &bus, const QString &destination, const
     message.setArguments(args);
     auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(message, timeout()), this);
     const auto generation = m_generation;
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, generation, success = std::move(success)] {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, generation, success = std::move(success), failure = std::move(failure)] {
         const QDBusMessage reply = watcher->reply(); watcher->deleteLater();
         if (generation != m_generation || !enabled()) return;
-        if (reply.type() == QDBusMessage::ErrorMessage) { setBusy(false); fail(reply.errorName() + ": " + reply.errorMessage()); return; }
+        if (reply.type() == QDBusMessage::ErrorMessage) {
+            const auto error = reply.errorName() + ": " + reply.errorMessage();
+            if (failure) failure(error); else { setBusy(false); fail(error); }
+            return;
+        }
         success(reply.arguments());
     });
 }
 void Service::properties(const QDBusConnection &bus, const QString &destination, const QString &path,
-                         const QString &interface, std::function<void(QVariantMap)> success) {
+                         const QString &interface, std::function<void(QVariantMap)> success, std::function<void(const QString &)> failure) {
     call(bus, destination, path, "org.freedesktop.DBus.Properties", "GetAll", {interface},
-         [success = std::move(success)](const QVariantList &args) { success(args.isEmpty() ? QVariantMap{} : dbusMap(args.first())); });
+         [success = std::move(success)](const QVariantList &args) { success(args.isEmpty() ? QVariantMap{} : dbusMap(args.first())); }, std::move(failure));
 }
 bool Service::dbusAction(const QDBusConnection &bus, const QString &destination, const QString &path,
                          const QString &interface, const QString &method, const QVariantList &args) {

@@ -107,6 +107,15 @@ background = "" # empty uses transparent
 show_icon = true
 show_label = true
 [modules.media.behavior]
+preferred_player = "" # empty = playing first; otherwise full MPRIS service name/prefix
+show_artwork = true
+artwork_remote = true # load HTTP(S) cover art only while the media dropdown is visible
+artwork_height = 200 # logical pixels
+show_artist = true
+show_album = true
+show_progress = true
+show_shuffle = true
+show_repeat = true
 popup_enabled = true
 allow_actions = true
 interval_ms = 1000

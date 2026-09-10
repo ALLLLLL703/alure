@@ -210,6 +210,45 @@ dropdown appeared beneath its tray icon; submenu navigation and action dismissal
 worked. Automated tests cover protocol updates/errors, disabled/hidden entries,
 owner loss, cancellation and the actual QML right-click route.
 
+## Now-playing media card
+
+The panel automatically uses the first **Playing** MPRIS player, then Paused,
+then Stopped (service name breaks ties). A failing browser player no longer hides
+another player's metadata. `preferred_player` defaults to empty (automatic); a
+nonempty full MPRIS service name or dotted prefix such as
+`org.mpris.MediaPlayer2.musicfox` takes precedence while present. Invalid names
+are rejected. The dropdown also allows choosing a player for that open card.
+
+```toml
+[modules.media.behavior]
+preferred_player = ""
+show_artwork = true
+artwork_remote = true
+artwork_height = 200
+show_artist = true
+show_album = true
+show_progress = true
+show_shuffle = true
+show_repeat = true
+```
+
+These are the defaults; flags require booleans, artwork height is an integer
+80–720 logical pixels. All apply on reload, without restarting Alure. The theme
+and existing popup geometry control the remaining layout/appearance. The cover
+supports `file:` and, with `artwork_remote=true`, HTTP(S); it loads only in a
+visible dropdown, decodes at its display size and releases its source on hide.
+Missing/failed artwork has a music-symbol fallback. Remote artwork may contact
+the player-provided server; disable `artwork_remote` for local covers only.
+
+Position/duration come from real MPRIS data at the configured `interval_ms`, not
+an invented timeline. Unknown duration and unsupported controls are disabled.
+Seek retains the dragged track ID even if the current song changes; shuffle and
+repeat require those optional player properties. Repeat cycles None → Playlist
+→ Track. `allow_actions=false` disables every transport/seek action. No actual
+host playback was changed during validation: controls were tested against private
+DBus fixtures; the real musicfox cover/metadata/progress were visually checked
+with computer-use on nested Niri.
+
 ## Dropdown dismissal and workspace presentation
 
 `ui.escape_closes=true` also handles Escape before focused child controls consume

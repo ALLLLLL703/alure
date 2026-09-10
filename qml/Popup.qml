@@ -153,7 +153,6 @@ Control {
                                 text: {
                                     const d = card.modelData
                                     switch (root.moduleName) {
-                                    case "media": return d.title || "Untitled media"
                                     case "workspaces": return (d.name || "Workspace " + d.idx) + " · " + d.output
                                     case "tray": return d.Title || d.id
                                     case "updates": return d.name
@@ -171,7 +170,6 @@ Control {
                                 text: {
                                     const d = card.modelData
                                     switch (root.moduleName) {
-                                    case "media": return (d.artist || []).join(", ") + (d.album ? " · " + d.album : "") + "\n" + d.playbackStatus
                                     case "updates": return d.current + " → " + d.next
                                     case "bluetooth": return (d.Connected ? "Connected" : "Disconnected") + (d.Paired ? " · Paired" : " · Not paired")
                                     case "notifications": return d.appName + " · " + Qt.formatDateTime(new Date(Number(d.createdAt)), "HH:mm") + (d.suppressed ? " · Suppressed" : "") + "\n" + d.body
@@ -186,9 +184,6 @@ Control {
                                 Layout.fillWidth: true
                                 spacing: root.theme.spacing / 2
                                 ShellButton { visible: root.moduleName === "workspaces"; text: card.modelData.is_active ? "Active" : "Switch here"; enabled: root.canAct; onClicked: root.act("activate", {id: card.modelData.id}) }
-                                ShellButton { visible: root.moduleName === "media"; text: "Previous"; enabled: root.canAct && !!card.modelData.CanGoPrevious; onClicked: root.act("previous", {service: card.modelData.service}) }
-                                ShellButton { visible: root.moduleName === "media"; text: card.modelData.playbackStatus === "Playing" ? "Pause" : "Play"; enabled: root.canAct && !!card.modelData.CanControl && (card.modelData.playbackStatus === "Playing" ? !!card.modelData.CanPause : !!card.modelData.CanPlay); onClicked: root.act("playPause", {service: card.modelData.service}) }
-                                ShellButton { visible: root.moduleName === "media"; text: "Next"; enabled: root.canAct && !!card.modelData.CanGoNext; onClicked: root.act("next", {service: card.modelData.service}) }
                                 Repeater {
                                     model: root.moduleName === "tray" ? ["activate", "secondaryActivate"] : []
                                     ShellButton {
