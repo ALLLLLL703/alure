@@ -33,7 +33,7 @@ private slots:
         result = store.editLiteral("[theme] # retained\nname = 'dawn'\n", "theme.font_size", "16");
         QVERIFY2(result.value("error").toString().isEmpty(), qPrintable(result.value("error").toString()));
         QVERIFY(result.value("text").toString().contains("[theme] # retained"));
-        for (const auto &source : {"theme = {name = 'dawn'}\n", "[\"theme\"]\nname = 'dawn'\n"}) {
+        for (const auto &source : {"[\"theme\"]\nname = 'dawn'\n"}) {
             result = store.editLiteral(source, "theme.name", "'forest'");
             QVERIFY(!result.value("error").toString().isEmpty()); QCOMPARE(result.value("text").toString(), source);
         }
@@ -41,6 +41,69 @@ private slots:
         QVERIFY(store.previewText("[theme]\nname = 'dawn'")); QVERIFY(!QFile::exists(store.path()));
         QVERIFY(!store.previewText("[broken")); QCOMPARE(store.model().value("theme").toMap().value("name").toString(), "dawn");
         QVERIFY(store.reload()); QCOMPARE(store.model(), unchanged);
+    }
+    void existingInlineMembersPreserveSource() {
+        QTemporaryDir dir; ConfigStore store(dir.filePath("config.toml"));
+        const QString source = "# retained\n[[panels]]\nid='main'\nmargins = { top = 8, left = 12, future = {value = 42} } # inline comment\nextra = 'keep'\n";
+        const auto result = store.editLiteral(source, "panels.0.margins.top", "20");
+        QVERIFY2(result.value("error").toString().isEmpty(), qPrintable(result.value("error").toString()));
+        auto expected = source; expected.replace("top = 8", "top = 20");
+        QCOMPARE(result.value("text").toString(), expected);
+        const auto missing = store.editLiteral(source, "panels.0.margins.right", "20");
+        QVERIFY(!missing.value("error").toString().isEmpty()); QCOMPARE(missing.value("text").toString(), source);
+    }
+    void repeatedPaletteEditsUseExplicitAncestor() {
+        QTemporaryDir dir; ConfigStore store(dir.filePath("config.toml"));
+        for (const QString &source : {QString("# keep\n[theme] # explicit\nname='midnight' # name\n[future]\nvalue=42\n"),
+                QString("# keep\n[theme.palette] # explicit\naccent='#112233' # accent\n"), QString("# no explicit theme ancestor\nversion=1\n")}) {
+            QString edited = source;
+            for (const auto &path : {"theme.palette.accent", "theme.palette.background", "theme.palette.foreground", "theme.palette.accent"}) {
+                const auto result = store.editLiteral(edited, path, "'#aabbcc'");
+                QVERIFY2(result.value("error").toString().isEmpty(), qPrintable(result.value("error").toString()));
+                edited = result.value("text").toString();
+            }
+            QVERIFY(edited.contains(source.mid(source.indexOf('#'), source.indexOf('\n') + 1)));
+            if (source.contains("[future]")) QVERIFY(edited.endsWith("[future]\nvalue=42\n"));
+            if (source.contains("# explicit")) QVERIFY(edited.contains("# explicit"));
+            QVariantMap model; QString error; QVERIFY(ConfigStore::parse(edited.toUtf8(), model, error));
+            const auto palette = model.value("theme").toMap().value("palette").toMap();
+            for (const auto &key : {"accent", "background", "foreground"}) QCOMPARE(palette.value(key).toString(), "#aabbcc");
+        }
+        const QString inlineSource = "theme = {palette = {accent = '#123456', future = '#abcdef'}} # retained\n";
+        auto result = store.editLiteral(inlineSource, "theme.palette.accent", "'#aabbcc'");
+        QVERIFY(result.value("error").toString().isEmpty());
+        auto expected = inlineSource; expected.replace("#123456", "#aabbcc"); QCOMPARE(result.value("text").toString(), expected);
+        result = store.editLiteral(expected, "theme.palette.accent", "'#112233'");
+        QVERIFY(result.value("error").toString().isEmpty()); expected.replace("#aabbcc", "#112233"); QCOMPARE(result.value("text").toString(), expected);
+        result = store.editLiteral(expected, "theme.palette.background", "'#ffffff'");
+        QVERIFY(!result.value("error").toString().isEmpty()); QCOMPARE(result.value("text").toString(), expected);
+        const QString quoted = "[\"theme\"]\nname='midnight'\n";
+        result = store.editLiteral(quoted, "theme.palette.background", "'#ffffff'");
+        QVERIFY(!result.value("error").toString().isEmpty()); QCOMPARE(result.value("text").toString(), quoted);
+    }
+    void inheritedPanelMaterializesOnlyEditedLeaves() {
+        QTemporaryDir dir; ConfigStore store(dir.filePath("config.toml"));
+        const QString source = "# preserved\n[theme]\nname='forest' # keep\n[future]\nunknown={value=42}\n";
+        for (const bool marginsFirst : {false, true}) {
+            QString edited = source;
+            const QStringList paths = marginsFirst ? QStringList{"panels.0.margins.top", "panels.0.modules"} : QStringList{"panels.0.modules", "panels.0.margins.top"};
+            for (const auto &path : paths) {
+                const auto result = store.editLiteral(edited, path, path.endsWith("modules") ? "['media', 'workspaces']" : "20");
+                QVERIFY2(result.value("error").toString().isEmpty(), qPrintable(result.value("error").toString()));
+                edited = result.value("text").toString(); QVERIFY(edited.startsWith(source));
+            }
+            QVariantMap model; QString error; QVERIFY(ConfigStore::parse(edited.toUtf8(), model, error));
+            const auto panels = model.value("panels").toList(); QCOMPARE(panels.size(), 1);
+            const auto panel = panels.first().toMap(); QCOMPARE(panel.value("id").toString(), "main");
+            QCOMPARE(panel.value("modules").toList(), (QVariantList{"media", "workspaces"}));
+            QCOMPARE(panel.value("margins").toMap().value("top").toInt(), 20);
+            QCOMPARE(panel.value("margins").toMap().value("left").toInt(), 8);
+            QVERIFY(!edited.contains("thickness"));
+        }
+        for (const auto &text : {source, QString("panels=[]\n")}) {
+            const auto result = store.editLiteral(text, text == source ? "panels.1.thickness" : "panels.0.thickness", "60");
+            QVERIFY(!result.value("error").toString().isEmpty()); QCOMPARE(result.value("text").toString(), text);
+        }
     }
     void unsupportedPanelHeadersLeaveSourceIntact() {
         QTemporaryDir dir; ConfigStore store(dir.filePath("config.toml"));

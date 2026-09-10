@@ -1,4 +1,5 @@
 #include "ConfigStore.h"
+#include <QColor>
 #include <QRegularExpression>
 #include <QSet>
 #include <toml++/toml.hpp>
@@ -56,6 +57,7 @@ void ensureValid(const QString &text) {
     if (!ConfigStore::parse(text.toUtf8(), model, error)) throw std::runtime_error(error.toStdString());
 }
 }
+bool ConfigStore::validColor(const QString &color) const { return QColor::isValidColorName(color); }
 QVariantMap ConfigStore::inspectText(const QString &text) const {
     QVariantMap model; QString error; parse(text.toUtf8(), model, error);
     return {{"model", model}, {"error", error}};
@@ -79,33 +81,47 @@ QVariantMap ConfigStore::editLiteral(const QString &text, const QString &path, c
             if (header.startsWith('[') && (header.contains('"') || header.contains('\''))) throw std::runtime_error("Quoted tables: use the raw editor (no text changed)");
         }
         const auto parts = path.split('.');
+        if (parts.first() == "panels" && !document.contains("panels")) {
+            // The model inherits one default panel when the source has no panels key.
+            // Materialize only the requested leaf; ConfigStore merges the other defaults.
+            if (parts.size() < 3 || parts[1] != "0") throw std::runtime_error("Only inherited panel 0 exists; select one of its fields");
+            const QString edited = text + "\n[[panels]]\n" + parts.mid(2).join('.') + " = " + formatted(*replacement.get("value")) + "\n";
+            return checked(text, edited);
+        }
         toml::node *node = &document;
         QStringList parentPath;
         int panelIndex = -1;
+        struct Ancestor { const toml::table *table; QString path; int partIndex; };
+        QList<Ancestor> ancestors;
         for (int i = 0; i < parts.size(); ++i) {
             if (auto *table = node->as_table()) {
-                if (table->is_inline()) throw std::runtime_error("Inline tables: use the raw editor (no text changed)");
+                ancestors.append({table, parentPath.join('.'), i});
                 auto *next = table->get(parts[i].toStdString());
                 if (!next) {
-                    // Only simple explicit table headers can be inserted into safely.
+                    if (table->is_inline()) throw std::runtime_error("New inline table members: use the raw editor (no text changed)");
+                    // An implicit table created by dotted keys has no header. Insert a dotted
+                    // leaf under the nearest explicit ancestor, never rewrite that table.
                     QString edited = text;
-                    const QString suffix = parts.mid(i).join('.');
-                    QString header = parentPath.join('.');
-                    qsizetype insertion = 0;
-                    if (!header.isEmpty()) {
-                        const bool panelRoot = header == "panels" && panelIndex >= 0;
+                    bool inserted = false;
+                    for (auto ancestor = ancestors.crbegin(); ancestor != ancestors.crend(); ++ancestor) {
+                        if (ancestor->table->is_inline()) throw std::runtime_error("New inline table members: use the raw editor (no text changed)");
+                        const QString suffix = parts.mid(ancestor->partIndex).join('.');
+                        if (ancestor->path.isEmpty()) {
+                            edited.prepend(suffix + " = " + formatted(*replacement.get("value")) + "\n");
+                            inserted = true; break;
+                        }
+                        const bool panelRoot = ancestor->path == "panels" && panelIndex >= 0;
                         const QString pattern = panelRoot ? "^\\[\\[panels\\]\\][ \\t]*(?:#[^\\n]*)?\\r?$" :
-                            "^\\[" + QRegularExpression::escape(header) + "\\][ \\t]*(?:#[^\\n]*)?\\r?$";
+                            "^\\[" + QRegularExpression::escape(ancestor->path) + "\\][ \\t]*(?:#[^\\n]*)?\\r?$";
                         QRegularExpression regex(pattern, QRegularExpression::MultilineOption);
                         auto matches = regex.globalMatch(text); QRegularExpressionMatch match;
-                        const auto tableStart = offset(text, table->source().begin);
+                        const auto tableStart = offset(text, ancestor->table->source().begin);
                         while (matches.hasNext()) { auto m = matches.next(); if (m.capturedStart() == tableStart) { match = m; break; } }
-                        if (!match.hasMatch()) throw std::runtime_error("Implicit/quoted tables: use the raw editor (no text changed)");
-                        insertion = match.capturedEnd();
-                        edited.insert(insertion, "\n" + suffix + " = " + formatted(*replacement.get("value")));
-                    } else {
-                        edited.prepend(suffix + " = " + formatted(*replacement.get("value")) + "\n");
+                        if (!match.hasMatch()) continue;
+                        edited.insert(match.capturedEnd(), "\n" + suffix + " = " + formatted(*replacement.get("value")));
+                        inserted = true; break;
                     }
+                    if (!inserted) throw std::runtime_error("No unambiguous table header: use the raw editor (no text changed)");
                     // Dotted insertion may conflict with explicit descendants; checked() rejects it without mutation.
                     return checked(text, edited);
                 }

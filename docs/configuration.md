@@ -63,7 +63,7 @@ Theme defaults: Sans Serif 13 px, spacing 10, padding 12, radius 14, border 1,
 opacity .88, icons 18 px, built-in mode. Settings defaults: 900×680, monospace 13 px.
 Built-in palette values are in `config/themes.toml`. Unknown icon names resolve to
 `fallback.svg`; `alure` resolves to the original logo. SVG colors are intrinsic,
-not recolored by the palette. Settings offers source-preserving forms plus a complete TOML editor and unsaved
+not recolored by the palette. Settings offers source-preserving typed controls plus an advanced complete TOML editor and unsaved
 Save/Discard/Cancel dialogs. Standard Qt control/editor semantics apply; no arbitrary
 shortcut editor, per-control stylesheet or translations are provided. See interface.md
 for UI, per-module style, controls_style and icon_theme keys.
@@ -180,3 +180,11 @@ Settings close controls (take effect on Preview in settings, or next settings la
 `settings.close_shortcut` is a canonical Qt portable key sequence string, default
 `"Ctrl+W"`; `""` disables it. Invalid types/sequences produce diagnostics. Compositor
 close handling remains available independently; all routes guard unsaved edits.
+
+
+Typed settings controls edit these same TOML keys; there is no second settings
+format or hidden per-widget configuration. Apply fields changes the draft only;
+Preview validates and applies it to the settings process; Save & apply uses the
+existing atomic source-preserving save/conflict checks. See
+[typed controls and preservation boundaries](interface.md#settings-one-draft-no-silent-rewrites).
+The system Qt QuickDialogs2 module is required for the themed nonnative color picker.

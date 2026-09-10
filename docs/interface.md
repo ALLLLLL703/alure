@@ -79,15 +79,35 @@ panel to reach history. An unmatched toast output produces no banner.
 
 ## Settings: one draft, no silent rewrites
 
-Sidebar sections: Appearance (theme and UI), Panels (add/remove/order and fields),
-Modules (enabled/style), Integrations (behavior), Configuration (complete TOML).
-Booleans use switches; other fields accept **TOML literals** (quoted strings,
-numbers, ordered arrays). Set/Enter commits a field to the raw draft. Pending
-field input is retained and included on section/module navigation, Preview or
-Save; invalid field input blocks that transition, not silently discards it.
-Panel `modules` is the ordered editable array; panels themselves have add/remove/
-up/down operations. Inline-table fields such as unnormalized default margins
-may need the raw editor. It remains the full-fidelity path for every key.
+Sidebar sections: Appearance (Theme & typography, Layout & popups, Settings window),
+Panels (add/remove/order and fields), Modules (enabled/style), Integrations
+(behavior), Configuration (advanced complete TOML). Common values use real controls:
+
+- Midnight/dawn/forest preview cards use the built-in TOML palettes; Preview applies
+  the staged theme to this window only. Existing explicit palette overrides remain.
+- Sliders plus exact numeric editors cover opacity, font/icon size, spacing/radius,
+  panel dimensions/margins and other numeric settings. C++ validation is authoritative;
+  the form metadata mirrors its ranges. Sliders stage while moving and retain their
+  delegate/focus throughout a drag; no raw/model replacement occurs on movement.
+  Selected switches and slider fills use the theme accent for visibility.
+- Switches edit booleans; ComboBoxes edit enum choices and installed font families.
+  Font families can also be typed. Normal strings need **no TOML quotes**; escaping
+  is internal. Integration commands retain a clearly labeled advanced TOML argv editor.
+- Colors have swatches, validated hex/Qt color text and Qt's nonnative Quick color
+  picker (system QuickDialogs2). Cancel does not change the draft. Accept stages the
+  selected color. Empty module colors inherit; empty global palette colors are invalid.
+  Controls/popups use the configured theme palette, including disabled text roles.
+- Per-panel module switches include/remove a module on that panel; up/down changes
+  its order, preserving custom module names. Global module enable lives in Modules.
+
+Apply fields/Enter flushes staged edits into the raw draft without writing disk.
+Section/category/module/panel navigation, Preview and Save also flush focused input;
+invalid input blocks that transition and remains editable. Raw TOML is always the
+full-fidelity fallback. Opening/browsing the UI does not materialize default keys,
+remove unknown values or change comments. An unrelated theme Preview does not reset
+a user/compositor-supplied window size; actual configured width/height changes do.
+Navigating to a different section/category/module/panel resets only that form scroll
+to the top; changing a staged value does not reset scrolling.
 
 - Inspecting/editing forms validates against the shared model but does not write.
   Syntax-invalid raw drafts keep their exact text and show no misleading forms.
@@ -99,9 +119,14 @@ may need the raw editor. It remains the full-fidelity path for every key.
   (including external-file conflict) leaves the draft and window available.
 - Scalar/array field edits use toml++ source spans, translating Unicode codepoint
   columns to QString offsets. Unchanged text/comments are retained. Simple missing
-  fields can be inserted into explicit bare table headers, or at root. Quoted,
-  inline or unsupported implicit-table forms are rejected without mutation; use
-  raw TOML. No guessing or whole-document canonicalization occurs.
+  fields can be inserted as dotted keys under the nearest unambiguous explicit
+  bare ancestor header (or at root), including successive implicit palette edits.
+  Existing inline-table leaves, such as default margins, are replaced by exact
+  source span. If the source omits panels, editing inherited panel 0 appends only
+  its edited leaf in a new `[[panels]]` table; other panel defaults remain inherited.
+  Higher nonexistent indices and explicit `panels=[]` do not invent panels.
+  Adding new inline members and quoted/ambiguous table syntax is
+  rejected without mutation; use raw TOML. No whole-document canonicalization occurs.
 - Panel operations require an explicit notice: **only panel regions may lose
   comments/formatting**. Unknown/nested panel values, including TOML date nodes,
   are kept semantically. Other sections and trailing comments are preserved.
@@ -292,3 +317,23 @@ validation, nor proof of the original user's compositor-specific failure cause.
 Official references consulted (2026-07-17; no copied implementation):
 - https://doc.qt.io/qt-6/qml-qtquick-controls-dialog.html (automatic accept/reject roles)
 - https://doc.qt.io/qt-6/qguiapplication.html#quitOnLastWindowClosed-prop
+
+
+### Typed-settings regression evidence
+
+`QuickUi` exercises real theme/switch/ComboBox/slider/text events, including a mouse
+hold longer than the parser delay, keyboard slider movement, focused numeric input
+on Preview, quote/backslash serialization, color picker Cancel and actual OK button,
+invalid hex Save retention, module enable/reorder with custom names and unknown panel
+values, Save/reload, and the complete close modal matrix. It also resizes the window
+before theme Preview and asserts that size survives. `ConfigEditing` covers sequential
+palette insertions under explicit/implicit ancestors and source-exact inline leaves;
+unsafe insertions return the byte-identical original. These automated tests do not
+claim native Wayland/compositor interaction validation.
+
+Official widget sources consulted (no copied implementation):
+- https://doc.qt.io/qt-6/qml-qtquick-controls-slider.html (`moved`, drag updates)
+- https://doc.qt.io/qt-6/qml-qtquick-dialogs-colordialog.html (accepted/cancel, nonnative option)
+- https://github.com/qt/qtdeclarative/blob/v6.11.2/src/quickdialogs/quickdialogsquickimpl/qml/ColorDialog.qml
+  (installed Qt 6.11.2 picker object names/default button used in regression tests;
+  source declares Qt commercial/LGPL/GPL licensing; consulted, not copied)

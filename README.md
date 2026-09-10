@@ -15,7 +15,7 @@ See [architecture](docs/architecture.md), [configuration](docs/configuration.md)
 ## Build
 
 System dependencies (no downloads by CMake): C++20 compiler, CMake >=3.24, Ninja,
-Qt >=6.5 Core/Gui/Quick/QuickControls2/Svg/DBus/Network/Test, Qt Wayland runtime,
+Qt >=6.5 Core/Gui/Quick/QuickControls2/QuickDialogs2/Svg/DBus/Network/Test, Qt Wayland runtime,
 LayerShellQt (Interface target with `setExclusiveEdge`, tested with installed KDE
 6.6-era API), and toml++ >=3.4. On Arch these correspond to `base-devel cmake
 ninja qt6-base qt6-declarative qt6-svg qt6-wayland layer-shell-qt tomlplusplus`.

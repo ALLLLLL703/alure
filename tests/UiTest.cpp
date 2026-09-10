@@ -7,9 +7,11 @@
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
+#include <QQmlProperty>
 #include <QQuickItem>
 #include <QQuickView>
 #include <QQuickStyle>
+#include <QPointer>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -50,6 +52,17 @@ QQuickItem *itemNamed(QQuickItem *item, const QString &name) {
 void clickItem(QQuickWindow *window, QQuickItem *item) {
     QVERIFY(item); QVERIFY(item->isVisible());
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, item->mapToScene(QPointF(item->width()/2, item->height()/2)).toPoint());
+}
+void revealItem(QQuickItem *item) {
+    QVERIFY(item);
+    for (auto *parent = item->parentItem(); parent; parent = parent->parentItem()) {
+        if (!parent->property("contentY").isValid()) continue;
+        const auto y = item->mapToItem(parent, QPointF()).y();
+        const auto maximum = qMax(0., parent->property("contentHeight").toDouble() - parent->height());
+        parent->setProperty("contentY", qBound(0., parent->property("contentY").toDouble() + y - 30., maximum));
+        QTest::qWait(10);
+        return;
+    }
 }
 void replaceText(QQuickWindow *window, QQuickItem *item, const QString &text) {
     QVERIFY(item);
@@ -216,17 +229,20 @@ private slots:
         window->requestActivate(); QTest::qWait(30);
         const auto find = [&](const QString &name) { return itemNamed(window->contentItem(), name); };
         const bool dirty = draftKind != "clean";
-        if (dirty) {
+        if (dirty && draftKind != "pending") {
             clickItem(window, find("settings-section-4")); QTest::qWait(20);
             replaceText(window, find("settings-raw-editor"), draftKind == "invalid" ? "[broken" : "# retained\n[theme]\nname = 'dawn'\n");
             QTRY_VERIFY(window->property("dirty").toBool());
-            if (draftKind == "pending") {
-                // Pending form text is staged without changing the raw draft.
-                window->setProperty("pendingFields", QVariantMap{{"theme.font_size", "19"}});
-            }
             if (draftKind == "conflict") {
                 QFile file(config.path()); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("# external\nversion=1\n"); file.close();
             }
+        }
+        if (draftKind == "pending") {
+            auto *number = find("field-theme.font_size-number"); QVERIFY(number); revealItem(number);
+            const auto before = find("settings-raw-editor")->property("text").toString();
+            replaceText(window, number, "19");
+            QTRY_VERIFY(window->property("dirty").toBool());
+            QCOMPARE(find("settings-raw-editor")->property("text").toString(), before);
         }
         QSignalSpy lastClosed(qGuiApp, &QGuiApplication::lastWindowClosed);
         if (action == "cancel") QTest::keyClick(window, Qt::Key_W, Qt::ControlModifier);
@@ -243,13 +259,151 @@ private slots:
             QVERIFY(window->property("dirty").toBool());
             if (refused) clickItem(window, find("unsaved-cancel"));
             QTRY_VERIFY(!dialog->property("visible").toBool());
+            clickItem(window, find("settings-section-4")); QTest::qWait(10);
             replaceText(window, find("settings-raw-editor"), "# continued editing\nversion = 1\n");
             QVERIFY(find("settings-raw-editor")->property("text").toString().contains("continued editing"));
         } else {
             QTRY_VERIFY(!window->isVisible());
-            if (action == "save") { QVERIFY(QFile::exists(config.path())); QCOMPARE(config.model().value("theme").toMap().value("name").toString(), "dawn"); }
+            if (action == "save") { QVERIFY(QFile::exists(config.path())); QCOMPARE(config.model().value("theme").toMap().value("name").toString(), draftKind == "pending" ? "midnight" : "dawn");
+                if (draftKind == "pending") QCOMPARE(config.model().value("theme").toMap().value("font_size").toInt(), 19); }
         }
         if (action != "save" && draftKind != "conflict") QVERIFY(!QFile::exists(config.path()));
+        QCOMPARE(warnings.size(), 0);
+    }
+    void settingsCloseConfiguration() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml"));
+        QVERIFY(config.reload());
+        QVERIFY(config.saveText("[settings]\nshow_close_button=false\nclose_shortcut='Alt+X'\n"));
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider); engine.rootContext()->setContextProperty("Config", &config);
+        engine.load(QUrl("qrc:/qml/Settings.qml")); QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window); window->requestActivate(); QTest::qWait(30);
+        auto *button = itemNamed(window->contentItem(), "settings-close"); QVERIFY(button); QVERIFY(!button->isVisible());
+        QTest::keyClick(window, Qt::Key_W, Qt::ControlModifier); QTest::qWait(20); QVERIFY(window->isVisible());
+        QTest::keyClick(window, Qt::Key_X, Qt::AltModifier); QTRY_VERIFY(!window->isVisible());
+    }
+    void settingsWidgets() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider); engine.rootContext()->setContextProperty("Config", &config);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings); engine.load(QUrl("qrc:/qml/Settings.qml")); QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window); window->requestActivate(); QTest::qWait(30);
+        const auto find = [&](const QString &name) { return itemNamed(window->contentItem(), name); };
+        window->resize(QSize(1024, 740)); QTest::qWait(20);
+        auto *fontChoice = find("field-theme.font-choice"); QVERIFY(fontChoice); revealItem(fontChoice);
+        replaceText(window, fontChoice, "Serif");
+        auto *group = find("appearance-group"); QVERIFY(group); group->forceActiveFocus(); QTest::keyClick(window, Qt::Key_Down);
+        QTest::keyClick(window, Qt::Key_Escape);
+        QCOMPARE(window->property("appearanceGroup").toInt(), 1);
+        QCOMPARE(config.inspectText(find("settings-raw-editor")->property("text").toString()).value("model").toMap().value("theme").toMap().value("font").toString(), "Serif");
+        group->forceActiveFocus(); QTest::keyClick(window, Qt::Key_Up); QTest::qWait(10);
+        QTest::keyClick(window, Qt::Key_Escape);
+        QCOMPARE(window->property("appearanceGroup").toInt(), 0);
+        const auto beforeTheme = find("settings-raw-editor")->property("text").toString();
+        revealItem(find("theme-choice-forest")); clickItem(window, find("theme-choice-forest"));
+        QCOMPARE(find("settings-raw-editor")->property("text").toString(), beforeTheme);
+        QVERIFY(!QFile::exists(config.path()));
+        QPointer<QQuickItem> slider = find("field-theme.opacity-slider"); QVERIFY(slider); revealItem(slider);
+        QCOMPARE(QQmlProperty::read(slider, "palette.dark").value<QColor>(), QColor(config.model().value("theme").toMap().value("palette").toMap().value("accent").toString()));
+        QSignalSpy moved(slider, SIGNAL(moved()));
+        auto point = slider->mapToScene(QPointF(slider->width() * .3, slider->height()/2)).toPoint();
+        QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, point);
+        QTest::mouseMove(window, point + QPoint(40,0)); QTest::qWait(350);
+        QVERIFY(slider); QVERIFY(slider->property("pressed").toBool());
+        QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, point + QPoint(40,0));
+        QVERIFY(moved.size() > 0);
+        const auto mouseValue = slider->property("value").toDouble();
+        slider->forceActiveFocus(); QTest::keyClick(window, Qt::Key_Right);
+        QVERIFY(slider->property("value").toDouble() > mouseValue);
+        auto *number = find("field-theme.spacing-number"); revealItem(number); replaceText(window, number, "27");
+        // Preview must flush a still-focused numeric editor and keep the exact dragged opacity.
+        clickItem(window, find("settings-preview")); QTest::qWait(30);
+        QCOMPARE(window->size(), QSize(1024, 740));
+        QCOMPARE(config.model().value("theme").toMap().value("name").toString(), "forest");
+        QCOMPARE(config.model().value("theme").toMap().value("spacing").toInt(), 27);
+        QVERIFY(config.model().value("theme").toMap().value("opacity").toDouble() < .88);
+        QVERIFY(!QFile::exists(config.path()));
+        auto *choice = find("field-theme.icon_mode-choice"); QVERIFY(choice); revealItem(choice);
+        choice->forceActiveFocus(); QTest::keyClick(window, Qt::Key_Down);
+        auto *text = find("field-theme.icon_theme-text"); revealItem(text); const QString escaped = "A \"quoted\" \\ icon"; replaceText(window, text, escaped);
+        clickItem(window, find("settings-section-4")); QTest::qWait(20);
+        const auto inspection = config.inspectText(find("settings-raw-editor")->property("text").toString());
+        QVERIFY2(inspection.value("error").toString().isEmpty(), qPrintable(inspection.value("error").toString()));
+        const auto theme = inspection.value("model").toMap().value("theme").toMap();
+        QCOMPARE(theme.value("icon_mode").toString(), "theme"); QCOMPARE(theme.value("icon_theme").toString(), escaped);
+        clickItem(window, find("settings-save")); QVERIFY(!window->property("dirty").toBool());
+        QVERIFY(QFile::exists(config.path())); QVERIFY(config.reload()); QCOMPARE(config.model().value("theme").toMap().value("icon_theme").toString(), escaped);
+        QCOMPARE(warnings.size(), 0);
+    }
+    void settingsInheritedPanel() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        const QString source = "# minimal config\n[theme]\nname='forest' # retained\n"; QVERIFY(config.saveText(source));
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider); engine.rootContext()->setContextProperty("Config", &config);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings); engine.load(QUrl("qrc:/qml/Settings.qml")); QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window); window->requestActivate(); QTest::qWait(30);
+        const auto find = [&](const QString &name) { return itemNamed(window->contentItem(), name); };
+        clickItem(window, find("settings-section-1")); QTest::qWait(20);
+        auto *up = find("panel-module-media-up"); QVERIFY(up); revealItem(up); clickItem(window, up);
+        auto *margin = find("field-panels.0.margins.top-number"); QVERIFY(margin); revealItem(margin); replaceText(window, margin, "20");
+        clickItem(window, find("settings-save")); QTRY_VERIFY(!window->property("dirty").toBool());
+        QVERIFY(config.source().startsWith(source)); QVERIFY(config.source().contains("[[panels]]"));
+        const auto panels = config.model().value("panels").toList(); QCOMPARE(panels.size(), 1);
+        QCOMPARE(panels.first().toMap().value("modules").toList().first().toString(), "media");
+        QCOMPARE(panels.first().toMap().value("margins").toMap().value("top").toInt(), 20);
+        QVERIFY(config.reload()); QCOMPARE(warnings.size(), 0);
+    }
+    void settingsColorsAndPanelModules() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml"));
+        QFile file(config.path()); QVERIFY(file.open(QIODevice::WriteOnly));
+        const QByteArray source = "# retained\n[theme]\nname='midnight'\n[[panels]]\nid='main'\nmodules=['calendar', 'custom', 'volume'] # ordered\nextra={nested=[1,2]}\n[modules.custom]\nenabled=true\n";
+        file.write(source); file.close(); QVERIFY(config.reload());
+        QVERIFY(config.previewText(QString::fromUtf8(source).replace("midnight", "forest")));
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider); engine.rootContext()->setContextProperty("Config", &config);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings); engine.load(QUrl("qrc:/qml/Settings.qml")); QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window); window->requestActivate(); QTest::qWait(30);
+        const auto find = [&](const QString &name) { return itemNamed(window->contentItem(), name); };
+        auto *color = find("field-theme.palette.accent-color"); QVERIFY(color); revealItem(color); clickItem(window, color); QTest::qWait(50);
+        auto *picker = window->findChild<QObject *>("settings-color-picker"); QVERIFY(picker); QTRY_VERIFY(picker->property("visible").toBool());
+        auto *focusWindow = qobject_cast<QQuickWindow *>(QGuiApplication::focusWindow()); QVERIFY(focusWindow);
+        QTest::keyClick(focusWindow, Qt::Key_Escape); QTRY_VERIFY(!picker->property("visible").toBool());
+        QVERIFY(!window->property("dirty").toBool()); QCOMPARE(config.source().toUtf8(), source);
+        window->requestActivate(); QTest::qWait(20);
+        clickItem(window, color); QTRY_VERIFY(picker->property("visible").toBool()); QTest::qWait(30);
+        focusWindow = qobject_cast<QQuickWindow *>(QGuiApplication::focusWindow()); QVERIFY(focusWindow);
+        auto *hue = itemNamed(focusWindow->contentItem(), "hueSlider"); QVERIFY(hue); clickItem(focusWindow, hue);
+        std::function<QQuickItem *(QQuickItem *)> acceptButton = [&](QQuickItem *item) -> QQuickItem * {
+            // Qt's nonnative picker highlights its default OK button, independent of locale.
+            if (item->metaObject()->indexOfSignal("clicked()") >= 0 && item->property("highlighted").toBool()) return item;
+            for (auto *child : item->childItems()) if (auto *found = acceptButton(child)) return found;
+            return nullptr;
+        };
+        auto *ok = acceptButton(focusWindow->contentItem()); QVERIFY(ok);
+        auto *label = ok->property("contentItem").value<QQuickItem *>(); QVERIFY(label);
+        QCOMPARE(label->property("color").value<QColor>(), QColor(config.model().value("theme").toMap().value("palette").toMap().value("foreground").toString()));
+        clickItem(focusWindow, ok);
+        QTRY_VERIFY(!picker->property("visible").toBool());
+        QVERIFY(window->property("dirty").toBool()); QCOMPARE(config.source().toUtf8(), source);
+        window->requestActivate(); QTest::qWait(20);
+        auto *text = find("field-theme.palette.accent-text"); revealItem(text); replaceText(window, text, "#12zz00"); clickItem(window, find("settings-save"));
+        QVERIFY(window->property("dirty").toBool()); QCOMPARE(config.source().toUtf8(), source);
+        replaceText(window, text, "#12aa00"); clickItem(window, find("settings-apply-fields"));
+        clickItem(window, find("settings-section-1")); QTest::qWait(20);
+        auto *scrollContent = find("settings-form-scroll")->property("contentItem").value<QQuickItem *>(); QVERIFY(scrollContent);
+        QCOMPARE(scrollContent->property("contentY").toDouble(), 0.);
+        auto *up = find("panel-module-custom-up"); QVERIFY2(up, qPrintable(window->property("statusText").toString() + " section=" + window->property("section").toString() + " raw=" + find("settings-raw-editor")->property("text").toString())); revealItem(up); clickItem(window, up);
+        auto *toggle = find("panel-module-volume"); QVERIFY(toggle);
+        QCOMPARE(QQmlProperty::read(toggle, "palette.dark").value<QColor>(), QColor(config.model().value("theme").toMap().value("palette").toMap().value("accent").toString()));
+        revealItem(toggle); clickItem(window, toggle);
+        clickItem(window, find("settings-save")); QTest::qWait(20); QVERIFY(!window->property("dirty").toBool());
+        const auto panel = config.model().value("panels").toList().first().toMap();
+        QCOMPARE(panel.value("modules").toList(), (QVariantList{"custom", "calendar"}));
+        QCOMPARE(panel.value("extra").toMap().value("nested").toList(), (QVariantList{1LL,2LL}));
+        QVERIFY(config.source().contains("# ordered")); QVERIFY(config.source().contains("extra={nested=[1,2]}"));
+        QCOMPARE(config.model().value("theme").toMap().value("palette").toMap().value("accent").toString(), "#12aa00");
+        clickItem(window, find("settings-section-4")); QTest::qWait(10);
+        const auto saved = config.source(); replaceText(window, find("settings-raw-editor"), "# unsaved\nversion=1\n");
+        clickItem(window, find("settings-reload")); QTest::qWait(30); clickItem(window, find("unsaved-cancel"));
+        QTest::qWait(30); QVERIFY(window->property("dirty").toBool());
+        clickItem(window, find("settings-reload")); QTest::qWait(30); clickItem(window, find("unsaved-discard"));
+        QTRY_VERIFY(!window->property("dirty").toBool()); QCOMPARE(find("settings-raw-editor")->property("text").toString(), saved);
         QCOMPARE(warnings.size(), 0);
     }
     void settingsDraft() {
@@ -258,11 +412,12 @@ private slots:
         QSignalSpy warnings(&engine, &QQmlEngine::warnings);
         engine.load(QUrl("qrc:/qml/Settings.qml")); QCOMPARE(engine.rootObjects().size(), 1);
         auto *root = engine.rootObjects().first();
-        QVERIFY(QMetaObject::invokeMethod(root, "editField", Q_ARG(QVariant, "theme.name"), Q_ARG(QVariant, "\"dawn\"")));
+        auto *window = qobject_cast<QQuickWindow *>(root); QVERIFY(window); QTest::qWait(20);
+        clickItem(window, itemNamed(window->contentItem(), "theme-choice-dawn"));
         QCOMPARE(root->property("dirty").toBool(), true);
         for (int section = 0; section < 5; ++section) { root->setProperty("section", section); QTest::qWait(10); }
         QVERIFY(!QFile::exists(config.path()));
-        QVERIFY(QMetaObject::invokeMethod(root, "save"));
+        clickItem(window, itemNamed(window->contentItem(), "settings-save"));
         QCOMPARE(root->property("dirty").toBool(), false);
         QCOMPARE(config.model().value("theme").toMap().value("name").toString(), "dawn");
         QCOMPARE(warnings.size(), 0);

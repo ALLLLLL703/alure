@@ -20,6 +20,7 @@ public:
     QString path() const { return m_path; }
     static QByteArray defaultSource();
     static bool parse(const QByteArray &text, QVariantMap &model, QString &error);
+    Q_INVOKABLE bool validColor(const QString &color) const;
     Q_INVOKABLE bool reload();
     Q_INVOKABLE bool saveText(const QString &text);
     Q_INVOKABLE QVariantMap inspectText(const QString &text) const;

@@ -6,17 +6,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
 include(CTest)
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg DBus Network)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Quick QuickControls2 QuickDialogs2 Svg DBus Network)
 find_package(LayerShellQt REQUIRED)
 find_package(tomlplusplus 3.4 REQUIRED)
 add_subdirectory(src/core)
 add_subdirectory(src/platform)
 add_subdirectory(src/services)
 qt_add_executable(alure src/app/main.cpp)
-target_link_libraries(alure PRIVATE alure_core alure_platform alure_services Qt6::QuickControls2)
+target_link_libraries(alure PRIVATE alure_core alure_platform alure_services Qt6::QuickControls2 Qt6::QuickDialogs2)
 set(ALURE_UI_FILES
   qml/Panel.qml
   qml/Settings.qml
+  qml/SettingField.qml
+  qml/SettingsFields.js
   qml/Ui.js
   qml/ModuleStrip.qml
   qml/ShellButton.qml
