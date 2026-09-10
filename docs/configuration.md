@@ -209,3 +209,40 @@ Nested Wayland computer-use check: a synthetic DBusMenu provider's right-click
 dropdown appeared beneath its tray icon; submenu navigation and action dismissal
 worked. Automated tests cover protocol updates/errors, disabled/hidden entries,
 owner loss, cancellation and the actual QML right-click route.
+
+## Panel module placement
+
+Each `[[panels]]` accepts these hot-reloaded settings (also editable under Panels):
+
+- `layout = "linear"` (default) uses the existing ordered `modules` list.
+- `layout = "three-zone"` uses `modules_left`, `modules_center`, `modules_right`.
+  On vertical panels these mean top, center, bottom. The center stays at the
+  panel midpoint, independent of side widths. If groups cannot fit, the strip
+  scrolls instead of overlapping. Each list is limited to 128 string entries.
+- Default zones: left `["workspaces", "media"]`, center `["calendar"]`, right
+  `["tray", "volume", "updates", "wifi", "bluetooth", "notifications", "battery"]`.
+  Inactive-layout lists are preserved. Set all three explicitly to customize a
+  three-zone layout; ordinary modules may occur only once across active zones.
+- `@spacer` inserts `spacer_size` logical pixels (integer 0..4096, default 24).
+  `@stretch` shares spare group space equally with the group's other stretches.
+  These two tokens may repeat. Normal theme spacing remains between entries.
+- `@settings` places the settings shortcut explicitly. Otherwise it is appended
+  to the linear strip or right group. `ui.show_settings=false` hides it everywhere.
+
+Settings can move modules between zones and reorder/add/remove spacers. These
+operations remain a draft until Save & apply, without rewriting unrelated TOML.
+Unknown tokens, duplicate placements and invalid types/ranges report an error.
+See [`config/layouts.toml`](../config/layouts.toml) for both layouts.
+
+```toml
+[[panels]]
+layout = "three-zone"
+modules_left = ["workspaces", "@spacer", "media"]
+modules_center = ["calendar"]
+modules_right = ["tray", "volume", "@settings"]
+spacer_size = 32
+```
+
+Geometry tests cover both axes, narrow strips and equal elastic spacing; settings
+pointer tests cover cross-zone moves. A nested Wayland computer-use check showed
+left settings, a centered clock and right tray, with the clock popup still anchored.

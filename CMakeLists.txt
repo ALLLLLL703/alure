@@ -16,6 +16,7 @@ qt_add_executable(alure src/app/main.cpp)
 target_link_libraries(alure PRIVATE alure_core alure_platform alure_services Qt6::QuickControls2 Qt6::QuickDialogs2)
 set(ALURE_UI_FILES
   qml/Panel.qml
+  qml/PanelGroup.qml
   qml/Settings.qml
   qml/SettingField.qml
   qml/SettingsFields.js
@@ -44,7 +45,7 @@ set(ALURE_UI_FILES
 )
 qt_add_resources(alure ui PREFIX / FILES ${ALURE_UI_FILES})
 install(TARGETS alure RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES config/default.toml config/multi-panel.toml config/services-example.toml config/four-edge.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/alure)
+install(FILES config/default.toml config/multi-panel.toml config/services-example.toml config/four-edge.toml config/layouts.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/alure)
 configure_file(packaging/alure.service.in alure.service @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/alure.service DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/user)
 if(BUILD_TESTING)

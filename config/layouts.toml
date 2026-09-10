@@ -1,0 +1,19 @@
+# Hot-reloaded panel layouts. Each panel can choose its own mode.
+[[panels]]
+id = "desktop"
+edge = "top"
+layout = "three-zone"
+modules_left = ["workspaces", "@spacer", "media"]
+modules_center = ["calendar"]
+modules_right = ["tray", "volume", "wifi", "battery", "@settings"]
+spacer_size = 24
+
+# Enable for a second panel: flexible fillers share unused space equally.
+[[panels]]
+id = "dock"
+enabled = false
+edge = "bottom"
+length = 800
+layout = "linear"
+modules = ["@stretch", "workspaces", "@spacer", "media", "calendar", "@stretch"]
+spacer_size = 32

@@ -221,16 +221,30 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
             nonempty(panel, "output", "panels[].");
             choice(panel, "edge", {"top", "bottom", "left", "right"}, "panels[].");
             choice(panel, "layer", {"background", "bottom", "top", "overlay"}, "panels[].");
+            choice(panel, "layout", {"linear", "three-zone"}, "panels[].");
+            range(panel, "spacer_size", 0, 4096, "panels[].");
             range(panel, "thickness", 16, 512, "panels[].");
             range(panel, "length", 0, 32768, "panels[].");
             range(panel, "exclusive_zone", -1, 32768, "panels[].");
             const auto margins = panel.value("margins").toMap();
             for (const auto &key : {"top", "right", "bottom", "left"}) range(margins, key, 0, 4096, "panels[].margins.");
-            QSet<QString> used;
-            for (const auto &name : panel.value("modules").toList()) {
-                if (name.metaType().id() != QMetaType::QString || !modules.contains(name.toString())) invalid("panels[].modules", "unknown module " + name.toString());
-                if (used.contains(name.toString())) invalid("panels[].modules", "duplicate module " + name.toString());
-                used.insert(name.toString());
+            QSet<QString> zonedModules;
+            for (const auto *key : {"modules", "modules_left", "modules_center", "modules_right"}) {
+                const QString path = QString("panels[].") + key;
+                const auto entries = panel.value(key).toList();
+                if (entries.size() > 128) invalid(path, "maximum 128 entries");
+                QSet<QString> used;
+                for (const auto &name : entries) {
+                    const auto token = name.toString();
+                    if (name.metaType().id() != QMetaType::QString || (!modules.contains(token) && token != "@spacer" && token != "@stretch" && token != "@settings")) invalid(path, "unknown module " + token);
+                    if (token == "@spacer" || token == "@stretch") continue;
+                    if (used.contains(token)) invalid(path, "duplicate module " + token);
+                    used.insert(token);
+                    if (QString::fromLatin1(key) != "modules" && panel.value("layout") == "three-zone") {
+                        if (zonedModules.contains(token)) invalid(path, "module already placed in another zone: " + token);
+                        zonedModules.insert(token);
+                    }
+                }
             }
             panels.append(panel);
         }

@@ -63,7 +63,13 @@ exclusive_zone = -1 # -1 = clamped thickness on wire; compositor adds edge margi
 # 0 = no reservation; >0 = explicit protocol zone (also excludes edge margin)
 layer = "top" # background, bottom, top, overlay
 margins = { top = 8, right = 8, bottom = 8, left = 8 }
+layout = "linear" # linear or three-zone; vertical panels use top/center/bottom
+spacer_size = 24 # logical pixels for each @spacer; @stretch shares remaining space
 modules = ["workspaces", "media", "tray", "volume", "updates", "wifi", "bluetooth", "notifications", "calendar", "battery"]
+modules_left = ["workspaces", "media"]
+modules_center = ["calendar"]
+modules_right = ["tray", "volume", "updates", "wifi", "bluetooth", "notifications", "battery"]
+# Lists accept @spacer, @stretch and @settings. Settings is appended if not placed.
 
 # Module UI and live service contracts.
 # Commands are argv arrays, never shell text. Empty action commands disable actions.

@@ -22,10 +22,11 @@ ApplicationWindow {
     property string panelOperation: ""
     property bool closingApproved: false
     readonly property var sectionNames: ["Appearance", "Panels", "Modules", "Integrations", "Configuration"]
+    readonly property string panelLayout: pendingFields["panels." + panelIndex + ".layout"] !== undefined ? JSON.parse(pendingFields["panels." + panelIndex + ".layout"]) : (draft.panels && draft.panels[panelIndex] ? draft.panels[panelIndex].layout : "linear")
     readonly property var formFields: {
         if (inspection.error) return []
         if (section === 0) return appearanceGroup === 0 ? Fields.fields(draft.theme, "theme") : appearanceGroup === 1 ? Fields.fields(draft.ui, "ui") : Fields.fields(draft.settings, "settings")
-        if (section === 1) return (draft.panels && draft.panels[panelIndex]) ? Fields.fields(draft.panels[panelIndex], "panels." + panelIndex) : []
+        if (section === 1) return (draft.panels && draft.panels[panelIndex]) ? Fields.fields(draft.panels[panelIndex], "panels." + panelIndex).filter(f => !/\.modules(_left|_center|_right)?$/.test(f.path) || (panelLayout === "linear" ? f.path.endsWith(".modules") : !f.path.endsWith(".modules"))) : []
         if (section === 2 && draft.modules && draft.modules[moduleName]) return [Fields.describe("modules." + moduleName + ".enabled", draft.modules[moduleName].enabled)].concat(Fields.fields(draft.modules[moduleName].style, "modules." + moduleName + ".style"))
         if (section === 3 && draft.modules && draft.modules[moduleName]) return Fields.fields(draft.modules[moduleName].behavior, "modules." + moduleName + ".behavior")
         return []
@@ -41,6 +42,21 @@ ApplicationWindow {
     function stageField(path, literal) {
         const values = Object.assign({}, pendingFields); values[path] = literal; pendingFields = values
     }
+    function stageModuleList(path, next) {
+        if (path.endsWith(".modules")) { stageField(path, Ui.literal(next)); return }
+        const prefix = path.slice(0, path.lastIndexOf(".") + 1)
+        const panel = draft.panels[Number(path.split(".")[1])]
+        const values = Object.assign({}, pendingFields)
+        const keys = ["modules_left", "modules_center", "modules_right"]
+        const lists = keys.map(key => values[prefix + key] === undefined ? panel[key] : JSON.parse(values[prefix + key]))
+        keys.forEach(key => { delete values[prefix + key] })
+        // Remove a moved module from its old zone before inserting it into its new one.
+        keys.forEach((key, index) => {
+            if (prefix + key !== path) values[prefix + key] = Ui.literal(lists[index].filter(name => name === "@spacer" || name === "@stretch" || next.indexOf(name) < 0))
+        })
+        values[path] = Ui.literal(next)
+        pendingFields = values
+    }
     function pickColor(path, value) {
         colorPicker.fieldPath = path
         colorPicker.selectedColor = Config.validColor(value) ? value : theme.palette.accent
@@ -49,6 +65,14 @@ ApplicationWindow {
     function flushFields() {
         let text = editor.text
         const paths = Object.keys(pendingFields)
+        // Work on a local draft: clear all affected zones before restoring their
+        // complete lists, so moves/swaps never fail on an intermediate duplicate.
+        const zones = paths.filter(path => /\.modules_(left|center|right)$/.test(path))
+        for (let i = 0; i < zones.length; ++i) {
+            const result = Config.editLiteral(text, zones[i], "[]")
+            if (result.error) { statusText = zones[i] + ": " + result.error; return false }
+            text = result.text
+        }
         for (let i = 0; i < paths.length; ++i) {
             const result = Config.editLiteral(text, paths[i], pendingFields[paths[i]])
             if (result.error) { statusText = paths[i] + ": " + result.error; return false }
@@ -156,7 +180,7 @@ ApplicationWindow {
                 InfoText { text: window.sectionNames[window.section]; font.bold: true; font.pixelSize: window.theme.font_size * 1.3 }
                 InfoText {
                     visible: window.section !== 4
-                    text: window.section === 0 ? "Choose a theme, colors and dimensions. Changes stay in your draft until Save; Preview applies them to this window only." : window.section === 1 ? "Select a panel, enable its modules and move them into order. Explicit margins prevent corner conflicts. Unknown settings remain intact." : window.section === 2 ? "Enable modules and adjust icon, text, widths and color overrides. Vertical bars use compact icons; workspace labels remain visible." : "Commands are argv arrays, never shell text. Enabling a provider may run reads on Save. Device and update actions remain explicit. Notification server is opt-in and never replaces another daemon."
+                    text: window.section === 0 ? "Choose a theme, colors and dimensions. Changes stay in your draft until Save; Preview applies them to this window only." : window.section === 1 ? "Choose a linear strip or left / center / right layout (top / center / bottom on vertical panels). Order modules within each group; add fixed or flexible space. Selecting a module in a new group moves it there." : window.section === 2 ? "Enable modules and adjust icon, text, widths and color overrides. Vertical bars use compact icons; workspace labels remain visible." : "Commands are argv arrays, never shell text. Enabling a provider may run reads on Save. Device and update actions remain explicit. Notification server is opt-in and never replaces another daemon."
                     color: window.theme.palette.muted
                     Layout.fillWidth: true
                 }

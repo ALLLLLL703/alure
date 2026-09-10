@@ -59,6 +59,16 @@ edge = "bottom"
         QVERIFY(ConfigStore::parse("panels = []", model, error));
         QVERIFY(model.value("panels").toList().isEmpty());
     }
+    void panelLayouts() {
+        QVariantMap model; QString error;
+        QVERIFY(ConfigStore::parse({}, model, error));
+        QCOMPARE(model.value("panels").toList()[0].toMap().value("layout").toString(), "linear");
+        QVERIFY(ConfigStore::parse("[[panels]]\nlayout='three-zone'\nmodules_left=['volume','@spacer','@spacer']\nmodules_center=['calendar']\nmodules_right=['@stretch','@settings']\nspacer_size=40", model, error));
+        QCOMPARE(model.value("panels").toList()[0].toMap().value("spacer_size").toInt(), 40);
+        for (const auto *text : {"[[panels]]\nlayout='grid'", "[[panels]]\nlayout=1", "[[panels]]\nspacer_size=-1", "[[panels]]\nspacer_size=1.5", "[[panels]]\nmodules_left='volume'", "[[panels]]\nmodules_center=['@unknown']", "[[panels]]\nlayout='three-zone'\nmodules_left=['calendar']"}) {
+            QVERIFY2(!ConfigStore::parse(text, model, error), text); QVERIFY(!error.isEmpty());
+        }
+    }
     void settingsCloseOverrides() {
         QVariantMap model; QString error;
         QVERIFY(ConfigStore::parse("[settings]\nclose_shortcut='Alt+F4'", model, error));

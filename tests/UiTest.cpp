@@ -215,6 +215,60 @@ private slots:
         }
         QCOMPARE(warnings.size(), 0);
     }
+    void panelLayoutGeometry_data() {
+        QTest::addColumn<bool>("vertical"); QTest::addColumn<bool>("zoned"); QTest::addColumn<int>("length");
+        for (const bool vertical : {false, true}) for (const bool zoned : {false, true}) for (int length : {900, 180})
+            QTest::newRow(qPrintable(QString("%1-%2-%3").arg(vertical).arg(zoned).arg(length))) << vertical << zoned << length;
+    }
+    void panelLayoutGeometry() {
+        QFETCH(bool, vertical); QFETCH(bool, zoned); QFETCH(int, length);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QVERIFY(config.previewText(QString("[ui]\nshow_settings=false\n[[panels]]\nlayout='%1'\nmodules=['@stretch','calendar','@spacer','volume','@stretch']\nmodules_left=['workspaces']\nmodules_center=['calendar']\nmodules_right=['volume']\nspacer_size=40").arg(zoned ? "three-zone" : "linear")));
+        FixtureService service; FixtureShell shell; service.available = false;
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Shell", &shell);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"volume", QVariant::fromValue(&service)}, {"workspaces", QVariant::fromValue(&service)}});
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(vertical ? 44 : length, vertical ? length : 44);
+        view.setInitialProperties({{"panel", config.model().value("panels").toList().first()}, {"vertical", vertical}, {"outputName", "fixture"}});
+        view.setSource(QUrl("qrc:/qml/Panel.qml")); QVERIFY(view.status() == QQuickView::Ready); view.show(); QTest::qWait(40);
+        const auto find = [&](const QString &name) { return itemNamed(view.rootObject(), name); };
+        auto *scroll = find("panel-modules"); auto *left = find("panel-zone-left"); auto *center = find("panel-zone-center"); auto *right = find("panel-zone-right");
+        const auto position = [vertical](QQuickItem *item) { return vertical ? item->y() : item->x(); };
+        const auto size = [vertical](QQuickItem *item) { return vertical ? item->height() : item->width(); };
+        const auto total = scroll->property(vertical ? "contentHeight" : "contentWidth").toDouble();
+        if (zoned) {
+            QCOMPARE(position(left), 0.); QVERIFY(qAbs(position(center) + size(center)/2 - total/2) < .01);
+            QVERIFY(qAbs(position(right) + size(right) - total) < .01);
+            QVERIFY(size(left) <= position(center)); QVERIFY(position(center) + size(center) <= position(right));
+        } else {
+            auto *first = find("panel-slot-@stretch-0"); auto *last = find("panel-slot-@stretch-4"); auto *spacer = find("panel-slot-@spacer-2");
+            QVERIFY(first); QVERIFY(last); QVERIFY(spacer); QCOMPARE(size(spacer), 40.); QCOMPARE(size(first), size(last));
+            QVERIFY(size(first) >= 0.); if (length == 900) QVERIFY(size(first) > 0.);
+        }
+        QCOMPARE(warnings.size(), 0);
+    }
+    void settingsZoneMoves() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QVERIFY(config.saveText("# preserved\n[[panels]]\nlayout='three-zone'\nmodules_left=['media']\nmodules_center=['calendar']\nmodules_right=['battery']\n"));
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider); engine.rootContext()->setContextProperty("Config", &config);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings); engine.load(QUrl("qrc:/qml/Settings.qml"));
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window); QTest::qWait(30);
+        const auto find = [&](const QString &name) { return itemNamed(window->contentItem(), name); };
+        clickItem(window, find("settings-section-1")); QTest::qWait(20);
+        QVERIFY(!find("setting-field-panels.0.modules"));
+        auto *center = find("setting-field-panels.0.modules_center"); QVERIFY(center);
+        auto *battery = itemNamed(center, "panel-module-battery"); revealItem(battery); clickItem(window, battery);
+        auto *right = find("setting-field-panels.0.modules_right"); QVERIFY(right);
+        auto *media = itemNamed(right, "panel-module-media"); revealItem(media); clickItem(window, media);
+        auto *add = find("field-panels.0.modules_right-add-spacer"); revealItem(add); clickItem(window, add);
+        clickItem(window, find("settings-save")); QTRY_VERIFY(!window->property("dirty").toBool());
+        const auto panel = config.model().value("panels").toList()[0].toMap();
+        QCOMPARE(panel.value("modules_left").toList(), QVariantList{});
+        QCOMPARE(panel.value("modules_center").toList(), (QVariantList{"calendar", "battery"}));
+        QCOMPARE(panel.value("modules_right").toList(), (QVariantList{"media", "@spacer"}));
+        QVERIFY(config.source().startsWith("# preserved")); QCOMPARE(warnings.size(), 0);
+    }
     void trayRightClickMenu() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
         QVERIFY(config.previewText("[ui]\nshow_settings=false\n[[panels]]\nmodules=['tray']"));
@@ -337,7 +391,10 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(qGuiApp, "screenRemoved", Qt::DirectConnection, Q_ARG(QScreen *, bar->screen())));
         QTest::qWait(30); QVERIFY(!popupWindow());
         bar = barWindow(); QVERIFY(bar); button = itemNamed(bar->rootObject(), "calendar-button");
-        clickWithoutProcessing(bar, button); QVERIFY(!popupWindow()); delete button->parentItem();
+        // Unload through the owner: deleting Loader.item manually leaves Qt's
+        // delegate bookkeeping stale rather than simulating a supported removal.
+        auto *loader = button->parentItem()->parentItem(); QVERIFY(loader->property("active").isValid());
+        clickWithoutProcessing(bar, button); QVERIFY(!popupWindow()); loader->setProperty("active", false);
         QTest::qWait(20); QVERIFY(!popupWindow());
         // Legacy/mismatched-source requests must not fall back to a wrong panel/output.
         host.openModule("calendar", "main", bar->screen()->name());
@@ -539,7 +596,7 @@ private slots:
             return paths;
         };
         const QStringList themePriority{"theme.name", "theme.font", "theme.font_size", "theme.opacity", "theme.spacing", "theme.padding", "theme.radius", "theme.icon_size", "theme.icon_mode", "theme.icon_theme"};
-        const QStringList expectedPanel{"panels.0.edge", "panels.0.enabled", "panels.0.exclusive_zone", "panels.0.id", "panels.0.layer", "panels.0.length", "panels.0.margins.bottom", "panels.0.margins.left", "panels.0.margins.right", "panels.0.margins.top", "panels.0.modules", "panels.0.output", "panels.0.thickness"};
+        const QStringList expectedPanel{"panels.0.edge", "panels.0.enabled", "panels.0.exclusive_zone", "panels.0.id", "panels.0.layer", "panels.0.layout", "panels.0.length", "panels.0.margins.bottom", "panels.0.margins.left", "panels.0.margins.right", "panels.0.margins.top", "panels.0.modules", "panels.0.output", "panels.0.spacer_size", "panels.0.thickness"};
         for (int pass = 0; pass < 2; ++pass) {
             QCOMPARE(fieldPaths().mid(0, themePriority.size()), themePriority);
             const auto remaining = fieldPaths().mid(themePriority.size()); auto sorted = remaining; sorted.sort();

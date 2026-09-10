@@ -7,7 +7,14 @@ Item {
     required property string outputName
     required property bool vertical
     readonly property var theme: Config.model.theme
+    readonly property bool zoned: panel.layout === "three-zone"
     readonly property int inset: Math.min(Config.model.ui.panel_padding, Math.min(width, height) / 4)
+    readonly property var lists: {
+        const source = zoned ? [panel.modules_left, panel.modules_center, panel.modules_right] : [panel.modules, [], []]
+        const result = source.map(list => list.filter(name => name === "@settings" ? Config.model.ui.show_settings : name.startsWith("@") || Config.model.modules[name].enabled))
+        if (Config.model.ui.show_settings && !result.some(list => list.indexOf("@settings") >= 0)) result[zoned ? 2 : 0].push("@settings")
+        return result
+    }
     Rectangle {
         anchors.fill: parent
         radius: root.theme.radius
@@ -20,37 +27,52 @@ Item {
         objectName: "panel-modules"
         anchors.fill: parent
         anchors.margins: root.inset
+        readonly property real viewportLength: root.vertical ? height : width
+        readonly property real crossSize: root.vertical ? width : height
+        readonly property real zoneGap: root.theme.spacing
+        readonly property real totalLength: root.zoned ? Math.max(viewportLength, 2 * Math.max(left.naturalLength, right.naturalLength) + center.naturalLength + 2 * zoneGap) : Math.max(viewportLength, left.naturalLength)
         clip: true
-        contentWidth: root.vertical ? width : flow.implicitWidth
-        contentHeight: root.vertical ? flow.implicitHeight : height
+        contentWidth: root.vertical ? width : totalLength
+        contentHeight: root.vertical ? totalLength : height
         flickableDirection: root.vertical ? Flickable.VerticalFlick : Flickable.HorizontalFlick
         ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded; visible: !root.vertical && modules.contentWidth > modules.width }
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded; visible: root.vertical && modules.contentHeight > modules.height }
-        Grid {
-            id: flow
-            rows: root.vertical ? -1 : 1
-            columns: root.vertical ? 1 : -1
-            spacing: root.theme.spacing
-            Repeater {
-                model: root.panel.modules.filter(name => Config.model.modules[name].enabled)
-                delegate: ModuleStrip {
-                    required property string modelData
-                    moduleName: modelData
-                    vertical: root.vertical
-                    crossSize: root.vertical ? modules.width : modules.height
-                    onRequested: anchor => Shell.openModule(moduleName, root.panel.id, root.outputName, anchor)
-                    onMenuRequested: (itemId, anchor) => Shell.openModule("tray", root.panel.id, root.outputName, anchor, itemId)
-                }
-            }
-            ShellButton {
-                visible: Config.model.ui.show_settings
-                width: root.vertical ? modules.width : implicitWidth
-                height: root.vertical ? Config.model.ui.module_height : modules.height
-                iconName: Config.model.ui.settings_icon
-                Accessible.name: "Open Alure settings"
-                onClicked: Shell.openSettings()
-                accessibleDescription: "Alure settings"
-            }
+        PanelGroup {
+            id: left
+            objectName: "panel-zone-left"
+            tokens: root.lists[0]
+            panel: root.panel
+            vertical: root.vertical
+            crossSize: modules.crossSize
+            availableLength: root.zoned ? (modules.totalLength - center.mainLength) / 2 - modules.zoneGap : modules.totalLength
+            onRequested: (name, anchor) => Shell.openModule(name, root.panel.id, root.outputName, anchor)
+            onMenuRequested: (itemId, anchor) => Shell.openModule("tray", root.panel.id, root.outputName, anchor, itemId)
+        }
+        PanelGroup {
+            id: center
+            objectName: "panel-zone-center"
+            tokens: root.lists[1]
+            panel: root.panel
+            vertical: root.vertical
+            crossSize: modules.crossSize
+            availableLength: modules.totalLength - 2 * Math.max(left.naturalLength, right.naturalLength) - 2 * modules.zoneGap
+            x: root.vertical ? 0 : (modules.totalLength - mainLength) / 2
+            y: root.vertical ? (modules.totalLength - mainLength) / 2 : 0
+            onRequested: (name, anchor) => Shell.openModule(name, root.panel.id, root.outputName, anchor)
+            onMenuRequested: (itemId, anchor) => Shell.openModule("tray", root.panel.id, root.outputName, anchor, itemId)
+        }
+        PanelGroup {
+            id: right
+            objectName: "panel-zone-right"
+            tokens: root.lists[2]
+            panel: root.panel
+            vertical: root.vertical
+            crossSize: modules.crossSize
+            availableLength: (modules.totalLength - center.mainLength) / 2 - modules.zoneGap
+            x: root.vertical ? 0 : modules.totalLength - mainLength
+            y: root.vertical ? modules.totalLength - mainLength : 0
+            onRequested: (name, anchor) => Shell.openModule(name, root.panel.id, root.outputName, anchor)
+            onMenuRequested: (itemId, anchor) => Shell.openModule("tray", root.panel.id, root.outputName, anchor, itemId)
         }
     }
 }

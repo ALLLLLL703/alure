@@ -7,6 +7,7 @@ ColumnLayout {
     id: field
     required property var spec
     required property var host
+    objectName: "setting-field-" + spec.path
     readonly property var pending: host.pendingFields[spec.path]
     readonly property var value: {
         if (pending === undefined) return spec.value
@@ -15,7 +16,8 @@ ColumnLayout {
     readonly property var theme: Config.model.theme
     spacing: theme.spacing / 2
     Layout.fillWidth: true
-    function stage(value) { host.stageField(spec.path, Ui.literal(value)) }
+    function stage(value) { if (spec.kind === "modules") host.stageModuleList(spec.path, value); else host.stageField(spec.path, Ui.literal(value)) }
+    function moduleTitle(name) { return name === "@spacer" ? "Fixed space" : name === "@stretch" ? "Flexible space" : name === "@settings" ? "Settings shortcut" : Ui.title(name) }
     InfoText { visible: field.spec.showGroup; text: field.spec.group; color: field.theme.palette.accent; font.bold: true; font.pixelSize: field.theme.font_size * 1.2; Layout.fillWidth: true }
     InfoText { text: field.spec.label; font.bold: true; Layout.fillWidth: true }
     InfoText { visible: text.length > 0; text: field.spec.help; color: field.theme.palette.muted; Layout.fillWidth: true }
@@ -115,8 +117,14 @@ ColumnLayout {
         Layout.fillWidth: true
         readonly property var selected: field.spec.kind === "modules" ? field.value : []
         id: moduleList
+        Flow {
+            Layout.fillWidth: true
+            spacing: field.theme.spacing / 2
+            ShellButton { text: "Add fixed space"; objectName: "field-" + field.spec.path + "-add-spacer"; onClicked: field.stage(moduleList.selected.concat(["@spacer"])) }
+            ShellButton { text: "Add flexible space"; objectName: "field-" + field.spec.path + "-add-stretch"; onClicked: field.stage(moduleList.selected.concat(["@stretch"])) }
+        }
         Repeater {
-            model: moduleList.visible ? moduleList.selected.concat(Object.keys(field.host.draft.modules).filter(n => moduleList.selected.indexOf(n) < 0)) : []
+            model: moduleList.visible ? moduleList.selected.concat(Object.keys(field.host.draft.modules).concat(["@settings"]).filter(n => moduleList.selected.indexOf(n) < 0)) : []
             RowLayout {
                 required property string modelData
                 required property int index
@@ -125,19 +133,19 @@ ColumnLayout {
                     palette.dark: field.theme.palette.accent
                     objectName: "panel-module-" + modelData
                     Layout.fillWidth: true
-                    text: Ui.title(modelData)
-                    checked: moduleList.selected.indexOf(modelData) >= 0
-                    onClicked: { const next = moduleList.selected.slice(); if (checked) next.push(modelData); else next.splice(next.indexOf(modelData), 1); field.stage(next) }
+                    text: field.moduleTitle(modelData)
+                    checked: index < moduleList.selected.length
+                    onClicked: { const next = moduleList.selected.slice(); if (checked) next.push(modelData); else next.splice(index, 1); field.stage(next) }
                 }
                 ShellButton {
                     objectName: "panel-module-" + modelData + "-up"
-                    text: "↑"; Accessible.name: "Move " + Ui.title(modelData) + " up"
+                    text: "↑"; Accessible.name: "Move " + field.moduleTitle(modelData) + " up"
                     enabled: index > 0 && index < moduleList.selected.length
                     onClicked: { const next = moduleList.selected.slice(); const name = next.splice(index, 1)[0]; next.splice(index - 1, 0, name); field.stage(next) }
                 }
                 ShellButton {
                     objectName: "panel-module-" + modelData + "-down"
-                    text: "↓"; Accessible.name: "Move " + Ui.title(modelData) + " down"
+                    text: "↓"; Accessible.name: "Move " + field.moduleTitle(modelData) + " down"
                     enabled: index < moduleList.selected.length - 1
                     onClicked: { const next = moduleList.selected.slice(); const name = next.splice(index, 1)[0]; next.splice(index + 1, 0, name); field.stage(next) }
                 }
