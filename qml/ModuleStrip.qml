@@ -49,10 +49,11 @@ Item {
                 delegate: ShellButton {
                     id: entry
                     required property var modelData
+                    objectName: root.moduleName + "-entry-" + modelData.id
                     width: root.vertical ? root.width : Math.min(root.style.max_width, Math.max(root.style.min_width, implicitWidth))
-                    height: Config.model.ui.module_height
+                    height: root.vertical ? Config.model.ui.module_height : root.crossSize
                     text: root.style.show_label && root.moduleName === "workspaces" ? Ui.format(root.config.behavior.format, Object.assign({}, modelData, {name: modelData.name || String(modelData.idx)})) : root.style.show_label ? Ui.format(root.config.behavior.format, {title: modelData.Title || "Tray"}) : ""
-                    iconName: root.moduleName === "tray" && root.style.show_icon ? root.style.icon : ""
+                    iconName: root.style.show_icon ? root.style.icon : ""
                     iconSource: root.moduleName !== "tray" ? "" : modelData.iconUrl || "image://icons/theme/" + (modelData.Status === "NeedsAttention" ? modelData.AttentionIconName || modelData.IconName || root.style.icon : modelData.IconName || root.style.icon)
                     iconSize: root.style.icon_size
                     accent: root.moduleName === "workspaces" && !!modelData.is_active

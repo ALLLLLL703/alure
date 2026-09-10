@@ -26,11 +26,11 @@ PanelPlacement panelPlacement(const QVariantMap &panel, QSize screenSize) {
     const int length = configuredLength == 0 ? available : std::min(configuredLength, available);
     if (configuredLength == 0) anchors |= vertical ? W::Anchors(W::AnchorTop) | W::AnchorBottom : W::Anchors(W::AnchorLeft) | W::AnchorRight;
     const int thickness = std::min(panel.value("thickness").toInt(), std::max(1, vertical ? screenSize.width() - m.left() - m.right() : screenSize.height() - m.top() - m.bottom()));
-    const int edgeMargin = edge == W::AnchorTop ? m.top() : edge == W::AnchorBottom ? m.bottom() : edge == W::AnchorLeft ? m.left() : m.right();
     const auto layerName = panel.value("layer").toString();
     const auto layer = layerName == "background" ? W::LayerBackground : layerName == "bottom" ? W::LayerBottom : layerName == "overlay" ? W::LayerOverlay : W::LayerTop;
     int zone = panel.value("exclusive_zone").toInt();
-    if (zone == -1) zone = thickness + edgeMargin;
+    // The compositor adds the anchored margin to a positive protocol zone.
+    if (zone == -1) zone = thickness;
     return {vertical ? QSize(thickness, length) : QSize(length, thickness), m, anchors, edge, layer, zone, vertical};
 }
 PanelHost::PanelHost(ConfigStore &config, QQmlEngine &engine, bool preview, QObject *parent)

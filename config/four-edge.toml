@@ -1,4 +1,5 @@
-# Four edges on each output. Vertical bars leave room for the horizontal bars.
+# Four edges on each output. Reserving surfaces use the remaining usable rectangle.
+# Vertical top/bottom margins are additional 68px insets, not physical edge offsets.
 # Use a temporary --config path for experiments; no Niri configuration is needed.
 [theme]
 name = "midnight"

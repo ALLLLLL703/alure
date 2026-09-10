@@ -36,7 +36,7 @@ icons, ordering, popup geometry and interactions under the existing TOML UI mode
 
 | Service | Live snapshot and actions | Supported boundary / readiness |
 |---|---|---|
-| Niri | items: `id` **string**, `idx`, nullable `name`, `output`, `is_active`, `is_focused` and upstream workspace fields. `activate({id})` | Native newline JSON socket requests, stable **ID** activation across outputs. Poll/reconnect at interval (not event stream). Missing socket, disconnect, invalid replies and timeout clear data. Fixture has duplicate idx=1 on DP-1 and DP-2 and verifies ID=20, not idx. |
+| Niri | items: `id` **string**, `idx`, nullable `name`, `output`, `is_active`, `is_focused` and upstream workspace fields. `activate({id})` | Native newline JSON socket requests, stable **ID** activation across outputs. Poll/reconnect at interval (not event stream). `ordering="output-index"` sorts ascending output/numeric idx/numeric ID before publication; `"provider"` preserves IPC order (see configuration.md). Missing socket, disconnect, invalid replies and timeout clear data. Fixture has duplicate idx=1 on DP-1 and DP-2 and verifies ID=20, not idx. |
 | MPRIS | items: `service`, `title`, `artist` string list, `album`, `artUrl`, `playbackStatus`, `CanControl/CanPlay/CanPause/CanGoNext/CanGoPrevious`. `playPause/next/previous({service})` | Session-bus player discovery/GetAll polling, maximum 64 players. Capability checks before calls. No seek, queue, position clock or player launching. Art URL is metadata only; no downloads by service. UI must handle untrusted remote URLs deliberately. |
 | SNI tray | items: `id` (bus name + path), `Title`, `Status`, `IconName`, `AttentionIconName`, `ItemIsMenu`, `Menu` path string, `IconThemePath`, `iconUrl` PNG data URL. `activate/secondaryActivate/contextMenu({id,x,y})` | Hosts org.kde.StatusNotifierWatcher when free; otherwise cooperates with existing watcher and registers a host. No name stealing/queueing. Registration/removal and polling property changes; max 128 items. ARGB network-order pixmaps converted to PNG, largest valid image up to 512×512. ItemIsMenu routes primary action to ContextMenu. **No DBusMenu layout renderer**, overlays, tooltip rendering, Scroll or legacy XEmbed. Delegated ContextMenu may be unavailable for items requiring a host-side DBusMenu renderer. IconThemePath exposed but not searched by current icon provider. |
 | Volume | state: `percent`, `muted`. `setVolume({percent})`, `toggleMute({})` | Async wpctl with C-locale strict parser; debounced setter, configurable maximum. Default sink only; no sink selector, microphone or stream mixer. Reading can show existing >100% volume even if setter capped at 100. |
@@ -103,12 +103,16 @@ dbus-run-session -- ./build/tests/services_tests
 Tests cover strict parsers, command timeout/output cap/missing executable/cancel,
 config validation/customization, disable/reload race, debounce, update opt-in,
 cached WiFi/radio/saved fixtures, battery files, Niri multi-output ID activation and
-reconnect, MPRIS discovery/capabilities/actions, BlueZ managed objects, default
+reconnect, shuffled multi-output ordering (numeric indices/IDs including IDs above
+2^53, null output and provider-order reload), MPRIS discovery/capabilities/actions, BlueZ managed objects, default
 notification opt-out/name conflicts, real private-DBus Notify/expiry/action signals,
 replacement/DND/history bounds, SNI own/existing watcher cooperation, removal and
 pixmap byte order, and QML context access. No actual desktop controls or upgrade
 commands are used. Offscreen CLI tests are not Niri visual validation. Independent
-review and actual desktop interoperability/visual verification remain required.
+stabilization review and broader desktop interoperability/visual verification remain
+required. The parent also verified stable workspace ID activation on nested Niri
+26.04 at baseline `8c384d1`; see [bounded live evidence](interface.md#bounded-live-validation-reported-by-parent).
+That single-output check does not validate physical providers or these new fixes.
 
 ## Research sources (retrieved for this stage)
 

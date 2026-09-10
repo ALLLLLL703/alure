@@ -29,6 +29,9 @@ Historical stage-1 record. Stage 2 now implements the service integrations; see
 
 ## Verification and limits
 
+Historical foundation-stage evidence only. Later nested Sway/Niri 26.04 checks
+and current remaining boundaries are recorded in [interface.md](interface.md#bounded-live-validation-reported-by-parent).
+
 Debug/Ninja with installed Qt 6.11.2 and toml++ 3.4.0. Automated config tests cover
 missing/default/overrides/invalid inputs, retained model, raw invalid repair,
 unknown keys/comments, external-write conflicts, symlink safety, document size,

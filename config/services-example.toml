@@ -1,6 +1,7 @@
 # Merge with canonical defaults. All values apply on valid config reload.
 # Conservative service configuration example; no installation/update command.
 [modules.workspaces.behavior]
+ordering = "provider" # preserve IPC array order; default output-index sorts output/idx/id
 interval_ms = 1500
 socket_path = "" # NIRI_SOCKET from this process's environment
 [modules.media.behavior]

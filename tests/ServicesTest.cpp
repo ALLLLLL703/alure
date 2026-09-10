@@ -130,6 +130,13 @@ private slots:
         QVariantMap config; QString error;
         QVERIFY(ConfigStore::parse({}, config, error));
         QVERIFY(!config.value("modules").toMap().value("notifications").toMap().value("behavior").toMap().value("server_enabled").toBool());
+        QCOMPARE(config.value("modules").toMap().value("workspaces").toMap().value("behavior").toMap().value("ordering").toString(), "output-index");
+        for (const QByteArray &value : {QByteArray("'random'"), QByteArray("1"), QByteArray("true")}) {
+            QVERIFY(!ConfigStore::parse("[modules.workspaces.behavior]\nordering=" + value, config, error));
+            QVERIFY2(error.contains("modules.workspaces.behavior.ordering"), qPrintable(error));
+        }
+        QVERIFY(ConfigStore::parse("[modules.workspaces.behavior]\nordering='provider'", config, error));
+        QCOMPARE(config.value("modules").toMap().value("workspaces").toMap().value("behavior").toMap().value("ordering").toString(), "provider");
         for (const QByteArray &text : {QByteArray("[modules.volume.behavior]\ndebounce_ms=0"), QByteArray("[modules.volume.behavior]\nmax_percent=151"),
              QByteArray("[modules.notifications.behavior]\nhistory_limit=0"), QByteArray("[modules.notifications.behavior]\nserver_enabled=1"),
              QByteArray("[modules.wifi.behavior]\nradio_command=[1]"), QByteArray("[modules.battery.behavior]\nsysfs_path=\"relative\"")})
@@ -216,6 +223,38 @@ private slots:
         BatteryService service; service.configure(module("battery", {{"sysfs_path", dir.path()}}));
         QVERIFY(service.available()); QCOMPARE(service.state().value("percent").toInt(), 73);
         put(dir.filePath("BAT0/capacity"), "invalid"); service.refresh(); QVERIFY(!service.available()); QVERIFY(service.state().isEmpty());
+    }
+    void niriWorkspaceOrdering() {
+        QTemporaryDir dir; QLocalServer server; const auto path = dir.filePath("socket"); QVERIFY(server.listen(path));
+        const QByteArray shuffled = R"({"Ok":{"Workspaces":[
+            {"id":40,"idx":2,"output":"DP-2","is_active":false,"is_focused":false},
+            {"id":100,"idx":10,"output":"DP-1","is_active":false,"is_focused":false},
+            {"id":30,"idx":1,"output":"DP-2","is_active":true,"is_focused":false},
+            {"id":20,"idx":2,"output":"DP-1","is_active":false,"is_focused":false},
+            {"id":9007199254740993,"idx":1,"output":"DP-1","is_active":true,"is_focused":true},
+            {"id":10,"idx":2,"output":"DP-1","is_active":false,"is_focused":false},
+            {"id":9007199254740992,"idx":1,"output":"DP-1","is_active":false,"is_focused":false},
+            {"id":50,"idx":1,"output":null,"is_active":false,"is_focused":false}
+        ]}})";
+        connect(&server, &QLocalServer::newConnection, this, [&] {
+            auto *socket = server.nextPendingConnection(); connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
+            connect(socket, &QLocalSocket::readyRead, socket, [socket, shuffled] {
+                if (!socket->canReadLine()) return;
+                socket->readLine(); socket->write(shuffled.simplified() + '\n');
+            });
+        });
+        const auto ids = [](const QVariantList &rows) {
+            QStringList result; for (const auto &row : rows) result << row.toMap().value("id").toString(); return result;
+        };
+        NiriService service;
+        service.configure(module("workspaces", {{"socket_path", path}})); QTRY_VERIFY(service.available());
+        const QStringList sorted{"50", "9007199254740992", "9007199254740993", "10", "20", "100", "30", "40"};
+        QCOMPARE(ids(service.items()), sorted);
+        QCOMPARE(service.state().value("count").toInt(), 8);
+        service.configure(module("workspaces", {{"socket_path", path}, {"ordering", "provider"}})); QTRY_VERIFY(service.available());
+        QCOMPARE(ids(service.items()), (QStringList{"40", "100", "30", "20", "9007199254740993", "10", "9007199254740992", "50"}));
+        service.configure(module("workspaces", {{"socket_path", path}, {"ordering", "output-index"}})); QTRY_VERIFY(service.available());
+        QCOMPARE(ids(service.items()), sorted);
     }
     void niriMultiOutputAndReconnect() {
         QTemporaryDir dir; QLocalServer server; const auto path = dir.filePath("socket"); QVERIFY(server.listen(path));

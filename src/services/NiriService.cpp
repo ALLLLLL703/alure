@@ -3,6 +3,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <algorithm>
+#include <tuple>
 namespace Alure {
 NiriService::NiriService(QObject *parent) : Service(parent) {
     m_deadline.setSingleShot(true);
@@ -27,6 +29,13 @@ NiriService::NiriService(QObject *parent) : Service(parent) {
         QVariantMap state; QVariantList rows; QString diagnostic;
         if (!workspaces.isArray() || !CommandService::parse(CommandService::Workspaces, QJsonDocument(workspaces.toArray()).toJson(QJsonDocument::Compact), 0, state, rows, diagnostic)) {
             fail(diagnostic.isEmpty() ? "Invalid Niri workspaces reply" : diagnostic); return;
+        }
+        if (m_options.value("ordering").toString() == "output-index") {
+            const auto key = [](const QVariant &entry) {
+                const auto row = entry.toMap();
+                return std::tuple{row.value("output").toString(), row.value("idx").toInt(), row.value("id").toLongLong()};
+            };
+            std::ranges::stable_sort(rows, {}, key);
         }
         publish(state, rows);
     });

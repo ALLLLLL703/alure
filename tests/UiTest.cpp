@@ -2,6 +2,8 @@
 #include "PanelHost.h"
 #include "IconProvider.h"
 #include <QGuiApplication>
+#include <QBuffer>
+#include <QImage>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -88,6 +90,63 @@ private slots:
         QStringList diagnostics; for (const auto &warning : warnings) diagnostics << warning.toString();
         QVERIFY2(warnings.isEmpty(), qPrintable(diagnostics.join('\n')));
         QVERIFY(!QFile::exists(config.path()));
+    }
+    void moduleStripGeometryAndIcons_data() {
+        QTest::addColumn<QString>("moduleName");
+        QTest::addColumn<bool>("vertical");
+        QTest::addColumn<bool>("showIcon");
+        for (const auto &name : {QString("workspaces"), QString("tray")})
+            for (const bool vertical : {false, true})
+                for (const bool showIcon : {false, true})
+                    QTest::newRow(qPrintable(name + (vertical ? "-vertical" : "-horizontal") + (showIcon ? "-icon" : "-no-icon"))) << name << vertical << showIcon;
+    }
+    void moduleStripGeometryAndIcons() {
+        QFETCH(QString, moduleName); QFETCH(bool, vertical); QFETCH(bool, showIcon);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QVERIFY(config.previewText("[ui]\nmodule_height=64\n[modules." + moduleName + ".style]\nshow_label=false\nshow_icon=" + (showIcon ? "true" : "false") + "\nicon='calendar'\n"));
+        FixtureService service;
+        QImage image(1, 1, QImage::Format_ARGB32); image.fill(Qt::red);
+        QByteArray png; QBuffer buffer(&png); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(image.save(&buffer, "PNG"));
+        const QString pixmapUrl = "data:image/png;base64," + QString::fromLatin1(png.toBase64());
+        service.items = {QVariantMap{{"id", "20"}, {"idx", 1}, {"name", "Fixture"}, {"output", "DP-1"}, {"is_active", true},
+            {"Title", "Fixture tray"}, {"Status", "NeedsAttention"}, {"IconName", "volume"}, {"AttentionIconName", "battery"}, {"iconUrl", pixmapUrl}}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{moduleName, QVariant::fromValue(&service)}});
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView);
+        const auto panel = config.model().value("panels").toList().first().toMap();
+        const int crossSize = panel.value("thickness").toInt() - 2 * config.model().value("ui").toMap().value("panel_padding").toInt();
+        QCOMPARE(crossSize, 32);
+        view.resize(vertical ? crossSize : 240, vertical ? 240 : crossSize);
+        view.setInitialProperties({{"moduleName", moduleName}, {"vertical", vertical}, {"crossSize", crossSize}});
+        view.setSource(QUrl("qrc:/qml/ModuleStrip.qml")); QVERIFY(view.status() == QQuickView::Ready); view.show();
+        std::function<QQuickItem *(QQuickItem *, const QString &)> findItem = [&](QQuickItem *item, const QString &name) -> QQuickItem * {
+            if (item->objectName() == name) return item;
+            for (auto *child : item->childItems()) if (auto *found = findItem(child, name)) return found;
+            return nullptr;
+        };
+        QQuickItem *entry = nullptr;
+        QTRY_VERIFY(entry = findItem(view.rootObject(), moduleName + "-entry-20"));
+        QCOMPARE(entry->height(), vertical ? 64 : crossSize);
+        QVERIFY(entry->isVisible()); QCOMPARE(entry->property("text").toString(), QString());
+        QCOMPARE(entry->property("iconName").toString(), showIcon ? QString("calendar") : QString());
+        QCOMPARE(entry->property("iconSource").toString(), moduleName == "tray" ? pixmapUrl : QString());
+        std::function<QQuickItem *(QQuickItem *)> findImage = [&](QQuickItem *item) -> QQuickItem * {
+            if (item->property("source").isValid()) return item;
+            for (auto *child : item->childItems()) if (auto *found = findImage(child)) return found;
+            return nullptr;
+        };
+        auto *icon = findImage(entry); QVERIFY(icon);
+        QCOMPARE(icon->isVisible(), showIcon);
+        const QString expectedSource = !showIcon ? QString() : moduleName == "tray" ? pixmapUrl : "image://icons/builtin/calendar";
+        QCOMPARE(icon->property("source").toUrl().toString(), expectedSource);
+        if (moduleName == "tray") {
+            auto row = service.items.first().toMap(); row["iconUrl"] = ""; service.items = {row}; emit service.changed();
+            QTRY_VERIFY(entry = findItem(view.rootObject(), moduleName + "-entry-20"));
+            QCOMPARE(entry->property("iconSource").toString(), "image://icons/theme/battery");
+        }
+        QCOMPARE(warnings.size(), 0);
     }
     void panelClickOpensPopup() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());

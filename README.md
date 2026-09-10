@@ -54,7 +54,8 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software ./build/alure --settings --q
 ```
 
 Offscreen does **not** validate actual visuals, wallpaper alpha, output selection,
-Wayland anchors, focus, stacking or exclusive zones. Those need a real Niri check.
+Wayland anchors, focus, stacking or exclusive zones. See the bounded nested-Niri
+evidence below; corrected automatic zones still need a live compositor recheck.
 
 ## Install (explicit, optional)
 
@@ -83,4 +84,12 @@ panels. Close/Reload protect unsaved drafts. Forms preserve unrelated source tex
 panel add/remove/reorder explicitly warns before normalizing panel sections.
 `runtime.trace_windows=true` enables bounded-content stderr focus/rebuild diagnostics.
 See [interface validation](docs/interface.md#bounded-live-validation-reported-by-parent)
-for the limited nested-Wayland check; native Niri/multiscreen validation is pending.
+for earlier nested Sway evidence and nested **Niri 26.04** single-output checks on
+immutable `8c384d1`: four Top/non-keyboard bars, stable-ID workspace activation, calendar
+navigation, sibling-file watcher regression and visible panel alpha blending.
+These are parent-reported baseline checks, not live validation of the subsequent
+zone/geometry/icon/ordering fixes. Physical multi-monitor, hotplug, fractional
+scaling and real device/media controls remain unverified. Automatic zones now
+send thickness only (44 + separate margin 8 reserves 52); corner margins are
+relative to the remaining usable rectangle. Workspace ordering defaults to
+`modules.workspaces.behavior.ordering="output-index"`; `"provider"` opts out.

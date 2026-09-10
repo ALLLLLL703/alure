@@ -185,6 +185,7 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
                 if (behavior.value("default_expire_ms").toInt() > behavior.value("max_expire_ms").toInt()) invalid(path + "default_expire_ms", "exceeds max_expire_ms");
             }
             if (it.key() == "workspaces") {
+                choice(behavior, "ordering", {"output-index", "provider"}, path);
                 const auto socket = behavior.value("socket_path").toString();
                 if (socket.contains(QChar::Null) || (!socket.isEmpty() && !QDir::isAbsolutePath(socket))) invalid(path + "socket_path", "expected empty or absolute socket path without NUL");
             }

@@ -62,9 +62,9 @@ size; extreme margins/small screens cannot guarantee usable content.
 
 Hover uses restrained color feedback, not Qt Controls popup tooltips: testing
 found their overlay could steal the initiating panel press. Accessible names and
-descriptions retain full summaries; clicking opens the full text. Actual Niri
-focus/stacking/alpha/scaling/hotplug verification is still required, even though
-end-to-end offscreen mouse tests now exercise the host path.
+descriptions retain full summaries; clicking opens the full text. Nested-Niri single-output
+focus/layer/alpha checks are recorded below; physical multi-output, scaling/hotplug
+and the corrected exclusive-zone behavior still require live verification.
 
 With notification serving opted in, active unsuppressed notifications create one
 non-focusable top/bottom-right toast on the selected output. The latest arrival
@@ -143,7 +143,8 @@ but no longer render anything.
 | `modules.*.style.icon_size` | 18, integer 8..128; per-module size |
 | `modules.*.style.min_width`, `max_width` | 30 / 140 (240 for media/calendar/workspaces/tray); integers 16..1024 / 16..2048, min<=max; max also bounds vertical workspace/tray strip length |
 | `modules.*.style.foreground`, `background` | empty inherits theme text / transparent chip; otherwise valid Qt color string |
-| `modules.*.style.show_icon`, `show_label` | existing booleans; true except tray label false; vertical general labels intentionally compacted |
+| `modules.*.style.show_icon`, `show_label` | existing booleans; true except tray label false; workspace list chips honor configured icons even without labels; tray keeps provider pixmap/theme resolution; vertical general labels intentionally compacted |
+| `modules.workspaces.behavior.ordering` | `output-index` or `provider` string; sorted output/numeric idx/numeric ID or incoming IPC order, shared by panel/details; valid reload starts a new workspace request |
 | `modules.*.behavior.popup_enabled` | true; disables opening details, not direct workspace/tray controls |
 | `modules.notifications.behavior.toast_enabled` | true, module-specific banner switch |
 | `modules.calendar.behavior.first_day_of_week` | 1 Monday; integer 0 Sunday / 1 Monday |
@@ -190,10 +191,18 @@ Sources inspected (design/protocol evidence only; no assets or code copied):
   noninteractive bars and on-demand auxiliary focus. Auxiliary zone -1 ignores
   existing reservations because the configured margins already include bar offset.
   LayerShellQt upstream: https://github.com/KDE/layer-shell-qt.
+- Stabilization review inspected LayerShellQt `src/qwaylandlayersurface.cpp`
+  (`setExclusiveZone`/`setMargins` pass through unchanged) and Smithay
+  `src/desktop/wayland/layer.rs` (`arrange` reserves amount + anchored margin):
+  https://github.com/Smithay/smithay/blob/master/src/desktop/wayland/layer.rs.
+  Automatic panel zones therefore send clamped thickness only; placement tests
+  assert the wire zone separately from total reservation.
 
 Automated checks include ConfigEditing source-preservation/conflict regressions,
 QuickUi fixtures loading **every** popup in available/unavailable states, horizontal/
-vertical panel and toast instantiation, fake action forwarding, settings draft/save,
+vertical panel and toast instantiation, 64-pixel custom row height with 32-pixel
+horizontal workspace/tray delegates, icon-only workspace and tray pixmap/attention
+icon resolution, fake action forwarding, settings draft/save,
 leap-month math, and a real offscreen mouse click after hover through PanelHost to
 calendar popup plus Escape dismissal. No fixture performs an actual desktop
 control. Offscreen/software rendering is not evidence of compositor visuals.
@@ -208,13 +217,31 @@ Save applied and the live bar updated. With `/tmp/alure-ui-isolated` configurati
 and default close_on_focus_loss=true / escape_closes=true, calendar opened, next
 month displayed October 2026, and Escape dismissed details. Auxiliary zone -1
 corrected its top offset from y120 to y60 in that session. The nested desktop was
-then stopped by its owner. No native Niri, multi-output, scaling/hotplug, live
-device/media/tray/notification interoperability or service startup claim follows.
+then stopped by its owner. This was supplemented by the nested-Niri baseline
+check below, not a user-session or physical multi-output test.
 
 An earlier config directly in `/tmp` exposed a real bug: unrelated temporary files
 triggered directory watching, identical reloads emitted modelChanged and rebuilt
 panels, hiding details. Effective-model/source deduplication now has an automated
-sibling-file/comment-only regression; the parent has **not** repeated that original
-live `/tmp` case after the fix. QML tooltip press interception and an undefined QML
+sibling-file/comment-only regression, and the parent repeated the sibling-file
+case live under nested Niri. QML tooltip press interception and an undefined QML
 screen property were separately reproduced and fixed through end-to-end mouse
-input tests. Independent code review and broader native-Niri validation remain due.
+input tests.
+
+Supplemental parent computer-use validation ran a copied immutable **8c384d1**
+binary on **nested Niri 26.04**, under Sway with private DBus and **without
+`--session`**. `/tmp/alure-niri-validation/layers.json` confirmed four actual Top
+bars with keyboard interactivity None. Clicking Web focused stable workspace ID 3
+(`workspaces.json`); calendar advanced September to October. Creating sibling
+`unrelated.marker` did not hide the popup. Changing `theme.opacity` from .92 to .4
+visibly blended the configured `#426478` compositor background through the panels.
+Screenshot: `/tmp/alure-niri-validation/four-edge-calendar.png`; temporary config
+and logs reside alongside it. Both nested desktops were stopped by their owners.
+
+This is baseline evidence for nested single-output Niri only, **not a live recheck
+of the stabilization fixes**. New tests cover automatic wire zones, strip geometry,
+icons and shuffled multi-output workspace ordering; offscreen tests cannot prove
+compositor reservations. Physical multi-monitor, hotplug, fractional scaling,
+live Bluetooth/media/tray/notification interoperability and systemd startup remain
+unverified. Polling, DBusMenu, pairing-agent and calendar-provider limitations in
+[services.md](services.md) remain. Independent stabilization review is still due.

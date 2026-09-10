@@ -18,14 +18,22 @@ private slots:
         auto p = Alure::panelPlacement(panel, {1920, 1080});
         QCOMPARE(p.vertical, vertical); QCOMPARE(int(p.edge), anchor);
         QCOMPARE(p.size, vertical ? QSize(44, 1064) : QSize(1904, 44));
-        QCOMPARE(p.exclusiveZone, 52); QCOMPARE(p.anchors.toInt(), anchor | (vertical ? 3 : 12));
+        QCOMPARE(p.exclusiveZone, 44); QCOMPARE(p.anchors.toInt(), anchor | (vertical ? 3 : 12));
+        QCOMPARE(p.margins, QMargins(8, 8, 8, 8));
+        QCOMPARE(p.exclusiveZone + 8, 52); // Total reservation includes the separately sent edge margin.
         panel["length"] = 500; panel["exclusive_zone"] = 0; panel["layer"] = "overlay";
         p = Alure::panelPlacement(panel, {1920, 1080});
         QCOMPARE(p.size, vertical ? QSize(44, 500) : QSize(500, 44));
         QCOMPARE(p.anchors.toInt(), anchor); QCOMPARE(p.exclusiveZone, 0);
         QCOMPARE(p.layer, LayerShellQt::Window::LayerOverlay);
         panel["length"] = 50000; panel["thickness"] = 512;
-        p = Alure::panelPlacement(panel, {100, 100}); QCOMPARE(p.size, QSize(84, 84));
+        panel["exclusive_zone"] = -1;
+        panel["margins"] = QVariantMap{{"top", 3}, {"bottom", 7}, {"left", 11}, {"right", 13}};
+        p = Alure::panelPlacement(panel, {100, 100}); QCOMPARE(p.size, QSize(76, 90));
+        QCOMPARE(p.exclusiveZone, vertical ? 76 : 90);
+        QCOMPARE(p.margins, QMargins(11, 3, 13, 7));
+        panel["exclusive_zone"] = 123;
+        QCOMPARE(Alure::panelPlacement(panel, {100, 100}).exclusiveZone, 123);
     }
 };
 QTEST_GUILESS_MAIN(PanelHostTest)

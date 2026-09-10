@@ -19,8 +19,10 @@ in TOML. No automatic installs, shell interpolation or edits to compositor confi
    slots are configuration contracts, **not simulated working integrations**.
 2. **Services:** real asynchronous, bounded integrations, models and tests; consume
    ConfigStore's merged `model.modules` maps and extend defaults/validation/docs.
-3. **UI:** full modules, popups and settings controls using shared model; actual
-   Niri multi-output/scale/focus/exclusive-zone/transparency validation by parent.
+3. **UI:** full modules, popups and settings controls using shared model. The
+   parent has since checked nested Niri 26.04 single-output layers/focus/alpha at
+   baseline `8c384d1` (see interface.md). Physical multi-output/scale/hotplug and
+   corrected automatic exclusive zones still need live validation.
 
 ## Boundaries and ownership
 
