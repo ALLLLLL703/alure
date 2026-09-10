@@ -55,7 +55,7 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software ./build/alure --settings --q
 
 Offscreen does **not** validate actual visuals, wallpaper alpha, output selection,
 Wayland anchors, focus, stacking or exclusive zones. See the bounded nested-Niri
-evidence below; corrected automatic zones still need a live compositor recheck.
+evidence below, including a live recheck of corrected automatic zones.
 
 ## Install (explicit, optional)
 
@@ -74,6 +74,27 @@ No service is enabled/started automatically. Ensure the graphical-session user
 manager has WAYLAND_DISPLAY and related session environment before opting in.
 Alure does not modify Niri configuration or set any session environment globally.
 
+After explicitly installing to `$HOME/.local` with `CMAKE_INSTALL_LIBDIR=lib`,
+you can opt in from your active Niri session (do not also run a manual shell instance):
+
+```sh
+# Only if the user service manager does not already have the session environment:
+systemctl --user import-environment WAYLAND_DISPLAY NIRI_SOCKET
+# Link the installed unit if it is not already in systemd's user search path:
+systemctl --user link "$HOME/.local/lib/systemd/user/alure.service"
+systemctl --user daemon-reload
+systemctl --user enable --now alure.service
+# Inspect or undo the opt-in:
+systemctl --user status alure.service
+journalctl --user -u alure.service
+systemctl --user disable --now alure.service
+```
+
+Use your actual configured prefix/libdir if different. These commands are
+instructions, not actions performed by the build or this delivery. Session
+integration must supply fresh environment on subsequent logins; full login/logout
+service lifecycle has not been tested.
+
 `theme.icon_mode = "theme"` resolves via QIcon (including qt6ct when your normal
 Qt environment selects that platform theme), with original SVG fallback. Alure
 does not force qt6ct or install icon packs. The fallback SVGs use intrinsic colors.
@@ -87,9 +108,12 @@ See [interface validation](docs/interface.md#bounded-live-validation-reported-by
 for earlier nested Sway evidence and nested **Niri 26.04** single-output checks on
 immutable `8c384d1`: four Top/non-keyboard bars, stable-ID workspace activation, calendar
 navigation, sibling-file watcher regression and visible panel alpha blending.
-These are parent-reported baseline checks, not live validation of the subsequent
-zone/geometry/icon/ordering fixes. Physical multi-monitor, hotplug, fractional
-scaling and real device/media controls remain unverified. Automatic zones now
-send thickness only (44 + separate margin 8 reserves 52); corner margins are
+A subsequent nested-Niri recheck of `32af9d9` confirmed the corrected 52-pixel
+reservation via compositor output/window sizes, ordered workspace chips, and
+icon-only activation with custom 64-pixel module rows in a 44-pixel bar. Independent
+build/CTest passed 6/6 and targeted code review found the four stabilization
+issues resolved. Physical multi-monitor, hotplug, fractional scaling and real
+device/media controls remain unverified. Automatic zones now send thickness only
+(44 + separate margin 8 reserves 52); corner margins are
 relative to the remaining usable rectangle. Workspace ordering defaults to
 `modules.workspaces.behavior.ordering="output-index"`; `"provider"` opts out.

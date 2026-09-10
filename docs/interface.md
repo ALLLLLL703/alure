@@ -238,10 +238,37 @@ visibly blended the configured `#426478` compositor background through the panel
 Screenshot: `/tmp/alure-niri-validation/four-edge-calendar.png`; temporary config
 and logs reside alongside it. Both nested desktops were stopped by their owners.
 
-This is baseline evidence for nested single-output Niri only, **not a live recheck
-of the stabilization fixes**. New tests cover automatic wire zones, strip geometry,
-icons and shuffled multi-output workspace ordering; offscreen tests cannot prove
-compositor reservations. Physical multi-monitor, hotplug, fractional scaling,
-live Bluetooth/media/tray/notification interoperability and systemd startup remain
-unverified. Polling, DBusMenu, pairing-agent and calendar-provider limitations in
-[services.md](services.md) remain. Independent stabilization review is still due.
+### Stabilization live recheck — `32af9d9`
+
+The parent then independently rebuilt and reran all six CTest suites: **6/6 passed**
+(8.79 seconds). Targeted independent source review found all four stabilization
+findings resolved. A copied immutable `32af9d9` binary was tested in a new nested
+Niri 26.04 session, again inside computer-use Sway with a private DBus and without
+`--session`. Only the Niri workspace and local calendar modules were enabled;
+all test configuration and binaries were under `/tmp/alure-final-niri`.
+
+- With zero compositor layout gaps/borders and one top bar of thickness 44 plus
+  top margin 8, Niri reported output size **973×1182** and a full-height tiled
+  settings window of **973×1130**. The measured reservation is **52**, confirming
+  that the anchored margin is no longer counted twice. Evidence: `outputs.json`,
+  `windows.json`, `reservation-config.toml` and `reservation-and-workspaces.png`
+  in that temporary directory.
+- With `ui.module_height=64`, the 44-pixel bar still displayed horizontal chips
+  without the previous vertical clipping. For this check, workspace `max_width`
+  was increased to 1000 to expose the whole list rather than scroll it.
+- Workspace labels appeared in numeric order: Development, Music, Web, 4.
+  Reloading `show_label=false, show_icon=true` rendered four nonblank icon chips.
+  Clicking the second chip eventually focused Music (stable ID 2), confirmed by
+  `icon-only-workspaces.json` and the corresponding PNG. An immediate first-click
+  query still showed the original workspace; after moving the pointer and clicking
+  again, the focused state was confirmed. This is not a first-click latency claim.
+- The normal settings process remained inside the reserved work area. Both nested
+  compositors and their test applications were stopped after the check.
+
+These are nested single-output observations, not physical multi-monitor, hotplug
+or fractional-scaling coverage. Live Bluetooth/media/tray/notification
+interoperability and systemd login/logout lifecycle remain unverified. Unit
+installation and syntax checks are not an enabled-service test. Polling, DBusMenu,
+pairing-agent and calendar-provider limitations in [services.md](services.md)
+remain. Temporary screenshot/log paths above are local evidence, not committed
+build products or portable test fixtures.
