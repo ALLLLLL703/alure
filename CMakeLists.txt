@@ -6,8 +6,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
 include(CTest)
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Quick QuickControls2 QuickDialogs2 Svg DBus Network)
-find_package(LayerShellQt REQUIRED)
+find_package(Qt6 6.9 REQUIRED COMPONENTS Core Gui Quick QuickControls2 QuickDialogs2 Svg DBus Network)
+find_package(LayerShellQt 6.6 REQUIRED)
 find_package(tomlplusplus 3.4 REQUIRED)
 add_subdirectory(src/core)
 add_subdirectory(src/platform)
@@ -22,6 +22,7 @@ set(ALURE_UI_FILES
   qml/Ui.js
   qml/ModuleStrip.qml
   qml/ShellButton.qml
+  qml/ModulePopup.qml
   qml/Popup.qml
   qml/CalendarView.qml
   qml/InfoText.qml

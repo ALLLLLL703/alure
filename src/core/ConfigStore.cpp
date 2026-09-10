@@ -125,6 +125,8 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
         range(ui, "popup_width", 240, 1920, "ui.");
         range(ui, "popup_height", 240, 2160, "ui.");
         range(ui, "popup_gap", 0, 256, "ui.");
+        choice(ui, "popup_alignment", {"center", "start", "end"}, "ui.");
+        choice(ui, "popup_direction", {"inward", "top", "bottom", "left", "right"}, "ui.");
         range(ui, "animation_ms", 0, 2000, "ui.");
         const auto toast = ui.value("toast").toMap();
         range(toast, "width", 240, 1920, "ui.toast.");

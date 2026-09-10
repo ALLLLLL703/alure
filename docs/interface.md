@@ -49,16 +49,41 @@ hover/disabled alpha ratios are design tokens, not separately editable strings.
 
 ### Popup surfaces and banners
 
-Details are independent, bounded `QQuickView` surfaces: overlay layer, exclusive
-zone -1 (reserve nothing and ignore existing reservations), keyboard-on-demand and activate-on-show. Bars remain non-focusable.
-Horizontal details align to the right, beyond the bar edge; vertical details align
-to the relevant edge/top, beyond the bar. They are **not positioned at the clicked
-module**. One details surface is visible at a time; close button, configurable
-Escape and configurable focus-loss dismissal are provided. Outside clicks dismiss
-when they move keyboard focus; this is not a full-screen pointer-grab overlay.
-Clicking the bar again opens a fresh details view. Configuration/output changes
-close auxiliary surfaces and rebuild bars. Geometry clamps to available output
-size; extreme margins/small screens cannot guarantee usable content.
+Details are native **xdg_popup** `QQuickView` windows transient to the actual
+clicked module's layer-shell panel, not another screen-anchored layer. Top bars
+open below the module; bottom above, left to the right, right to the left. The
+visible clicked button (including workspace/tray list entries after both nested
+scroll offsets and clipping) provides the local anchor. Other bars' reservations,
+parent margins and compositor placement do not need guessed global coordinates.
+Bars remain non-focusable and their corrected exclusive reservation is unchanged.
+
+`ui.popup_alignment` defaults to `center`; `start` / `end` align the outer popup
+bounds with the clicked span's left/right for up/down, top/bottom for left/right.
+`ui.popup_direction` defaults to `inward`, or explicitly chooses top/bottom/left/right.
+The compositor can flip either axis or slide the popup to stay on screen; near a
+corner it may therefore no longer be centered. Different distant modules provide
+different anchors even on the same panel. Native constraint resolution, not a
+client-side screen-position guess, is authoritative.
+
+`popup_width` / `popup_height` describe card content extent. `popup_gap` is transparent
+padding on **each** surface side: the near-side visible card has exactly one gap
+from the panel, including after flips (not twice the gap). Center alignment also
+centers the card; start/end leave one gap inset from the outer aligned bounds.
+The whole surface including padding is capped to the output. Gap is additionally
+capped to one quarter of the smaller output dimension to retain content space.
+Small outputs/extreme sizes cannot guarantee usable content. Padding remains part
+of the popup's input region, not an additional outside-click target.
+
+One details surface is visible at a time. Close button and configurable Escape
+close it. **Wayland's grabbing popup always permits compositor outside dismissal**;
+`close_on_focus_loss=false` disables only Alure's additional focus-loss dismissal,
+not the native outside-click/grab policy. Settings help states this boundary.
+A dismissed popup releases its native surface/grab; clicking the bar again creates
+a fresh one. Closing it does not quit the persistent shell. Toasts remain separately
+screen-anchored, non-focusable overlay layers; settings remain a normal separate
+process. Config/output changes cancel queued requests and destroy popup children
+before rebuilding panel parents. Requests without a live clicked source, or with
+a mismatched panel/output, are safely ignored rather than guessed.
 
 Hover uses restrained color feedback, not Qt Controls popup tooltips: testing
 found their overlay could steal the initiating panel press. Accessible names and
@@ -155,10 +180,12 @@ but no longer render anything.
 | `settings.controls_style` | `Basic`, or `Fusion`; selected at process start only |
 | `ui.panel_padding` | 6, integer 0..128; panel inset and button padding, clamped on thin panels |
 | `ui.module_height` | 30, integer 16..256; buttons/vertical rows; horizontal chips fit bar cross extent |
-| `ui.popup_width`, `popup_height` | 440 / 560, integers 240..1920 / 240..2160; clamped to output |
-| `ui.popup_gap` | 8, integer 0..256; details gap and opposite-edge inset |
+| `ui.popup_width`, `popup_height` | 440 / 560, integers 240..1920 / 240..2160; visible card size, whole surface including gap capped to output |
+| `ui.popup_gap` | 8, integer 0..256; symmetric transparent details padding, capped to quarter of smaller output dimension; existing toast opposite-edge inset unchanged |
+| `ui.popup_alignment` | `center`, or `start` / `end` string; along chosen edge, outer popup bounds relative to visible clicked span |
+| `ui.popup_direction` | `inward`, or `top` / `bottom` / `left` / `right` string; compositor may flip/slide |
 | `ui.animation_ms` | 140, integer 0..2000; hover/press color transition; 0 disables it |
-| `ui.close_on_focus_loss`, `escape_closes` | true booleans; details dismissal |
+| `ui.close_on_focus_loss`, `escape_closes` | true booleans; additional focus-loss / Escape dismissal; native Wayland outside dismissal is mandatory |
 | `ui.show_settings`, `settings_icon` | true / `settings`; launcher visibility and validated icon name |
 | `ui.toast.enabled` | true; independent banner switch (notification serving remains opt-in) |
 | `ui.toast.output`, `edge` | `primary`, `top`; exact QScreen name or primary, edge top/bottom only |
@@ -213,8 +240,9 @@ Sources inspected (design/protocol evidence only; no assets or code copied):
   tests revealed panel tooltip input capture, so passive hover feedback is used.
 - https://doc.qt.io/qt-6/qquickwindow.html and installed
   `/usr/include/LayerShellQt/window.h`: alpha requested before windows; explicit
-  noninteractive bars and on-demand auxiliary focus. Auxiliary zone -1 ignores
-  existing reservations because the configured margins already include bar offset.
+  noninteractive bars. Historical overlay details used on-demand auxiliary focus
+  and zone -1; native details now use transient xdg_popup (see below). Toasts retain
+  independent overlay placement and zone -1.
   LayerShellQt upstream: https://github.com/KDE/layer-shell-qt.
 - Stabilization review inspected LayerShellQt `src/qwaylandlayersurface.cpp`
   (`setExclusiveZone`/`setMargins` pass through unchanged) and Smithay
@@ -337,3 +365,53 @@ Official widget sources consulted (no copied implementation):
 - https://github.com/qt/qtdeclarative/blob/v6.11.2/src/quickdialogs/quickdialogsquickimpl/qml/ColorDialog.qml
   (installed Qt 6.11.2 picker object names/default button used in regression tests;
   source declares Qt commercial/LGPL/GPL licensing; consulted, not copied)
+
+### Native popup implementation and verification
+
+Build prerequisites are now Qt **6.9+** and LayerShellQt **6.6+**. Source investigation
+confirmed Qt 6.5 and 6.8 did not have the explicit xdg-positioner overrides; Qt 6.9.0
+has all four. LayerShellQt 6.3 already attaches an xdg_popup role to a layer parent,
+but this project also uses `setScreen` / `setDesiredSize` from its 6.6 API.
+Build/tests used installed Qt **6.11.2**, LayerShellQt **6.7.5**. Older-minimum source
+inspection is not an older-version runtime claim. No dependency downloads/installs.
+
+Official upstream source read via curl; independently implemented, no copied code:
+- https://github.com/qt/qtwayland/blob/v6.9.0/src/plugins/shellintegration/xdg-shell/qwaylandxdgshell.cpp
+  (`createPositioner` reads `_q_waylandPopupAnchorRect`, `Anchor`, `Gravity`,
+  `ConstraintAdjustment`; private dynamic property API isolated in PopupPlacement).
+- https://github.com/qt/qtbase/blob/v6.11.2/src/plugins/platforms/wayland/plugins/shellintegration/xdg-shell/qwaylandxdgshell.cpp
+  (same properties, null xdg parent supported, Qt::Popup grabs; popup_done closes).
+- https://github.com/qt/qtbase/blob/v6.11.2/src/plugins/platforms/wayland/qwaylandwindow.cpp
+  (`addChildPopup` calls parent's shell `attachPopup`; hides reset the surface role).
+- https://github.com/KDE/layer-shell-qt/blob/v6.6.0/src/qwaylandlayersurface.cpp
+  (`attachPopup` obtains xdg_popup role and calls layer `get_popup`).
+- https://github.com/KDE/layer-shell-qt/blob/master/src/interfaces/window.cpp
+  (`Window::get` selects layer-shell per window; process-wide legacy shell selection
+  is deliberately removed so module popups keep the default xdg-shell integration).
+- Installed generated xdg-shell protocol header documents that anchor rectangles
+  must stay inside parent geometry; transparent symmetric padding supplies gap
+  without violating this constraint. Qt's override does not expose positioner offset.
+
+All coordinates are logical pixels. Qt/compositor own output scale conversion and
+native constraint placement; rounded clipped item bounds can differ by one logical
+pixel. No global-coordinate positioning fallback is used on Wayland. Non-Wayland
+`--preview` uses known global positions and screen clamps only for preview/tests.
+These private Qt overrides require revalidation on Qt upgrades. Fractional scaling,
+physical multi-output/hotplug and exotic transformed items are not runtime-verified
+by offscreen tests; ordinary panel/list translations are covered.
+
+Automated regression additions:
+- PanelHostContract: all four edges × start/center/end × beginning/middle/end,
+  local anchor containment, explicit directions, narrow/one-pixel outputs and
+  maximum gap, flip/slide request configuration; existing reservation tests retained.
+- QuickUi: actual pointer clicks on three different module positions per edge,
+  native transient/type/positioner properties, Escape, actual Close widget and
+  native close events, repeated reopening without last-window-closed; nested-scrolled
+  workspace and tray entries on both axes. Direct pointer events without pumping
+  queued callbacks cover reload, parent/source destruction and screen-removal signal
+  invalidation. The offscreen removal signal is simulated, not real QScreen hotplug.
+- ConfigStore: defaults, custom enums/gap/dismissal values and invalid type/value
+  diagnostics. Source-preserving/atomic save implementation is untouched.
+
+Actual compositor screenshot/protocol validation remains parent-owned; these tests
+alone do not establish Niri rendering, grabs or scaling behavior.

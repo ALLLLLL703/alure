@@ -21,6 +21,8 @@ private slots:
         QVERIFY2(ConfigStore::parse({}, model, error), qPrintable(error));
         QCOMPARE(model.value("settings").toMap().value("show_close_button").toBool(), true);
         QCOMPARE(model.value("settings").toMap().value("close_shortcut").toString(), "Ctrl+W");
+        QCOMPARE(model.value("ui").toMap().value("popup_alignment").toString(), "center");
+        QCOMPARE(model.value("ui").toMap().value("popup_direction").toString(), "inward");
         QCOMPARE(model.value("panels").toList().size(), 1);
         QCOMPARE(model.value("modules").toMap().size(), 10);
         QCOMPARE(model.value("theme").toMap().value("palette").toMap().value("background").toString(), "#151923");
@@ -64,9 +66,20 @@ edge = "bottom"
         QVERIFY(!model.value("settings").toMap().value("show_close_button").toBool());
         QVERIFY(ConfigStore::parse("[settings]\nclose_shortcut=''", model, error));
     }
+    void popupOptions() {
+        QVariantMap model; QString error;
+        for (const auto &alignment : {"start", "center", "end"})
+            for (const auto &direction : {"inward", "top", "bottom", "left", "right"}) {
+                QVERIFY(ConfigStore::parse(QString("[ui]\npopup_alignment='%1'\npopup_direction='%2'\npopup_gap=256\nclose_on_focus_loss=false\nescape_closes=false").arg(alignment, direction).toUtf8(), model, error));
+                QCOMPARE(model.value("ui").toMap().value("popup_alignment").toString(), alignment);
+                QCOMPARE(model.value("ui").toMap().value("popup_direction").toString(), direction);
+            }
+    }
     void invalid_data() {
         QTest::addColumn<QByteArray>("source");
         for (const auto &[name, text] : std::initializer_list<std::pair<const char *, const char *>>{
+            {"popup-align", "[ui]\npopup_alignment='middle'"}, {"popup-direction", "[ui]\npopup_direction='outward'"},
+            {"popup-align-type", "[ui]\npopup_alignment=3"}, {"popup-gap", "[ui]\npopup_gap=257"},
             {"syntax", "[broken"}, {"version", "version = 2"}, {"version-type", "version = '1'"},
             {"root-table", "theme = false"}, {"theme", "[theme]\nname = 'unknown'"},
             {"color", "[theme.palette]\naccent = 'no-color'"}, {"palette-type", "[theme]\npalette = 2"},

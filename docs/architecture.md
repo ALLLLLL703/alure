@@ -31,8 +31,10 @@ in TOML. No automatic installs, shell interpolation or edits to compositor confi
   resources, not scattered in QML. All successful loads publish one modelChanged.
 - `alure_platform`: PanelHost owns QQuickViews; rebuilds on valid reload and output
   changes. It creates one window per enabled panel/output match. Bars never take
-  keyboard focus. It contains per-window LayerShellQt APIs; app entry enables
-  the integration only in panel mode. No Niri dependency in UI.
+  keyboard focus. Per-window LayerShellQt APIs select layer-shell for bars/toasts;
+  native Qt::Popup details retain xdg-shell and attach to the clicked layer parent.
+  PopupPlacement supplies explicit parent-local anchors, never guessed Wayland
+  global coordinates. No Niri dependency in UI.
 - `alure`: CLI selects a QCoreApplication for validation or QGuiApplication for
   UI. Settings/preview do not enable layer-shell; settings is a separate process.
 - `qml/Panel.qml`: minimal branding + explicit foundation notice, not fake service

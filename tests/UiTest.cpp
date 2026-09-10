@@ -1,5 +1,8 @@
 #include "ConfigStore.h"
 #include "PanelHost.h"
+#include "PopupPlacement.h"
+#include <QScreen>
+#include <QCloseEvent>
 #include "IconProvider.h"
 #include <QGuiApplication>
 #include <QBuffer>
@@ -41,7 +44,7 @@ public:
     Q_INVOKABLE void closePopup() { ++closes; }
     Q_INVOKABLE void closeToast() { ++closes; }
     Q_INVOKABLE bool openSettings() { return true; }
-    Q_INVOKABLE void openModule(const QString &, const QString &, const QString &) {}
+    Q_INVOKABLE void openModule(const QString &, const QString &, const QString &, QQuickItem *) {}
 };
 namespace {
 QQuickItem *itemNamed(QQuickItem *item, const QString &name) {
@@ -52,6 +55,13 @@ QQuickItem *itemNamed(QQuickItem *item, const QString &name) {
 void clickItem(QQuickWindow *window, QQuickItem *item) {
     QVERIFY(item); QVERIFY(item->isVisible());
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, item->mapToScene(QPointF(item->width()/2, item->height()/2)).toPoint());
+}
+void clickWithoutProcessing(QQuickWindow *window, QQuickItem *item) {
+    const auto pos = item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
+    QMouseEvent press(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(window, &press);
+    QMouseEvent release(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(window, &release);
 }
 void revealItem(QQuickItem *item) {
     QVERIFY(item);
@@ -212,6 +222,127 @@ private slots:
         QVERIFY2(popup, "A real calendar button click must create a visible details window through PanelHost");
         QCOMPARE(popup->rootObject()->property("moduleName").toString(), "calendar");
         QTest::keyClick(popup, Qt::Key_Escape); QTest::qWait(10); QVERIFY(!popup->isVisible());
+    }
+    void popupEvents_data() {
+        QTest::addColumn<QString>("edge");
+        for (const auto &edge : {"top", "bottom", "left", "right"}) QTest::newRow(edge) << QString(edge);
+    }
+    void popupEvents() {
+        QFETCH(QString, edge);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        const auto text = QString("[ui]\nshow_settings=false\nclose_on_focus_loss=false\n[[panels]]\nedge='%1'\nlength=700\nmodules=['calendar','volume','media']\n").arg(edge);
+        QVERIFY(config.previewText(text));
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        FixtureService service; service.available = false;
+        QVariantMap services; for (const auto &name : {"volume", "media"}) services[name] = QVariant::fromValue(&service);
+        engine.rootContext()->setContextProperty("Services", services);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        QSignalSpy lastClosed(qGuiApp, &QGuiApplication::lastWindowClosed);
+        Alure::PanelHost host(config, engine, true);
+        const auto barWindow = []() -> QQuickView * {
+            for (auto *w : QGuiApplication::topLevelWindows()) if (w->title() == "Alure · main") return qobject_cast<QQuickView *>(w);
+            return nullptr;
+        };
+        const auto popupWindow = []() -> QQuickView * {
+            for (auto *w : QGuiApplication::topLevelWindows()) if (w->title() == "Alure details" && w->isVisible()) return qobject_cast<QQuickView *>(w);
+            return nullptr;
+        };
+        auto *bar = barWindow(); QVERIFY(bar); QTest::qWait(30);
+        const bool vertical = edge == "left" || edge == "right";
+        QList<int> positions;
+        for (const auto &name : {"calendar", "volume", "media"}) {
+            auto *button = itemNamed(bar->rootObject(), QString(name) + "-button"); QVERIFY(button);
+            const QRect source = Alure::visiblePopupAnchor(button);
+            clickItem(bar, button);
+            QTRY_VERIFY(popupWindow()); auto *popup = popupWindow();
+            QCOMPARE(popup->transientParent(), bar); QCOMPARE(popup->type(), Qt::Popup);
+            const auto p = Alure::popupPlacement(source, bar->size(), bar->screen()->size(), edge, config.model().value("ui").toMap());
+            QCOMPARE(popup->property("_q_waylandPopupAnchorRect").toRect(), p.anchorRect);
+            QCOMPARE(popup->property("_q_waylandPopupAnchor").value<Qt::Edges>(), p.anchor);
+            QCOMPARE(popup->property("_q_waylandPopupGravity").value<Qt::Edges>(), p.gravity);
+            QCOMPARE(popup->property("_q_waylandPopupConstraintAdjustment").toUInt(), 15u);
+            positions << (vertical ? p.anchorRect.y() : p.anchorRect.x());
+            QTest::keyClick(popup, Qt::Key_Escape); QTRY_VERIFY(!popupWindow());
+            QVERIFY(bar->isVisible()); QCOMPARE(lastClosed.size(), 0);
+        }
+        QVERIFY(positions[0] < positions[1]); QVERIFY(positions[1] < positions[2]);
+        // Reopen and close via actual widget and native close event, without closing the shell's bar.
+        auto *button = itemNamed(bar->rootObject(), "calendar-button");
+        clickItem(bar, button); QTRY_VERIFY(popupWindow());
+        clickItem(popupWindow(), itemNamed(popupWindow()->rootObject(), "popup-close")); QTRY_VERIFY(!popupWindow());
+        clickItem(bar, button); QTRY_VERIFY(popupWindow());
+        QCloseEvent close; QCoreApplication::sendEvent(popupWindow(), &close); QTRY_VERIFY(!popupWindow());
+        QCOMPARE(lastClosed.size(), 0);
+        // Pending mouse-triggered open is invalidated before its queued callback can see stale objects.
+        QPointer<QQuickView> oldBar = bar;
+        clickWithoutProcessing(bar, button); QVERIFY(!popupWindow()); host.rebuild();
+        QVERIFY(!oldBar); QTest::qWait(20); QVERIFY(!popupWindow());
+        bar = barWindow(); QVERIFY(bar); button = itemNamed(bar->rootObject(), "calendar-button");
+        clickWithoutProcessing(bar, button); QVERIFY(!popupWindow());
+        QVERIFY(config.previewText(text + "[theme]\nname='dawn'\n"));
+        QTest::qWait(30); QVERIFY(!popupWindow());
+        bar = barWindow(); QVERIFY(bar); button = itemNamed(bar->rootObject(), "calendar-button");
+        clickWithoutProcessing(bar, button); QVERIFY(!popupWindow());
+        // Offscreen has no real hotplug. Exercise the application's actual screen-removal signal path.
+        QVERIFY(QMetaObject::invokeMethod(qGuiApp, "screenRemoved", Qt::DirectConnection, Q_ARG(QScreen *, bar->screen())));
+        QTest::qWait(30); QVERIFY(!popupWindow());
+        bar = barWindow(); QVERIFY(bar); button = itemNamed(bar->rootObject(), "calendar-button");
+        clickWithoutProcessing(bar, button); QVERIFY(!popupWindow()); delete button->parentItem();
+        QTest::qWait(20); QVERIFY(!popupWindow());
+        // Legacy/mismatched-source requests must not fall back to a wrong panel/output.
+        host.openModule("calendar", "main", bar->screen()->name());
+        host.openModule("calendar", "wrong-panel", bar->screen()->name(), bar->rootObject());
+        QTest::qWait(20); QVERIFY(!popupWindow());
+        auto custom = text; custom.replace("show_settings=false", "show_settings=false\nescape_closes=false\npopup_gap=256\npopup_width=1920\npopup_height=2160");
+        QVERIFY(config.previewText(custom)); QTest::qWait(30);
+        bar = barWindow(); button = itemNamed(bar->rootObject(), "calendar-button");
+        clickItem(bar, button); QTRY_VERIFY(popupWindow());
+        QTest::keyClick(popupWindow(), Qt::Key_Escape); QTest::qWait(10); QVERIFY(popupWindow());
+        QVERIFY(popupWindow()->width() <= bar->screen()->size().width());
+        QVERIFY(popupWindow()->height() <= bar->screen()->size().height());
+        clickItem(popupWindow(), itemNamed(popupWindow()->rootObject(), "popup-close")); QTRY_VERIFY(!popupWindow());
+        QCOMPARE(warnings.size(), 0);
+    }
+    void scrolledPopupSource_data() {
+        QTest::addColumn<bool>("vertical"); QTest::addColumn<QString>("module");
+        for (bool vertical : {false, true}) for (const auto &module : {"workspaces", "tray"})
+            QTest::newRow(qPrintable(QString("%1-%2").arg(module).arg(vertical))) << vertical << QString(module);
+    }
+    void scrolledPopupSource() {
+        QFETCH(bool, vertical); QFETCH(QString, module);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QVERIFY(config.previewText(QString("[ui]\nshow_settings=false\n[modules.%1.behavior]\nallow_actions=false\n[modules.%1.style]\nmax_width=400\n[[panels]]\nedge='%2'\nlength=220\nmodules=['calendar','%1']").arg(module, vertical ? "left" : "top")));
+        FixtureService service;
+        for (int i = 0; i < 10; ++i) service.items << QVariantMap{{"id", QString::number(i)}, {"idx", i}, {"name", QString("Space %1").arg(i)}, {"Title", QString("Tray %1").arg(i)}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider); engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{module, QVariant::fromValue(&service)}});
+        Alure::PanelHost host(config, engine, true);
+        QQuickView *bar = nullptr;
+        for (auto *w : QGuiApplication::topLevelWindows()) if (w->title() == "Alure · main") bar = qobject_cast<QQuickView *>(w);
+        QVERIFY(bar); QTest::qWait(30);
+        auto *outer = itemNamed(bar->rootObject(), "panel-modules");
+        auto *inner = itemNamed(bar->rootObject(), module + "-list"); QVERIFY(outer); QVERIFY(inner);
+        outer->setProperty(vertical ? "contentY" : "contentX", vertical ? 32 : 120);
+        inner->setProperty(vertical ? "contentY" : "contentX", vertical ? 170 : 300);
+        QTest::qWait(20);
+        QQuickItem *entry = nullptr; QRect clipped;
+        for (int i = 0; i < 10; ++i) {
+            auto *candidate = itemNamed(bar->rootObject(), module + "-entry-" + QString::number(i));
+            if (!candidate) continue;
+            const auto rect = Alure::visiblePopupAnchor(candidate);
+            if (rect.width() > 10 && rect.height() > 10) { entry = candidate; clipped = rect; break; }
+        }
+        QVERIFY(entry); QVERIFY(QRect(QPoint(), bar->size()).contains(clipped));
+        QTest::mouseClick(bar, Qt::LeftButton, Qt::NoModifier, clipped.center()); QTest::qWait(30);
+        QQuickView *popup = nullptr;
+        for (auto *w : QGuiApplication::topLevelWindows()) if (w->title() == "Alure details" && w->isVisible()) popup = qobject_cast<QQuickView *>(w);
+        QVERIFY(popup);
+        const auto p = Alure::popupPlacement(clipped, bar->size(), bar->screen()->size(), vertical ? "left" : "top", config.model().value("ui").toMap());
+        QCOMPARE(popup->property("_q_waylandPopupAnchorRect").toRect(), p.anchorRect);
+        QCOMPARE(popup->transientParent(), bar);
+        QVERIFY(service.lastAction.isEmpty());
+        QTest::keyClick(popup, Qt::Key_Escape); QTRY_VERIFY(!popup->isVisible());
     }
     void settingsClose_data() {
         QTest::addColumn<QString>("draftKind"); QTest::addColumn<QString>("action");

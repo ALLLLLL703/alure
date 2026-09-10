@@ -15,13 +15,15 @@ See [architecture](docs/architecture.md), [configuration](docs/configuration.md)
 ## Build
 
 System dependencies (no downloads by CMake): C++20 compiler, CMake >=3.24, Ninja,
-Qt >=6.5 Core/Gui/Quick/QuickControls2/QuickDialogs2/Svg/DBus/Network/Test, Qt Wayland runtime,
-LayerShellQt (Interface target with `setExclusiveEdge`, tested with installed KDE
-6.6-era API), and toml++ >=3.4. On Arch these correspond to `base-devel cmake
+Qt >=6.9 Core/Gui/Quick/QuickControls2/QuickDialogs2/Svg/DBus/Network/Test, Qt Wayland runtime,
+LayerShellQt >=6.6 (Interface target with `setExclusiveEdge`, `setScreen`,
+`setDesiredSize`; tested with Qt 6.11.2 / LayerShellQt 6.7.5), and toml++ >=3.4. On Arch these correspond to `base-devel cmake
 ninja qt6-base qt6-declarative qt6-svg qt6-wayland layer-shell-qt tomlplusplus`.
 Qt Test and `dbus-run-session` are only required with BUILD_TESTING=ON. No packages are installed by Alure. Runtime integrations use optional `wpctl`,
 `checkupdates`, `nmcli`, Niri IPC, session DBus, BlueZ and sysfs; absent providers
-produce diagnostics, not simulated data.
+produce diagnostics, not simulated data. Module popups rely on Qt Wayland 6.9+
+explicit xdg-positioner overrides and LayerShellQt transient popup attachment;
+see [native popup compatibility](docs/interface.md#native-popup-implementation-and-verification).
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX="$HOME/.local"

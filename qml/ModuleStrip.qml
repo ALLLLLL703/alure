@@ -7,7 +7,7 @@ Item {
     required property string moduleName
     required property bool vertical
     required property real crossSize
-    signal requested()
+    signal requested(Item anchor)
     readonly property var config: Config.model.modules[moduleName]
     readonly property var style: config.style
     readonly property var service: moduleName === "calendar" ? null : Services[moduleName] || null
@@ -28,11 +28,12 @@ Item {
         foreground: root.style.foreground || Config.model.theme.palette.foreground
         baseColor: root.style.background || "transparent"
         Accessible.name: Ui.title(root.moduleName) + ": " + root.summary
-        onClicked: root.requested()
+        onClicked: root.requested(main)
         accessibleDescription: Ui.title(root.moduleName) + " · " + root.summary
     }
     Flickable {
         id: strip
+        objectName: root.moduleName + "-list"
         anchors.fill: parent
         visible: root.listMode
         clip: true
@@ -61,14 +62,14 @@ Item {
                     baseColor: root.style.background || "transparent"
                     Accessible.name: root.moduleName === "workspaces" ? "Workspace " + (modelData.name || modelData.idx) + " · " + modelData.output : modelData.Title || modelData.id
                     onClicked: {
-                        if (!root.config.behavior.allow_actions) { root.requested(); return }
+                        if (!root.config.behavior.allow_actions) { root.requested(entry); return }
                         const point = mapToGlobal(width / 2, height / 2)
                         root.service.action("activate", {id: modelData.id, x: Math.round(point.x), y: Math.round(point.y)})
                     }
                     TapHandler {
                         acceptedButtons: Qt.RightButton | Qt.MiddleButton
                         onTapped: function(eventPoint, button) {
-                            if (root.moduleName !== "tray" || !root.config.behavior.allow_actions) { root.requested(); return }
+                            if (root.moduleName !== "tray" || !root.config.behavior.allow_actions) { root.requested(entry); return }
                             const point = entry.mapToGlobal(entry.width / 2, entry.height / 2)
                             root.service.action(button === Qt.MiddleButton ? "secondaryActivate" : "contextMenu", {id: entry.modelData.id, x: Math.round(point.x), y: Math.round(point.y)})
                         }

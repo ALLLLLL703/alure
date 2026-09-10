@@ -9,6 +9,7 @@
 #include <vector>
 class QQmlEngine;
 class QQuickView;
+class QQuickItem;
 class QScreen;
 namespace Alure {
 class ConfigStore;
@@ -29,13 +30,14 @@ public:
     PanelHost(ConfigStore &config, QQmlEngine &engine, bool preview, QObject *parent = nullptr);
     ~PanelHost() override;
     void rebuild();
-    Q_INVOKABLE void openModule(const QString &name, const QString &panelId, const QString &output);
+    Q_INVOKABLE void openModule(const QString &name, const QString &panelId, const QString &output, QQuickItem *anchor = nullptr);
     Q_INVOKABLE void closePopup();
     Q_INVOKABLE bool openSettings();
     Q_INVOKABLE void closeToast();
     void syncNotifications(const QVariantList &items);
 private:
-    void createAuxiliary(const QString &source, const QVariantMap &properties, const QVariantMap &panel, QScreen *screen, bool toast);
+    void createPopup(const QString &name, const QVariantMap &panel, QQuickView *parent, QQuickItem *anchor);
+    void createToast(const QVariantMap &properties, QScreen *screen);
     void scheduleRebuild();
     void trace(const QString &message) const;
     ConfigStore &m_config;
@@ -47,5 +49,6 @@ private:
     QSet<QString> m_seenNotifications;
     QString m_toastId;
     bool m_popupHadFocus = false;
+    quint64 m_popupRequest = 0;
 };
 }

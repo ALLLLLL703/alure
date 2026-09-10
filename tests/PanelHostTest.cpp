@@ -1,9 +1,53 @@
 #include "ConfigStore.h"
 #include "PanelHost.h"
+#include "PopupPlacement.h"
 #include <QtTest>
 class PanelHostTest : public QObject {
     Q_OBJECT
 private slots:
+    void popupPlacement_data() {
+        QTest::addColumn<QString>("edge"); QTest::addColumn<QString>("alignment"); QTest::addColumn<int>("offset");
+        for (const auto &edge : {"top", "bottom", "left", "right"})
+            for (const auto &alignment : {"start", "center", "end"})
+                for (int offset : {0, 300, 640})
+                    QTest::newRow(qPrintable(QString("%1-%2-%3").arg(edge, alignment).arg(offset))) << QString(edge) << QString(alignment) << offset;
+    }
+    void popupPlacement() {
+        QFETCH(QString, edge); QFETCH(QString, alignment); QFETCH(int, offset);
+        QVariantMap model; QString error; QVERIFY(Alure::ConfigStore::parse({}, model, error));
+        auto ui = model.value("ui").toMap(); ui["popup_alignment"] = alignment;
+        const bool vertical = edge == "left" || edge == "right";
+        const QSize parent = vertical ? QSize(44, 700) : QSize(700, 44);
+        const QRect clicked = vertical ? QRect(5, offset, 30, 60) : QRect(offset, 5, 60, 30);
+        const auto p = Alure::popupPlacement(clicked, parent, {800, 800}, edge, ui);
+        QVERIFY(QRect(QPoint(), parent).contains(p.anchorRect));
+        QCOMPARE(p.padding, 8); QCOMPARE(p.size, QSize(456, 576));
+        const auto direction = edge == "top" ? Qt::BottomEdge : edge == "bottom" ? Qt::TopEdge : edge == "left" ? Qt::RightEdge : Qt::LeftEdge;
+        QVERIFY(p.anchor.testFlag(direction)); QVERIFY(p.gravity.testFlag(direction));
+        if (edge == "top") QCOMPARE(p.position.y(), parent.height());
+        if (edge == "bottom") QCOMPARE(p.position.y() + p.size.height(), 0);
+        if (edge == "left") QCOMPARE(p.position.x(), parent.width());
+        if (edge == "right") QCOMPARE(p.position.x() + p.size.width(), 0);
+        const int along = vertical ? p.position.y() : p.position.x();
+        const int length = vertical ? p.size.height() : p.size.width();
+        QCOMPARE(along, alignment == "start" ? offset : alignment == "end" ? offset + 60 - length : offset + 30 - length / 2);
+    }
+    void popupConstraintsAndOverrides() {
+        QVariantMap model; QString error; QVERIFY(Alure::ConfigStore::parse({}, model, error));
+        auto ui = model.value("ui").toMap(); ui["popup_gap"] = 256;
+        for (const auto &extent : {QSize(1, 1), QSize(100, 80), QSize(240, 240), QSize(3840, 2160)}) {
+            for (const auto &direction : {"top", "bottom", "left", "right"}) {
+                ui["popup_direction"] = direction;
+                const auto p = Alure::popupPlacement({-10, -10, 60, 60}, {44, 44}, extent, "top", ui);
+                QVERIFY(QRect(0, 0, 44, 44).contains(p.anchorRect));
+                QVERIFY(p.size.width() <= extent.width()); QVERIFY(p.size.height() <= extent.height());
+                QVERIFY(p.size.width() - 2 * p.padding >= 1); QVERIFY(p.size.height() - 2 * p.padding >= 1);
+                QVERIFY(p.padding <= std::min(extent.width(), extent.height()) / 4);
+            }
+        }
+        QVERIFY(Alure::popupPlacement({}, {44, 44}, {800, 600}, "top", ui).anchorRect.isEmpty());
+        QVERIFY(Alure::popupPlacement({100, 100, 40, 40}, {44, 44}, {800, 600}, "top", ui).anchorRect.isEmpty());
+    }
     void placement_data() {
         QTest::addColumn<QString>("edge"); QTest::addColumn<bool>("vertical"); QTest::addColumn<int>("anchor");
         QTest::newRow("top") << "top" << false << 1;

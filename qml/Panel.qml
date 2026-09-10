@@ -17,6 +17,7 @@ Item {
     }
     Flickable {
         id: modules
+        objectName: "panel-modules"
         anchors.fill: parent
         anchors.margins: root.inset
         clip: true
@@ -37,7 +38,7 @@ Item {
                     moduleName: modelData
                     vertical: root.vertical
                     crossSize: root.vertical ? modules.width : modules.height
-                    onRequested: Shell.openModule(moduleName, root.panel.id, root.outputName)
+                    onRequested: anchor => Shell.openModule(moduleName, root.panel.id, root.outputName, anchor)
                 }
             }
             ShellButton {

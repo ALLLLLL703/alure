@@ -2,7 +2,6 @@
 #include "IconProvider.h"
 #include "PanelHost.h"
 #include "Services.h"
-#include <LayerShellQt/Shell>
 #include <QCommandLineParser>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -59,7 +58,8 @@ int main(int argc, char **argv) {
     }
     QQuickStyle::setStyle(config.model().value("settings").toMap().value("controls_style").toString());
     QQuickWindow::setDefaultAlphaBuffer(true);
-    if (!parser.isSet("settings") && !parser.isSet("preview")) LayerShellQt::Shell::useLayerShell();
+    // LayerShellQt::Window::get selects layer-shell per panel/toast. Keep the
+    // default xdg-shell integration for native transient module popups.
     QGuiApplication::setQuitOnLastWindowClosed(parser.isSet("settings") || parser.isSet("preview"));
     // Settings and validation never acquire names or start service processes.
     std::unique_ptr<Alure::Services> services;

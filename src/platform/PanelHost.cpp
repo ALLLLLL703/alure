@@ -1,4 +1,5 @@
 #include "PanelHost.h"
+#include "PopupPlacement.h"
 #include "ConfigStore.h"
 #include <QGuiApplication>
 #include <QQmlEngine>
@@ -45,6 +46,7 @@ PanelHost::PanelHost(ConfigStore &config, QQmlEngine &engine, bool preview, QObj
 PanelHost::~PanelHost() = default;
 void PanelHost::scheduleRebuild() {
     if (m_rebuildPending) return;
+    closePopup();
     m_rebuildPending = true;
     QTimer::singleShot(0, this, [this] { m_rebuildPending = false; rebuild(); });
 }
@@ -57,6 +59,7 @@ void PanelHost::rebuild() {
     const auto iconTheme = m_config.model().value("theme").toMap().value("icon_theme").toString();
     static const QString desktopIconTheme = QIcon::themeName();
     QIcon::setThemeName(iconTheme.isEmpty() ? desktopIconTheme : iconTheme);
+    m_popup.reset(); // Destroy transient children before their layer parents.
     m_windows.clear();
     const auto screens = QGuiApplication::screens();
     for (auto *screen : screens) {
@@ -105,69 +108,103 @@ void PanelHost::rebuild() {
         if (!matched) qWarning().noquote() << "Panel" << panel.value("id").toString() << "waiting for output" << output;
     }
 }
-void PanelHost::closePopup() { trace("hide details"); if (m_popup) m_popup->hide(); m_popupHadFocus = false; }
+void PanelHost::closePopup() { ++m_popupRequest; trace("hide details"); if (m_popup) m_popup->hide(); m_popupHadFocus = false; }
 void PanelHost::closeToast() { if (m_toast) m_toast->hide(); }
 bool PanelHost::openSettings() {
     return QProcess::startDetached(QCoreApplication::applicationFilePath(), {"--settings", "--config", m_config.path()});
 }
-void PanelHost::openModule(const QString &name, const QString &panelId, const QString &output) {
+void PanelHost::openModule(const QString &name, const QString &panelId, const QString &output, QQuickItem *anchor) {
+    if (!anchor || m_rebuildPending) return; // Legacy callers without an actual source cannot be placed safely.
     const auto module = m_config.model().value("modules").toMap().value(name).toMap();
     if (!module.value("enabled").toBool() || !module.value("behavior").toMap().value("popup_enabled").toBool()) return;
     for (const auto &window : m_windows) {
-        if (window->property("panelId").toString() != panelId || window->screen()->name() != output) continue;
+        if (window.get() != anchor->window() || window->property("panelId").toString() != panelId ||
+            !window->screen() || window->screen()->name() != output || visiblePopupAnchor(anchor).isEmpty()) continue;
         for (const auto &entry : m_config.model().value("panels").toList()) {
             const auto panel = entry.toMap();
-            if (panel.value("id").toString() == panelId) {
-                // Defer destruction of any previous QML tree beyond the triggering handler.
-                QTimer::singleShot(0, this, [this, name, panel, screen = QPointer<QScreen>(window->screen())] {
-                    if (screen) createAuxiliary("Popup.qml", {{"moduleName", name}}, panel, screen, false);
-                });
-                return;
-            }
+            if (panel.value("id").toString() != panelId) continue;
+            closePopup();
+            const auto request = ++m_popupRequest;
+            // A config reload, output removal, source destruction or later click cancels this request.
+            QTimer::singleShot(0, this, [this, name, panel, request, parent = QPointer<QQuickView>(window.get()),
+                                       item = QPointer<QQuickItem>(anchor), screen = QPointer<QScreen>(window->screen())] {
+                if (request == m_popupRequest && !m_rebuildPending && parent && item && screen &&
+                    parent->isVisible() && parent->screen() == screen && item->window() == parent &&
+                    QGuiApplication::screens().contains(screen)) createPopup(name, panel, parent, item);
+            });
+            return;
         }
     }
 }
-void PanelHost::createAuxiliary(const QString &source, const QVariantMap &properties, const QVariantMap &panel, QScreen *screen, bool toast) {
-    auto &owned = toast ? m_toast : m_popup;
-    owned.reset();
-    if (!toast) m_popupHadFocus = false;
-    const auto ui = m_config.model().value("ui").toMap();
-    const auto toastConfig = ui.value("toast").toMap();
-    const int inset = toast ? toastConfig.value("margin").toInt() :
-        panel.value("thickness").toInt() + panel.value("margins").toMap().value(panel.value("edge").toString()).toInt() + ui.value("popup_gap").toInt();
-    const auto edge = toast ? toastConfig.value("edge").toString() : panel.value("edge").toString();
-    const int gap = ui.value("popup_gap").toInt();
-    const QSize extent = screen->size();
-    const int xInset = std::clamp(edge == "left" || edge == "right" ? inset : (toast ? inset : gap), 0, std::max(0, extent.width() - 1));
-    const int yInset = std::clamp(edge == "top" || edge == "bottom" ? inset : gap, 0, std::max(0, extent.height() - 1));
-    QSize size(std::max(1, std::min(toast ? toastConfig.value("width").toInt() : ui.value("popup_width").toInt(), extent.width() - xInset - gap)),
-               std::max(1, std::min(toast ? toastConfig.value("height").toInt() : ui.value("popup_height").toInt(), extent.height() - yInset - gap)));
+void PanelHost::createPopup(const QString &name, const QVariantMap &panel, QQuickView *parent, QQuickItem *anchor) {
+    const auto p = popupPlacement(visiblePopupAnchor(anchor), parent->size(), parent->screen()->size(),
+                                  panel.value("edge").toString(), m_config.model().value("ui").toMap());
+    if (p.anchorRect.isEmpty()) return;
+    m_popup.reset();
+    m_popupHadFocus = false;
     auto view = std::make_unique<QQuickView>(&m_engine, nullptr);
-    view->setScreen(screen); view->setColor(Qt::transparent);
-    view->setTitle(toast ? "Alure notification" : "Alure details");
-    view->setResizeMode(QQuickView::SizeRootObjectToView); view->resize(size);
-    if (!m_preview) {
-        using W = LayerShellQt::Window;
-        view->setFlags(Qt::FramelessWindowHint | (toast ? Qt::WindowDoesNotAcceptFocus : Qt::WindowFlags()));
-        auto *layer = W::get(view.get());
-        layer->setScope(toast ? "alure-toast" : "alure-popup"); layer->setScreen(screen);
-        layer->setLayer(W::LayerOverlay); layer->setExclusiveZone(-1); layer->setDesiredSize(size);
-        layer->setAnchors(W::Anchors(edge == "left" ? W::AnchorLeft : W::AnchorRight) | (edge == "bottom" ? W::AnchorBottom : W::AnchorTop));
-        layer->setMargins(QMargins(xInset, yInset, xInset, yInset));
-        layer->setKeyboardInteractivity(toast ? W::KeyboardInteractivityNone : W::KeyboardInteractivityOnDemand);
-        layer->setActivateOnShow(!toast);
+    view->setFlags(Qt::Popup | Qt::FramelessWindowHint);
+    view->setTransientParent(parent);
+    view->setScreen(parent->screen());
+    view->setTitle("Alure details");
+    view->setColor(Qt::transparent);
+    view->setResizeMode(QQuickView::SizeRootObjectToView);
+    view->resize(p.size);
+    configurePopupPositioner(*view, p);
+    // Never mapToGlobal on Wayland. Qt's explicit positioner uses only parent-surface coordinates.
+    if (!QGuiApplication::platformName().startsWith("wayland")) {
+        const auto available = parent->screen()->availableGeometry();
+        auto pos = parent->mapToGlobal(p.position);
+        pos.setX(std::clamp(pos.x(), available.left(), std::max(available.left(), available.right() + 1 - p.size.width())));
+        pos.setY(std::clamp(pos.y(), available.top(), std::max(available.top(), available.bottom() + 1 - p.size.height())));
+        view->setPosition(pos);
     }
-    view->setInitialProperties(properties); view->setSource(QUrl("qrc:/qml/" + source));
-    if (view->status() == QQuickView::Error) { for (const auto &error : view->errors()) QTextStream(stderr) << error.toString() << '\n'; return; }
-    if (!toast) connect(view.get(), &QWindow::activeChanged, this, [this] {
+    view->setInitialProperties({{"moduleName", name}, {"popupPadding", p.padding}});
+    view->setSource(QUrl("qrc:/qml/ModulePopup.qml"));
+    if (view->status() == QQuickView::Error) { qWarning() << view->errors(); return; }
+    connect(view.get(), &QWindow::activeChanged, this, [this] {
         if (!m_popup) return;
-        trace(QString("details active=%1 close_on_focus_loss=%2").arg(m_popup->isActive()).arg(m_config.model().value("ui").toMap().value("close_on_focus_loss").toBool()));
         if (m_popup->isActive()) m_popupHadFocus = true;
         else if (m_popupHadFocus && m_config.model().value("ui").toMap().value("close_on_focus_loss").toBool()) closePopup();
     });
-    trace(toast ? "show toast" : "show details");
-    owned = std::move(view); owned->show();
-    if (!toast) { owned->requestActivate(); owned->rootObject()->forceActiveFocus(); }
+    trace(QString("show details %1 parent=%2 anchor=%3,%4 %5x%6").arg(name, panel.value("id").toString())
+          .arg(p.anchorRect.x()).arg(p.anchorRect.y()).arg(p.anchorRect.width()).arg(p.anchorRect.height()));
+    m_popup = std::move(view);
+    m_popup->show();
+    m_popup->requestActivate();
+    m_popup->rootObject()->forceActiveFocus();
+}
+void PanelHost::createToast(const QVariantMap &properties, QScreen *screen) {
+    m_toast.reset();
+    const auto ui = m_config.model().value("ui").toMap();
+    const auto toastConfig = ui.value("toast").toMap();
+    const int inset = toastConfig.value("margin").toInt();
+    const auto edge = toastConfig.value("edge").toString();
+    const int gap = ui.value("popup_gap").toInt();
+    const QSize extent = screen->size();
+    const int xInset = std::clamp(inset, 0, std::max(0, extent.width() - 1));
+    const int yInset = std::clamp(inset, 0, std::max(0, extent.height() - 1));
+    QSize size(std::max(1, std::min(toastConfig.value("width").toInt(), extent.width() - xInset - gap)),
+               std::max(1, std::min(toastConfig.value("height").toInt(), extent.height() - yInset - gap)));
+    auto view = std::make_unique<QQuickView>(&m_engine, nullptr);
+    view->setScreen(screen); view->setColor(Qt::transparent);
+    view->setTitle("Alure notification");
+    view->setResizeMode(QQuickView::SizeRootObjectToView); view->resize(size);
+    if (!m_preview) {
+        using W = LayerShellQt::Window;
+        view->setFlags(Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus);
+        auto *layer = W::get(view.get());
+        layer->setScope("alure-toast"); layer->setScreen(screen);
+        layer->setLayer(W::LayerOverlay); layer->setExclusiveZone(-1); layer->setDesiredSize(size);
+        layer->setAnchors(W::Anchors(W::AnchorRight) | (edge == "bottom" ? W::AnchorBottom : W::AnchorTop));
+        layer->setMargins(QMargins(xInset, yInset, xInset, yInset));
+        layer->setKeyboardInteractivity(W::KeyboardInteractivityNone);
+        layer->setActivateOnShow(false);
+    }
+    view->setInitialProperties(properties); view->setSource(QUrl("qrc:/qml/Toast.qml"));
+    if (view->status() == QQuickView::Error) { for (const auto &error : view->errors()) QTextStream(stderr) << error.toString() << '\n'; return; }
+    trace("show toast");
+    m_toast = std::move(view); m_toast->show();
 }
 void PanelHost::syncNotifications(const QVariantList &items) {
     const auto options = m_config.model().value("ui").toMap().value("toast").toMap();
@@ -190,7 +227,7 @@ void PanelHost::syncNotifications(const QVariantList &items) {
     QScreen *screen = nullptr;
     for (auto *candidate : QGuiApplication::screens())
         if ((options.value("output").toString() == "primary" && candidate == QGuiApplication::primaryScreen()) || options.value("output").toString() == candidate->name()) { screen = candidate; break; }
-    if (screen) createAuxiliary("Toast.qml", {{"notification", latest}}, {}, screen, true);
+    if (screen) createToast({{"notification", latest}}, screen);
 }
 
 }

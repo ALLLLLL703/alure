@@ -45,7 +45,7 @@ Control {
             Layout.fillWidth: true
             InfoText { text: Ui.title(root.moduleName); font.bold: true; font.pixelSize: root.theme.font_size * 1.35; Layout.fillWidth: true }
             ShellButton { text: "↻"; Accessible.name: "Refresh"; visible: !!root.service; enabled: !!root.service && !root.service.busy; onClicked: root.service.refresh() }
-            ShellButton { text: "×"; Accessible.name: "Close details"; onClicked: Shell.closePopup() }
+            ShellButton { objectName: "popup-close"; text: "×"; Accessible.name: "Close details"; onClicked: Shell.closePopup() }
         }
         InfoText {
             visible: root.moduleName !== "calendar"
