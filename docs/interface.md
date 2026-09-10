@@ -106,7 +106,11 @@ panel to reach history. An unmatched toast output produces no banner.
 
 Sidebar sections: Appearance (Theme & typography, Layout & popups, Settings window),
 Panels (add/remove/order and fields), Modules (enabled/style), Integrations
-(behavior), Configuration (advanced complete TOML). Common values use real controls:
+(behavior), Configuration (advanced complete TOML). Theme controls retain their
+priority order; remaining fields sort lexically by full TOML path, keeping nested
+fields such as panel margins together under a single heading. This is presentation
+only: browsing does not reorder or rewrite the TOML source.
+Common values use real controls:
 
 - Midnight/dawn/forest preview cards use the built-in TOML palettes; Preview applies
   the staged theme to this window only. Existing explicit palette overrides remain.
@@ -359,7 +363,15 @@ palette insertions under explicit/implicit ancestors and source-exact inline lea
 unsafe insertions return the byte-identical original. These automated tests do not
 claim native Wayland/compositor interaction validation.
 
+`QuickUi::settingsFieldOrdering` clicks Panels/Appearance repeatedly and inspects
+real QML delegates for exact panel ordering, four contiguous margin fields, one
+visible margins heading and retained theme priority. It covers inherited defaults
+and an explicit custom panel without modifying the saved source. Both rows failed
+against the prior comparator and pass with the lexical tie-break.
+
 Official widget sources consulted (no copied implementation):
+- https://doc.qt.io/qt-6/qtqml-javascript-hostenvironment.html (QML JavaScript built-ins;
+  full-path comparison avoids relying on equal-priority sort stability)
 - https://doc.qt.io/qt-6/qml-qtquick-controls-slider.html (`moved`, drag updates)
 - https://doc.qt.io/qt-6/qml-qtquick-dialogs-colordialog.html (accepted/cancel, nonnative option)
 - https://github.com/qt/qtdeclarative/blob/v6.11.2/src/quickdialogs/quickdialogsquickimpl/qml/ColorDialog.qml

@@ -34,7 +34,11 @@ function fields(map, prefix) {
     // QVariantList sequences are not JavaScript Arrays; normalize this read-only view.
     const result = Ui.fields(JSON.parse(JSON.stringify(map || {})), prefix).map(f => describe(f.path, f.value))
     const order = ["theme.name", "theme.font", "theme.font_size", "theme.opacity", "theme.spacing", "theme.padding", "theme.radius", "theme.icon_size", "theme.icon_mode", "theme.icon_theme"]
-    result.sort((a,b) => (order.indexOf(a.path) < 0 ? 100 : order.indexOf(a.path)) - (order.indexOf(b.path) < 0 ? 100 : order.indexOf(b.path)))
+    // Full-path ties keep nested groups contiguous even with an unstable JS sort.
+    result.sort((a,b) => {
+        const priority = (order.indexOf(a.path) < 0 ? 100 : order.indexOf(a.path)) - (order.indexOf(b.path) < 0 ? 100 : order.indexOf(b.path))
+        return priority || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+    })
     result.forEach((field, index) => { field.showGroup = field.group.length > 0 && (index === 0 || result[index - 1].group !== field.group) })
     return result
 }

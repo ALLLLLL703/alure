@@ -464,6 +464,50 @@ private slots:
         QVERIFY(QFile::exists(config.path())); QVERIFY(config.reload()); QCOMPARE(config.model().value("theme").toMap().value("icon_theme").toString(), escaped);
         QCOMPARE(warnings.size(), 0);
     }
+    void settingsFieldOrdering_data() {
+        QTest::addColumn<QString>("source");
+        QTest::newRow("inherited-panel") << QString("[theme]\nname='forest'\n");
+        QTest::newRow("explicit-panel") << QString("[[panels]]\nthickness=48\nmodules=['calendar','volume']\nmargins={top=21,right=22,bottom=23,left=24}\nid='ordered'\nedge='left'\n");
+    }
+    void settingsFieldOrdering() {
+        QFETCH(QString, source);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload()); QVERIFY(config.saveText(source));
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider); engine.rootContext()->setContextProperty("Config", &config);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings); engine.load(QUrl("qrc:/qml/Settings.qml")); QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window); window->requestActivate(); QTest::qWait(30);
+        const auto find = [&](const QString &name) { return itemNamed(window->contentItem(), name); };
+        // Inspect real delegates, not just the helper's return value. Navigation clicks
+        // recreate them and must retain both theme priority and contiguous panel groups.
+        const auto fieldPaths = [&] {
+            QStringList paths;
+            std::function<void(QQuickItem *)> visit = [&](QQuickItem *item) {
+                const auto spec = item->property("spec").toMap();
+                if (spec.contains("path")) paths << spec.value("path").toString();
+                for (auto *child : item->childItems()) visit(child);
+            };
+            visit(find("settings-form-scroll"));
+            return paths;
+        };
+        const QStringList themePriority{"theme.name", "theme.font", "theme.font_size", "theme.opacity", "theme.spacing", "theme.padding", "theme.radius", "theme.icon_size", "theme.icon_mode", "theme.icon_theme"};
+        const QStringList expectedPanel{"panels.0.edge", "panels.0.enabled", "panels.0.exclusive_zone", "panels.0.id", "panels.0.layer", "panels.0.length", "panels.0.margins.bottom", "panels.0.margins.left", "panels.0.margins.right", "panels.0.margins.top", "panels.0.modules", "panels.0.output", "panels.0.thickness"};
+        for (int pass = 0; pass < 2; ++pass) {
+            QCOMPARE(fieldPaths().mid(0, themePriority.size()), themePriority);
+            const auto remaining = fieldPaths().mid(themePriority.size()); auto sorted = remaining; sorted.sort();
+            clickItem(window, find("settings-section-1")); QTest::qWait(20);
+            QCOMPARE(window->property("section").toInt(), 1);
+            QCOMPARE(fieldPaths(), expectedPanel);
+            int headings = 0;
+            std::function<void(QQuickItem *)> countHeadings = [&](QQuickItem *item) {
+                if (item->isVisible() && item->property("text").toString() == "Panel margins") ++headings;
+                for (auto *child : item->childItems()) countHeadings(child);
+            };
+            countHeadings(find("settings-form-scroll")); QCOMPARE(headings, 1);
+            QCOMPARE(remaining, sorted);
+            clickItem(window, find("settings-section-0")); QTest::qWait(20);
+        }
+        QVERIFY(!window->property("dirty").toBool()); QCOMPARE(config.source(), source);
+        QCOMPARE(warnings.size(), 0);
+    }
     void settingsInheritedPanel() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
         const QString source = "# minimal config\n[theme]\nname='forest' # retained\n"; QVERIFY(config.saveText(source));
