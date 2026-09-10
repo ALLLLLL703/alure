@@ -127,8 +127,6 @@ ApplicationWindow {
                 InfoText { text: Config.path; elide: Text.ElideMiddle; maximumLineCount: 1; Layout.fillWidth: true; color: window.theme.palette.muted }
                 Layout.fillWidth: true
             }
-            InfoText { text: window.dirty ? "Unsaved draft" : "Saved"; color: window.theme.palette.muted }
-            ShellButton { objectName: "settings-close"; text: "Close"; visible: Config.model.settings.show_close_button; onClicked: window.close() }
         }
         RowLayout {
             Layout.fillWidth: true

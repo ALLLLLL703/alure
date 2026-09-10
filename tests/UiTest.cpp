@@ -378,7 +378,7 @@ private slots:
         QSignalSpy lastClosed(qGuiApp, &QGuiApplication::lastWindowClosed);
         if (action == "cancel") QTest::keyClick(window, Qt::Key_W, Qt::ControlModifier);
         else if (action == "discard") window->close(); // Native close event, as used by the compositor.
-        else clickItem(window, find("settings-close"));
+        else window->close();
         if (!dirty) { QTRY_VERIFY(!window->isVisible()); return; }
         auto *dialog = window->findChild<QObject *>("settings-unsaved"); QVERIFY(dialog);
         QTRY_VERIFY(dialog->property("opened").toBool());
@@ -404,11 +404,12 @@ private slots:
     void settingsCloseConfiguration() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml"));
         QVERIFY(config.reload());
-        QVERIFY(config.saveText("[settings]\nshow_close_button=false\nclose_shortcut='Alt+X'\n"));
+        QVERIFY(config.saveText("[settings]\nclose_shortcut='Alt+X'\n"));
         QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider); engine.rootContext()->setContextProperty("Config", &config);
         engine.load(QUrl("qrc:/qml/Settings.qml")); QCOMPARE(engine.rootObjects().size(), 1);
         auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window); window->requestActivate(); QTest::qWait(30);
-        auto *button = itemNamed(window->contentItem(), "settings-close"); QVERIFY(button); QVERIFY(!button->isVisible());
+        QVERIFY(!itemNamed(window->contentItem(), "settings-close"));
+        QVERIFY(itemNamed(window->contentItem(), "settings-save")->isVisible());
         QTest::keyClick(window, Qt::Key_W, Qt::ControlModifier); QTest::qWait(20); QVERIFY(window->isVisible());
         QTest::keyClick(window, Qt::Key_X, Qt::AltModifier); QTRY_VERIFY(!window->isVisible());
     }

@@ -175,8 +175,10 @@ Do not verify custom update/power/connect actions on a live desktop inadvertentl
 The service layer returns raw data only. The v0.1 interface consumes module style
 and formatting; see [interface.md](interface.md) for supported boundaries.
 
-Settings close controls (take effect on Preview in settings, or next settings launch):
-`settings.show_close_button` is a boolean, default `true`.
+Settings uses normal window-manager closing, without an in-content Close button
+or saved-state badge. The bottom Save & apply remains; the title's `*` marks a draft.
+Legacy `settings.show_close_button` is preserved as an unknown key but has no effect.
+Settings shortcut (takes effect on Preview or next settings launch):
 `settings.close_shortcut` is a canonical Qt portable key sequence string, default
 `"Ctrl+W"`; `""` disables it. Invalid types/sequences produce diagnostics. Compositor
 close handling remains available independently; all routes guard unsaved edits.

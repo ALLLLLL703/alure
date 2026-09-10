@@ -18,7 +18,6 @@ icon_size = 18
 icon_theme = "" # empty respects the desktop / qt6ct default
 # Optional overrides: [theme.palette] background, surface, foreground, muted, accent, border
 [settings]
-show_close_button = true # available even without compositor decorations
 close_shortcut = "Ctrl+W" # Qt portable shortcut; empty disables
 controls_style = "Basic" # Basic or Fusion; restart settings/panels to change
 width = 900
