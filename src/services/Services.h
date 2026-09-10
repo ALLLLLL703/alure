@@ -1,0 +1,41 @@
+#pragma once
+#include "CommandServices.h"
+#include "NiriService.h"
+#include "DBusServices.h"
+#include "TrayService.h"
+#include "NotificationService.h"
+#include "ConfigStore.h"
+namespace Alure {
+class Services : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(Alure::Service* workspaces READ workspaces CONSTANT)
+    Q_PROPERTY(Alure::Service* media READ media CONSTANT)
+    Q_PROPERTY(Alure::Service* tray READ tray CONSTANT)
+    Q_PROPERTY(Alure::Service* volume READ volume CONSTANT)
+    Q_PROPERTY(Alure::Service* updates READ updates CONSTANT)
+    Q_PROPERTY(Alure::Service* wifi READ wifi CONSTANT)
+    Q_PROPERTY(Alure::Service* bluetooth READ bluetooth CONSTANT)
+    Q_PROPERTY(Alure::Service* notifications READ notifications CONSTANT)
+    Q_PROPERTY(Alure::Service* battery READ battery CONSTANT)
+public:
+    explicit Services(ConfigStore &config, QObject *parent = nullptr);
+    Service *workspaces() { return &m_workspaces; }
+    Service *media() { return &m_media; }
+    Service *tray() { return &m_tray; }
+    Service *volume() { return &m_volume; }
+    Service *updates() { return &m_updates; }
+    Service *wifi() { return &m_wifi; }
+    Service *bluetooth() { return &m_bluetooth; }
+    Service *notifications() { return &m_notifications; }
+    Service *battery() { return &m_battery; }
+private:
+    void apply(const QVariantMap &model);
+    NiriService m_workspaces;
+    CommandService m_volume{CommandService::Volume}, m_updates{CommandService::Updates}, m_wifi{CommandService::Wifi};
+    MediaService m_media;
+    TrayService m_tray;
+    BluetoothService m_bluetooth;
+    NotificationService m_notifications;
+    BatteryService m_battery;
+};
+}

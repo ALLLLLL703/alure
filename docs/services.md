@@ -1,0 +1,134 @@
+# System services — stage 2 handoff and readiness
+
+This stage implements real integrations, **not the module UI**. Panel.qml still
+shows the configurable foundation banner. Never present unavailable data as zero,
+an empty successful result, a fake workspace, or a battery on a desktop machine.
+
+## QML / ownership API
+
+`Services` is a context object in panel and preview mode, absent in settings and
+headless validation. It owns its nine QObject services by value; the engine and
+panels are destroyed before the services. Do not reparent or delete these objects.
+The context properties are `workspaces`, `media`, `tray`, `volume`, `updates`,
+`wifi`, `bluetooth`, `notifications`, `battery`. Each exposes:
+
+- `enabled`, `available`, `busy`, `diagnostic`, `state` (QVariantMap), `items`
+  (QVariantList of row maps); all notify through `changed`.
+- `refresh()` requests a read if enabled and not busy.
+- `action(name, arguments)` returns whether a request was accepted, **not whether
+  the asynchronous operation succeeded**. Invalid targets, unsupported actions,
+  disabled actions or a busy service return false. Follow busy/diagnostic after
+  acceptance. Errors clear snapshots, set available=false, and retry at interval.
+- Pending calls are tied to service lifetime/config generation; a reload cannot
+  publish an old async reply. Execution config changes stop the old process/socket,
+  clear snapshots and restart. Style/format-only changes do not restart services.
+  Disabled services have no timers/processes or owned bus names. Services run when
+  their module is enabled, even if no panel currently lists it; set enabled=false
+  to opt out. Notification server additionally requires server_enabled=true.
+
+Use `available`, not list length, as the health signal. Successful empty WiFi scan,
+zero updates, empty tray or empty notification history are legitimate observations.
+For a row-list Repeater, `modelData` is the row. Keep selected stable IDs across
+snapshot replacement, not row indices. Place all display formatting, selection,
+icons, ordering, popup geometry and interactions under the existing TOML UI model.
+
+## Feature matrix and action contracts
+
+| Service | Live snapshot and actions | Supported boundary / readiness |
+|---|---|---|
+| Niri | items: `id` **string**, `idx`, nullable `name`, `output`, `is_active`, `is_focused` and upstream workspace fields. `activate({id})` | Native newline JSON socket requests, stable **ID** activation across outputs. Poll/reconnect at interval (not event stream). Missing socket, disconnect, invalid replies and timeout clear data. Fixture has duplicate idx=1 on DP-1 and DP-2 and verifies ID=20, not idx. |
+| MPRIS | items: `service`, `title`, `artist` string list, `album`, `artUrl`, `playbackStatus`, `CanControl/CanPlay/CanPause/CanGoNext/CanGoPrevious`. `playPause/next/previous({service})` | Session-bus player discovery/GetAll polling, maximum 64 players. Capability checks before calls. No seek, queue, position clock or player launching. Art URL is metadata only; no downloads by service. UI must handle untrusted remote URLs deliberately. |
+| SNI tray | items: `id` (bus name + path), `Title`, `Status`, `IconName`, `AttentionIconName`, `ItemIsMenu`, `Menu` path string, `IconThemePath`, `iconUrl` PNG data URL. `activate/secondaryActivate/contextMenu({id,x,y})` | Hosts org.kde.StatusNotifierWatcher when free; otherwise cooperates with existing watcher and registers a host. No name stealing/queueing. Registration/removal and polling property changes; max 128 items. ARGB network-order pixmaps converted to PNG, largest valid image up to 512×512. ItemIsMenu routes primary action to ContextMenu. **No DBusMenu layout renderer**, overlays, tooltip rendering, Scroll or legacy XEmbed. Delegated ContextMenu may be unavailable for items requiring a host-side DBusMenu renderer. IconThemePath exposed but not searched by current icon provider. |
+| Volume | state: `percent`, `muted`. `setVolume({percent})`, `toggleMute({})` | Async wpctl with C-locale strict parser; debounced setter, configurable maximum. Default sink only; no sink selector, microphone or stream mixer. Reading can show existing >100% volume even if setter capped at 100. |
+| Updates | state: `count`; items: `name/current/next`. `update({})` | Async checkupdates; exit 2 is successful zero. Other nonzero exits fail. Only explicit action executes update_command, empty by default. No automatic install, AUR provider, privilege prompt or upgrade-output UI. Terminal argv can be configured by user; not run during tests. |
+| WiFi | state: active row `ssid/signal/active` if connected, `connected`, `powered`, `count`, `savedConnections` rows `uuid/name`. items: cached AP `active/ssid/signal` rows. `setPowered({powered:bool})`, `connectSaved({uuid})` | NetworkManager via nmcli: cached APs (`--rescan no`), radio state, saved WiFi UUIDs. Escaped colons/backslashes handled. Only observed saved WiFi UUIDs accepted. No forced scans, new connections, password collection/storage, secret agent or Ethernet/VPN UI. Existing NetworkManager secret/polkit agents may be needed; absence becomes a timeout/error. Empty AP list does not prove hardware presence; radio state is NetworkManager's global WiFi flag. |
+| Bluetooth | state: `adapters` rows `path/Powered/Discovering/Alias/Name/Address`, `connectedCount`; items: `path/Adapter/Connected/Paired/Trusted/Alias/Name/Address/Icon`. `setPowered({path,powered:bool})`, `connect/disconnect({path})` | BlueZ ObjectManager on system bus. At most 32 adapters/256 known devices. Connect only paired observed devices. No pairing/trust modification, agent, discovery session or Bluetooth battery support; polkit errors exposed. Missing adapter is unavailable. |
+| Notifications | state: `dnd/count/activeCount`; chronological items: `id/sender/appName/icon/summary/body/actions/urgency/active/createdAt/expiresAt/suppressed`, `closeReason` after closure; actions are `key/label` rows. `setDnd({dnd:bool})`, `dismiss({id})`, `invoke({id,key})`, `clearHistory({})` | Opt-in freedesktop server, does not replace an existing daemon. GetCapabilities/GetServerInformation/Notify/CloseNotification and close/action signals implemented. Replacement requires same sender and active ID. Plain text only, no markup/image hints/sound. DND retains history with suppressed=true; UI must suppress banners. No persistence across process/reconfiguration. Runtime DND resets to configured value on execution-config reload. |
+| Battery | state: first readable battery `name/percent/status`; items: all readable batteries | Linux sysfs capacity/status, configurable root for fixtures. No UPower dependency; no fabricated average, power profile action or time-to-empty. Missing/invalid battery is unavailable; UI should choose a row or honestly show multiple. |
+| Calendar/clock | No service yet | UI stage uses configured interval/time format; not a fake system integration. |
+
+Notification expiry 0 remains active until closed or bounded-history eviction;
+negative client expiry uses default_expire_ms; positive values clamp to max_expire_ms.
+Expiry checked at interval_ms granularity (default 1 second). History evicts oldest,
+closing active evictions with reason 3. Expiry=1, dismissal=2, explicit close=3;
+action invocation emits ActionInvoked and closes with reason 2. Text bounds:
+app name 256, icon 1024, summary 1024, body 16384 characters; at most 32 action
+pairs with 256-character keys/labels. Body is **plain untrusted text**; UI must set
+Text.PlainText and must not execute links/actions as arbitrary commands.
+
+## Resource/failure boundaries
+
+All external data reads and controls are asynchronous QProcess, local sockets or
+DBus calls; polls do not overlap. DBus name registration/unregistration itself
+uses Qt's synchronous **broker-only** API at acquisition/release; recurring owner
+checks and property reads are asynchronous. DBus deadline is timeout_ms per call,
+not an entire multi-player enumeration deadline. Each module can have at most
+128 pending DBus requests; config changes discard pending watchers. Qt/DBus has
+its own incoming-message size limits; unlike process/socket responses these are
+not capped before Qt demarshals a reply.
+
+Processes run direct argv, never shell interpolation, with LC_ALL=C, a 1 MiB
+combined stdout/stderr cap and deadline; process errors/timeouts are surfaced.
+Cancellation kills only Alure's direct child, not arbitrary descendants. Custom
+commands must not daemonize or spawn uncontrolled children; a launched terminal's
+own lifetime is outside Alure. **The updates timeout also applies to an explicit
+update_command: it can terminate the direct process. Do not configure a package
+manager directly unless you accept this; the empty default is intentionally safe.**
+QProcess destruction can briefly wait for the
+killed direct child during shutdown; there are no waitForFinished UI polls.
+Niri responses have a 1 MiB cap and deadline. Sysfs reads are bounded 4096-byte
+local files, not network filesystem support.
+
+MPRIS/tray/BlueZ and WiFi are periodic snapshots, not instant signal-driven models.
+An item/player disappearing during a batch can fail that snapshot; next successful
+poll recovers. A permanently broken tray item can make that batch unavailable.
+A session/system bus disconnect is reported, not faked. Qt default connection
+recovery after a **bus daemon restart** is not guaranteed: restart Alure then.
+Normal player/BlueZ service/Niri disappearance is retried without shell restart.
+Removing the last panel does not disable configured services. Preview runs enabled
+read services too and can host the tray; settings/validation never do.
+
+## Reproducible safe verification
+
+```
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+cmake --build build -j2
+ctest --test-dir build --output-on-failure
+# Isolated session AND system bus fixtures, no actual device controls:
+dbus-run-session -- ./build/tests/services_tests
+./build/alure --validate-config --config config/default.toml
+./build/alure --validate-config --config config/services-example.toml
+```
+
+Tests cover strict parsers, command timeout/output cap/missing executable/cancel,
+config validation/customization, disable/reload race, debounce, update opt-in,
+cached WiFi/radio/saved fixtures, battery files, Niri multi-output ID activation and
+reconnect, MPRIS discovery/capabilities/actions, BlueZ managed objects, default
+notification opt-out/name conflicts, real private-DBus Notify/expiry/action signals,
+replacement/DND/history bounds, SNI own/existing watcher cooperation, removal and
+pixmap byte order, and QML context access. No actual desktop controls or upgrade
+commands are used. Offscreen CLI tests are not Niri visual validation. Independent
+review and actual desktop interoperability/visual verification remain required.
+
+## Research sources (retrieved for this stage)
+
+- Niri authoritative serde requests/replies and WorkspaceReferenceArg::Id:
+  https://github.com/YaLTeR/niri/blob/main/niri-ipc/src/lib.rs
+- MPRIS Player interface / capability requirements:
+  https://specifications.freedesktop.org/mpris-spec/latest/Player_Interface.html
+- StatusNotifierWatcher / item specification:
+  https://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/StatusNotifierWatcher/
+  and https://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/StatusNotifierItem/
+- Notification methods/expiry/closed reasons:
+  https://specifications.freedesktop.org/notification/latest/protocol.html
+- BlueZ Device API: https://github.com/bluez/bluez/blob/master/doc/org.bluez.Device.rst
+- NetworkManager radio API: https://networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.html
+- WirePlumber: installed `wpctl --help` verified the get-volume/set-volume/set-mute
+  interface. Attempted https://pipewire.pages.freedesktop.org/wireplumber/tools/wpctl.html
+  returned HTTP 404; it is not claimed as verified upstream documentation.
+- checkupdates exit status: https://man.archlinux.org/man/checkupdates.8.en
+- Installed `niri msg action focus-workspace --help` confirms CLI references are
+  index/name, hence native JSON ID actions are used instead. Installed wpctl/nmcli
+  help and upstream documents were inspected; no upstream implementation code or
+  third-party assets copied. Authoritative references are protocol evidence, not
+  claims of live desktop interoperability.

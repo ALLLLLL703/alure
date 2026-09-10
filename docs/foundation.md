@@ -1,5 +1,8 @@
 # Foundation handoff
 
+Historical stage-1 record. Stage 2 now implements the service integrations; see
+[service handoff and readiness](services.md) for the current API and limitations.
+
 ## Public API and extension seams
 
 - `src/core/ConfigStore.h`: construct with an explicit path, call `reload()` before

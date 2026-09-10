@@ -25,7 +25,7 @@ label = "Alure"
 bold = true
 show_icon = true
 icon = "alure"
-notice = "Foundation · services arrive in the next stage"
+notice = "Foundation · module UI arrives in the next stage"
 show_notice = true
 [[panels]]
 id = "main"
@@ -39,17 +39,19 @@ layer = "top" # background, bottom, top, overlay
 margins = { top = 8, right = 8, bottom = 8, left = 8 }
 modules = ["workspaces", "media", "tray", "volume", "updates", "wifi", "bluetooth", "notifications", "calendar", "battery"]
 
-# Reserved service/UI contracts; these do not claim live functionality yet.
-# command is always an argv array, never shell text. Service stages extend these.
+# Live service contracts; UI styles/formats are consumed by the UI stage.
+# Commands are argv arrays, never shell text. Empty action commands disable actions.
 [modules.workspaces]
 enabled = true
 [modules.workspaces.style]
 show_icon = true
 show_label = true
 [modules.workspaces.behavior]
+allow_actions = true
+socket_path = "" # empty uses NIRI_SOCKET; reconnect at interval_ms
 interval_ms = 1000
 timeout_ms = 3000
-command = ["niri", "msg", "--json", "workspaces"]
+command = [] # Native JSON socket, no subprocess
 format = "{name}"
 [modules.media]
 enabled = true
@@ -57,6 +59,7 @@ enabled = true
 show_icon = true
 show_label = true
 [modules.media.behavior]
+allow_actions = true
 interval_ms = 1000
 timeout_ms = 3000
 command = []
@@ -67,6 +70,7 @@ enabled = true
 show_icon = true
 show_label = false
 [modules.tray.behavior]
+allow_actions = true
 interval_ms = 1000
 timeout_ms = 3000
 command = []
@@ -77,6 +81,11 @@ enabled = true
 show_icon = true
 show_label = true
 [modules.volume.behavior]
+allow_actions = true
+set_volume_command = ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@"]
+mute_command = ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]
+max_percent = 100
+debounce_ms = 100
 interval_ms = 2000
 timeout_ms = 3000
 command = ["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"]
@@ -87,6 +96,8 @@ enabled = true
 show_icon = true
 show_label = true
 [modules.updates.behavior]
+allow_actions = true
+update_command = [] # Explicit user action only; configure terminal + package manager argv
 interval_ms = 1800000
 timeout_ms = 120000
 command = ["checkupdates"]
@@ -97,9 +108,14 @@ enabled = true
 show_icon = true
 show_label = true
 [modules.wifi.behavior]
+allow_actions = true
+radio_command = ["nmcli", "radio", "wifi"]
+radio_status_command = ["nmcli", "-t", "-f", "WIFI", "general"]
+saved_command = ["nmcli", "-t", "-f", "UUID,NAME,TYPE", "connection", "show"]
+connect_command = ["nmcli", "connection", "up", "uuid"]
 interval_ms = 10000
 timeout_ms = 5000
-command = ["nmcli", "-t", "-f", "ACTIVE,SSID,SIGNAL", "device", "wifi"]
+command = ["nmcli", "-t", "-f", "ACTIVE,SSID,SIGNAL", "device", "wifi", "list", "--rescan", "no"]
 format = "{ssid}"
 [modules.bluetooth]
 enabled = true
@@ -107,9 +123,10 @@ enabled = true
 show_icon = true
 show_label = true
 [modules.bluetooth.behavior]
+allow_actions = true
 interval_ms = 10000
 timeout_ms = 5000
-command = ["bluetoothctl", "show"]
+command = [] # BlueZ DBus, no subprocess
 format = "{status}"
 [modules.notifications]
 enabled = true
@@ -117,6 +134,12 @@ enabled = true
 show_icon = true
 show_label = true
 [modules.notifications.behavior]
+allow_actions = true
+server_enabled = false # opt in; never replaces another notification daemon
+dnd = false
+history_limit = 100
+default_expire_ms = 5000
+max_expire_ms = 86400000
 interval_ms = 1000
 timeout_ms = 3000
 command = []
@@ -137,6 +160,7 @@ enabled = true
 show_icon = true
 show_label = true
 [modules.battery.behavior]
+sysfs_path = "/sys/class/power_supply"
 interval_ms = 30000
 timeout_ms = 3000
 command = []

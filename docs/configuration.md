@@ -90,8 +90,8 @@ focus suppression and reservations intentionally are not emulated.
 ### `[modules.<name>]`
 
 Known initial names: `workspaces`, `media`, `tray`, `volume`, `updates`, `wifi`,
-`bluetooth`, `notifications`, `calendar`, `battery`. **This stage does not render
-or execute these modules.** Their stable outer contract is:
+`bluetooth`, `notifications`, `calendar`, `battery`. **Live services now run for
+enabled modules; full module rendering awaits the UI stage.** Their stable outer contract is:
 
 - `enabled`: bool, true by default.
 - `style.show_icon`, `style.show_label`: bool, true except tray label false.
@@ -101,13 +101,53 @@ or execute these modules.** Their stable outer contract is:
   must be nonempty when array is nonempty. Empty means no external command.
   Never interpreted by a shell. Default command/interval/format for each module
   is listed explicitly in the canonical TOML example.
-- `behavior.format`: string. Placeholder examples reserve future service/UI
-  formatting contracts; no substitution occurs in the foundation banner.
+- `behavior.allow_actions`: bool, default true; false disables service controls.
+- `behavior.format`: string. The UI stage consumes formatting contracts; no
+  substitution occurs in the foundation banner.
 
 New named module tables are accepted, merged with the same common defaults
 (enabled, both labels/icons, interval 1000, timeout 3000, empty argv and format).
 This is an extension seam, **not a plugin loader**. Downstream implementations
 must add their supported keys' defaults, validation, examples, tests and docs
-before exposing new behavior. Built-ins currently reserve asynchronous DBus or
-bounded QProcess service implementations; nothing runs checkupdates or any live
-control merely because its command exists in the configuration.
+before exposing new behavior. Enabled volume/updates/WiFi services execute their
+**read** commands on startup/interval; control commands execute only via explicit
+action calls. See [service readiness and API](services.md) for live behavior and
+unsupported scope. Settings/validation run no services; preview does.
+
+
+### Service behavior keys and reload semantics
+
+Canonical defaults and complete argv are in `config/default.toml`; custom overrides
+are demonstrated in `config/services-example.toml`. All keys below are under
+`modules.<name>.behavior`, except the module's `enabled` switch. Type/range errors
+retain the prior model on runtime reload and prevent invalid startup as above.
+A valid change to enabled/execution behavior stops and restarts only that service;
+style/format-only changes do not reset it. Disabling stops timers and requests,
+kills its direct subprocess and releases owned bus names. Notification opt-in
+false also disables that service. Module presence/order in a panel is a UI concern,
+not a second enable switch. Disable unused modules explicitly to avoid their work.
+
+| Module | Additional keys / defaults / validation |
+|---|---|
+| workspaces | `socket_path=""`: string, empty selects NIRI_SOCKET; otherwise absolute path without NUL. Native JSON socket; `command` is unused. Default interval 1000, timeout 3000. |
+| media / tray | DBus integrations; `command` unused. Default interval 1000, timeout 3000. |
+| volume | `set_volume_command=["wpctl","set-volume","@DEFAULT_AUDIO_SINK@"]` appends a decimal volume ratio; `mute_command=["wpctl","set-mute","@DEFAULT_AUDIO_SINK@","toggle"]`; `max_percent=100` integer 1..150; `debounce_ms=100` integer 10..2000. Read interval 2000, timeout 3000. |
+| updates | `update_command=[]`: empty disables explicit update action. Default read `command=["checkupdates"]`, interval 1800000 (30 min), timeout 120000. No install command is preconfigured or automatic. |
+| wifi | `radio_command=["nmcli","radio","wifi"]` appends on/off; `radio_status_command=["nmcli","-t","-f","WIFI","general"]`; `saved_command=["nmcli","-t","-f","UUID,NAME,TYPE","connection","show"]`; `connect_command=["nmcli","connection","up","uuid"]` appends an observed UUID. Read command lists ACTIVE,SSID,SIGNAL with `--rescan no`. Interval 10000, timeout 5000 **per subprocess**. |
+| bluetooth | Native BlueZ DBus; `command` unused. Interval 10000, timeout 5000 per DBus call. |
+| notifications | `server_enabled=false` bool, explicit opt-in; `dnd=false` bool; `history_limit=100` integer 1..1000; `default_expire_ms=5000`, `max_expire_ms=86400000`, both integers 100..86400000 with default<=max. Interval 1000 governs retry/expiry resolution, timeout 3000. Changing execution config clears in-memory history and resets runtime DND. |
+| battery | `sysfs_path="/sys/class/power_supply"`: absolute nonempty path without NUL; fixture roots supported. Interval 30000; command/timeout unused for bounded local reads. |
+
+All known `*_command` options use the same argv-array validation as `command`:
+maximum 128 string entries without NUL, nonempty executable if supplied. Empty
+action arrays disable those actions; empty required **read** arrays produce an
+unavailable diagnostic. Native Niri/DBus/sysfs modules ignore command arrays;
+commands do not override their protocols. All query overrides must emit their
+provider's documented C-locale format; no generic command-output widget exists.
+Commands are trusted user configuration, not sandboxed, and never shell-expanded.
+If opting into an update terminal, supply executable and arguments separately;
+Alure does not add `sh -c`, authentication, confirmations or package installation.
+Do not verify custom update/power/connect actions on a live desktop inadvertently.
+
+The service layer returns raw data only. Module `style` and `format` still need the
+next stage's UI; they must not be advertised as rendering functionality yet.

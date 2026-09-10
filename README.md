@@ -1,22 +1,24 @@
 # Alure
 
 A TOML-configurable Qt Quick desktop **shell**, initially targeting Niri/Wayland.
-This commit is the usable **foundation**, not the finished shell: transparent
-multi-edge panel windows, three themes, SVG/theme icons, safe configuration
-loading/saving and a separate TOML settings editor. Service modules are reserved
-configuration contracts; no fake workspaces, battery or network data is shown.
+The foundation provides transparent multi-edge panels, three themes, SVG/theme
+icons, safe configuration and a separate TOML editor. **Real system services are
+now implemented**, while the full module UI is the next stage: the panel still
+shows its explicit foundation banner, not fake workspaces/battery/network data.
 
-See [architecture and requested product](docs/architecture.md),
-[configuration reference](docs/configuration.md) and [handoff](docs/foundation.md).
+See [architecture](docs/architecture.md), [configuration](docs/configuration.md),
+[service API/readiness/limits](docs/services.md) and [foundation handoff](docs/foundation.md).
 
 ## Build
 
 System dependencies (no downloads by CMake): C++20 compiler, CMake >=3.24, Ninja,
-Qt >=6.5 Core/Gui/Quick/QuickControls2/Svg/DBus/Test, Qt Wayland runtime,
+Qt >=6.5 Core/Gui/Quick/QuickControls2/Svg/DBus/Network/Test, Qt Wayland runtime,
 LayerShellQt (Interface target with `setExclusiveEdge`, tested with installed KDE
 6.6-era API), and toml++ >=3.4. On Arch these correspond to `base-devel cmake
 ninja qt6-base qt6-declarative qt6-svg qt6-wayland layer-shell-qt tomlplusplus`.
-Qt Test is only required with BUILD_TESTING=ON. No packages are installed by Alure.
+Qt Test and `dbus-run-session` are only required with BUILD_TESTING=ON. No packages are installed by Alure. Runtime integrations use optional `wpctl`,
+`checkupdates`, `nmcli`, Niri IPC, session DBus, BlueZ and sysfs; absent providers
+produce diagnostics, not simulated data.
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX="$HOME/.local"
@@ -37,6 +39,10 @@ Run `./build/alure` in a Wayland session only when ready to add real bars; it do
 not replace or stop any existing component. `--preview` uses ordinary windows,
 with neither exclusive zones nor layer-shell. `--settings` must be a **separate
 process**, never a popup in the panel process. They are mutually exclusive.
+Preview **does run enabled services** (including read-only update checks and
+cooperative tray hosting); settings/validation run none. Notifications are opt-in
+and never replace another daemon. Disable unused services with their module
+`enabled=false`; `config/services-example.toml` demonstrates supported overrides.
 `--quit-after-ms 500` provides bounded lifecycle smoke tests (1..600000 ms).
 
 ```sh
@@ -53,7 +59,7 @@ Wayland anchors, focus, stacking or exclusive zones. Those need a real Niri chec
 cmake --install build
 ```
 
-Installs `bin/alure`, `share/alure/{default,multi-panel}.toml`, and
+Installs `bin/alure`, `share/alure/{default,multi-panel,services-example}.toml`, and
 `${CMAKE_INSTALL_LIBDIR}/systemd/user/alure.service` under the configured prefix.
 QML, original icons, defaults and themes are embedded, so moving the executable
 works. The service's absolute ExecStart uses the **configure-time** prefix;

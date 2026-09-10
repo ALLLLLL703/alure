@@ -138,11 +138,34 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
             const QString path = "modules." + it.key() + ".behavior.";
             range(behavior, "interval_ms", 100, 86400000, path);
             range(behavior, "timeout_ms", 100, 600000, path);
-            const auto argv = behavior.value("command").toList();
-            if (argv.size() > 128) invalid(path + "command", "maximum 128 arguments");
-            for (const auto &arg : argv)
-                if (arg.metaType().id() != QMetaType::QString || arg.toString().contains(QChar::Null)) invalid(path + "command", "expected strings without NUL");
-            if (!argv.isEmpty() && argv.first().toString().trimmed().isEmpty()) invalid(path + "command", "executable must not be empty");
+            const auto knownBehavior = defaults.value("modules").toMap().value(it.key()).toMap().value("behavior").toMap();
+            for (auto option = behavior.begin(); option != behavior.end(); ++option) {
+                if (option.key() != "command" && !(option.key().endsWith("_command") && knownBehavior.contains(option.key()))) continue;
+                if (option.value().metaType().id() != QMetaType::QVariantList) invalid(path + option.key(), "expected argv array");
+                const auto argv = option.value().toList();
+                if (argv.size() > 128) invalid(path + option.key(), "maximum 128 arguments");
+                for (const auto &arg : argv)
+                    if (arg.metaType().id() != QMetaType::QString || arg.toString().contains(QChar::Null)) invalid(path + option.key(), "expected strings without NUL");
+                if (!argv.isEmpty() && argv.first().toString().trimmed().isEmpty()) invalid(path + option.key(), "executable must not be empty");
+            }
+            if (it.key() == "volume") {
+                range(behavior, "max_percent", 1, 150, path);
+                range(behavior, "debounce_ms", 10, 2000, path);
+            }
+            if (it.key() == "notifications") {
+                range(behavior, "history_limit", 1, 1000, path);
+                range(behavior, "default_expire_ms", 100, 86400000, path);
+                range(behavior, "max_expire_ms", 100, 86400000, path);
+                if (behavior.value("default_expire_ms").toInt() > behavior.value("max_expire_ms").toInt()) invalid(path + "default_expire_ms", "exceeds max_expire_ms");
+            }
+            if (it.key() == "workspaces") {
+                const auto socket = behavior.value("socket_path").toString();
+                if (socket.contains(QChar::Null) || (!socket.isEmpty() && !QDir::isAbsolutePath(socket))) invalid(path + "socket_path", "expected empty or absolute socket path without NUL");
+            }
+            if (it.key() == "battery") {
+                nonempty(behavior, "sysfs_path", path);
+                if (behavior.value("sysfs_path").toString().contains(QChar::Null) || !QDir::isAbsolutePath(behavior.value("sysfs_path").toString())) invalid(path + "sysfs_path", "expected absolute directory path");
+            }
             it.value() = module;
         }
         result["modules"] = modules;

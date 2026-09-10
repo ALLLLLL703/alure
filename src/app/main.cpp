@@ -1,6 +1,7 @@
 #include "ConfigStore.h"
 #include "IconProvider.h"
 #include "PanelHost.h"
+#include "Services.h"
 #include <LayerShellQt/Shell>
 #include <QCommandLineParser>
 #include <QGuiApplication>
@@ -58,9 +59,13 @@ int main(int argc, char **argv) {
     QQuickWindow::setDefaultAlphaBuffer(true);
     if (!parser.isSet("settings") && !parser.isSet("preview")) LayerShellQt::Shell::useLayerShell();
     QGuiApplication::setQuitOnLastWindowClosed(parser.isSet("settings") || parser.isSet("preview"));
+    // Settings and validation never acquire names or start service processes.
+    std::unique_ptr<Alure::Services> services;
+    if (!parser.isSet("settings")) services = std::make_unique<Alure::Services>(config);
     QQmlApplicationEngine engine;
     engine.addImageProvider("icons", new Alure::IconProvider); // ownership transferred to engine
     engine.rootContext()->setContextProperty("Config", &config);
+    if (services) engine.rootContext()->setContextProperty("Services", services.get());
     QObject::connect(&config, &Alure::ConfigStore::diagnosticChanged, &engine, [&config] {
         if (!config.diagnostic().isEmpty()) qWarning().noquote() << config.diagnostic();
     });

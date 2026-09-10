@@ -1,0 +1,26 @@
+# Merge with canonical defaults. All values apply on valid config reload.
+# Conservative service configuration example; no installation/update command.
+[modules.workspaces.behavior]
+interval_ms = 1500
+socket_path = "" # NIRI_SOCKET from this process's environment
+[modules.media.behavior]
+interval_ms = 2000
+[modules.volume.behavior]
+max_percent = 125
+debounce_ms = 150
+[modules.updates.behavior]
+interval_ms = 7200000
+update_command = [] # empty disables the explicit update action
+[modules.wifi.behavior]
+interval_ms = 15000
+allow_actions = false # read only; no radio or saved-connection action
+[modules.bluetooth]
+enabled = false
+[modules.notifications.behavior]
+server_enabled = false # set true only when choosing Alure as your notification daemon
+dnd = true
+history_limit = 50
+default_expire_ms = 8000
+max_expire_ms = 60000
+[modules.battery.behavior]
+sysfs_path = "/sys/class/power_supply"
