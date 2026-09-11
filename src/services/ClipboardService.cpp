@@ -48,7 +48,7 @@ void ClipboardService::clearPreview() { m_preview.clear(); m_image = {}; emit pr
 void ClipboardService::stop() {
     m_open = false; m_active = false; m_done = {}; m_pendingPreview.clear(); m_deadline.stop();
     if (m_process.state() != QProcess::NotRunning) m_process.kill();
-    m_output.clear(); m_input.clear(); clearPreview(); setBusy(false);
+    m_output.clear(); m_input.clear(); m_images.clear(); m_previews.clear(); clearPreview(); setBusy(false);
 }
 bool ClipboardService::run(const QStringList &argv, const QByteArray &input, std::function<void(QByteArray)> done) {
     if (argv.isEmpty() || argv.first().isEmpty() || m_process.state() != QProcess::NotRunning) return false;
@@ -77,7 +77,7 @@ void ClipboardService::finish(int exitCode, QProcess::ExitStatus status) {
     } else if (done) done(std::move(output));
     if (!m_active) {
         setBusy(false);
-        if (m_open && !m_pendingPreview.isEmpty()) { const auto id = std::exchange(m_pendingPreview, {}); previewItem(id); }
+        while (m_open && !m_active && !m_pendingPreview.isEmpty()) { const auto id = m_pendingPreview.takeFirst(); previewItem(id); }
     }
 }
 void ClipboardService::poll() {
@@ -100,13 +100,16 @@ void ClipboardService::poll() {
             for (const auto &entry : values) if (entry.toMap().value("id").toString() == selected) return entry;
             return QVariant{};
         };
-        if (rowFor(items()) != rowFor(rows)) clearPreview();
+        if (items() != rows) { m_previews.clear(); m_images.clear(); m_pendingPreview.clear(); clearPreview(); }
+        else if (rowFor(items()) != rowFor(rows)) clearPreview();
         publish({{"count", rows.size()}}, rows);
     });
 }
 void ClipboardService::previewItem(const QString &id) {
-    if (!m_open || !contains(id) || m_preview.value("id").toString() == id) return;
-    if (busy()) { m_pendingPreview = id; return; }
+    if (!m_open || !contains(id)) return;
+    const auto cached = m_previews.value(id).toMap();
+    if (!cached.isEmpty() && (cached.value("kind") != "image" || m_images.contains(id))) return;
+    if (busy()) { if (!m_pendingPreview.contains(id)) m_pendingPreview.append(id); return; }
     clearPreview();
     run(command("decode", id), {}, [this, id](const QByteArray &bytes) { renderPreview(id, bytes); });
 }
@@ -125,7 +128,9 @@ void ClipboardService::renderPreview(const QString &id, const QByteArray &bytes)
             m_image = reader.read();
             if (!m_image.isNull()) {
                 preview["kind"] = "image"; preview["width"] = size.width(); preview["height"] = size.height();
-                preview["imageUrl"] = QString("image://clipboard/%1").arg(++m_imageRevision);
+                m_images.setMaxCost(m_options.value("preview_cache_items").toInt());
+                m_images.insert(id, new QImage(m_image)); // QCache owns this bounded thumbnail.
+                preview["imageUrl"] = QString("image://clipboard/%1/%2").arg(id).arg(++m_imageRevision);
             } else preview["text"] = "Image data could not be decoded.";
         }
     } else {
@@ -135,7 +140,7 @@ void ClipboardService::renderPreview(const QString &id, const QByteArray &bytes)
             preview["kind"] = "text"; preview["text"] = text.left(limit); preview["truncated"] = text.size() > limit;
         }
     }
-    m_preview = preview; emit previewChanged();
+    m_preview = preview; m_previews[id] = preview; emit previewChanged();
 }
 bool ClipboardService::act(const QString &name, const QVariantMap &args) {
     if (!m_open) return false;

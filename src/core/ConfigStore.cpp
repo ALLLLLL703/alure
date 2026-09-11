@@ -164,6 +164,7 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
             const auto style = module.value("style").toMap();
             const QString stylePath = "modules." + it.key() + ".style.";
             if (it.key() == "workspaces") choice(style, "active_indicator", {"underline", "pill"}, stylePath);
+            range(style, "opacity", 0, 1, stylePath);
             range(style, "icon_size", 8, 128, stylePath);
             range(style, "min_width", 16, 1024, stylePath);
             range(style, "max_width", 16, 2048, stylePath);
@@ -197,6 +198,9 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
                 range(behavior, "max_bytes", 1024, 67108864, path);
                 range(behavior, "max_image_pixels", 1024, 67108864, path);
                 range(behavior, "preview_image_size", 64, 1024, path);
+                range(behavior, "preview_cache_items", 1, 128, path);
+                range(behavior, "inline_image_height", 48, 512, path);
+                range(behavior, "inline_text_lines", 2, 64, path);
                 range(behavior, "preview_text_chars", 128, 65536, path);
                 range(behavior, "cursor_timeout_ms", 50, 3000, path);
                 range(behavior, "cursor_gap", 0, 128, path);
@@ -263,6 +267,7 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
             range(panel, "thickness", 16, 512, "panels[].");
             range(panel, "length", 0, 32768, "panels[].");
             range(panel, "exclusive_zone", -1, 32768, "panels[].");
+            range(panel, "window_gap", -256, 256, "panels[].");
             const auto margins = panel.value("margins").toMap();
             for (const auto &key : {"top", "right", "bottom", "left"}) range(margins, key, 0, 4096, "panels[].margins.");
             QSet<QString> zonedModules;

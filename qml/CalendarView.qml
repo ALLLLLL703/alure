@@ -18,9 +18,9 @@ ColumnLayout {
     Timer { interval: root.behavior.interval_ms; running: true; repeat: true; onTriggered: root.today = new Date() }
     RowLayout {
         Layout.fillWidth: true
-        ShellButton { text: "‹"; Accessible.name: "Previous month"; enabled: root.behavior.allow_actions; onClicked: root.navigate(-1) }
+        ShellButton { iconName: "previous"; Accessible.name: "Previous month"; enabled: root.behavior.allow_actions; onClicked: root.navigate(-1) }
         InfoText { text: Qt.formatDate(new Date(root.year, root.month, 1), root.behavior.month_format); font.bold: true; horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true }
-        ShellButton { text: "›"; Accessible.name: "Next month"; enabled: root.behavior.allow_actions; onClicked: root.navigate(1) }
+        ShellButton { iconName: "next"; Accessible.name: "Next month"; enabled: root.behavior.allow_actions; onClicked: root.navigate(1) }
     }
     GridLayout {
         columns: 7

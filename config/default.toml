@@ -60,16 +60,17 @@ output = "primary" # primary, * (all outputs), or exact QScreen name
 edge = "top" # top, bottom, left, right
 thickness = 44
 length = 0 # 0 = fill output; otherwise logical pixels, clamped to output
+window_gap = 0 # signed extra reservation; negative compensates compositor gaps
 exclusive_zone = -1 # -1 = clamped thickness on wire; compositor adds edge margin
 # 0 = no reservation; >0 = explicit protocol zone (also excludes edge margin)
 layer = "top" # background, bottom, top, overlay
 margins = { top = 8, right = 8, bottom = 8, left = 8 }
 layout = "linear" # linear or three-zone; vertical panels use top/center/bottom
 spacer_size = 24 # logical pixels for each @spacer; @stretch shares remaining space
-modules = ["workspaces", "media", "tray", "volume", "updates", "wifi", "bluetooth", "notifications", "calendar", "battery"]
+modules = ["workspaces", "media", "tray", "volume", "updates", "wifi", "bluetooth", "notifications", "clipboard", "calendar", "battery"]
 modules_left = ["workspaces", "media"]
 modules_center = ["calendar"]
-modules_right = ["tray", "volume", "updates", "wifi", "bluetooth", "notifications", "battery"]
+modules_right = ["tray", "volume", "updates", "wifi", "bluetooth", "notifications", "clipboard", "battery"]
 # Lists accept @spacer, @stretch and @settings. Settings is appended if not placed.
 
 # Module UI and live service contracts.
@@ -77,6 +78,7 @@ modules_right = ["tray", "volume", "updates", "wifi", "bluetooth", "notification
 [modules.workspaces]
 enabled = true
 [modules.workspaces.style]
+opacity = 1.0 # per-module content and popup opacity, 0..1
 active_indicator = "underline" # underline or pill; one shared icon per module
 icon = "workspaces"
 icon_size = 18
@@ -98,6 +100,7 @@ format = "{name}"
 [modules.media]
 enabled = true
 [modules.media.style]
+opacity = 1.0 # per-module content and popup opacity, 0..1
 icon = "media"
 icon_size = 18
 max_width = 240
@@ -127,8 +130,9 @@ timeout_ms = 3000
 command = []
 format = "{artist} — {title}"
 [modules.clipboard]
-enabled = false # opt-in panel module; --clipboard explicitly opens a standalone view
+enabled = true # lazy backend: no history reads until opened
 [modules.clipboard.style]
+opacity = 1.0 # per-module content and popup opacity, 0..1
 icon = "clipboard"
 icon_size = 18
 max_width = 140
@@ -158,6 +162,9 @@ max_items = 200
 max_bytes = 5242880
 max_image_pixels = 16777216
 preview_image_size = 512
+preview_cache_items = 24 # bounded in-memory inline thumbnails
+inline_image_height = 160
+inline_text_lines = 8
 preview_text_chars = 8192
 cursor_timeout_ms = 300
 cursor_gap = 8
@@ -167,6 +174,7 @@ format = "{count}"
 [modules.tray]
 enabled = true
 [modules.tray.style]
+opacity = 1.0 # per-module content and popup opacity, 0..1
 icon = "tray"
 icon_size = 18
 max_width = 240
@@ -187,6 +195,7 @@ format = "{title}"
 [modules.volume]
 enabled = true
 [modules.volume.style]
+opacity = 1.0 # per-module content and popup opacity, 0..1
 icon = "volume"
 icon_size = 18
 max_width = 140
@@ -209,6 +218,7 @@ format = "{percent}%"
 [modules.updates]
 enabled = true
 [modules.updates.style]
+opacity = 1.0 # per-module content and popup opacity, 0..1
 icon = "updates"
 icon_size = 18
 max_width = 140
@@ -228,6 +238,7 @@ format = "{count}"
 [modules.wifi]
 enabled = true
 [modules.wifi.style]
+opacity = 1.0 # per-module content and popup opacity, 0..1
 icon = "wifi"
 icon_size = 18
 max_width = 140
@@ -250,6 +261,7 @@ format = "{ssid}"
 [modules.bluetooth]
 enabled = true
 [modules.bluetooth.style]
+opacity = 1.0 # per-module content and popup opacity, 0..1
 icon = "bluetooth"
 icon_size = 18
 max_width = 140
@@ -268,6 +280,7 @@ format = "{status}"
 [modules.notifications]
 enabled = true
 [modules.notifications.style]
+opacity = 1.0 # per-module content and popup opacity, 0..1
 icon = "notifications"
 icon_size = 18
 max_width = 140
@@ -293,6 +306,7 @@ format = "{count}"
 [modules.calendar]
 enabled = true
 [modules.calendar.style]
+opacity = 1.0 # per-module content and popup opacity, 0..1
 icon = "calendar"
 icon_size = 18
 max_width = 240
@@ -313,6 +327,7 @@ format = "ddd dd MMM · HH:mm"
 [modules.battery]
 enabled = true
 [modules.battery.style]
+opacity = 1.0 # per-module content and popup opacity, 0..1
 icon = "battery"
 icon_size = 18
 max_width = 140

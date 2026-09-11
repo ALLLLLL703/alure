@@ -6,6 +6,7 @@ Control {
     id: root
     readonly property var theme: Config.model.theme
     readonly property var options: Config.model.modules.media.behavior
+    opacity: Config.model.modules.media.style.opacity
     readonly property var service: Services.media
     readonly property var players: service.items
     property string selectedService: ""
@@ -93,7 +94,6 @@ Control {
                     }
                 }
             }
-            ShellButton { objectName: "popup-close"; text: "×"; Accessible.name: "Close now playing"; onClicked: Shell.closePopup() }
         }
         InfoText {
             visible: !root.ready || root.actionError.length > 0
@@ -123,7 +123,7 @@ Control {
                         asynchronous: true
                         cache: false
                         sourceSize: Qt.size(Math.ceil(width), Math.ceil(height))
-                        fillMode: Image.PreserveAspectCrop
+                        fillMode: Image.PreserveAspectFit
                         source: {
                             const url = String(root.player.artUrl || "")
                             if (!root.options.show_artwork || !root.Window.window || !root.Window.window.visible) return ""
@@ -131,12 +131,12 @@ Control {
                         }
                         Accessible.name: "Album artwork"
                     }
-                    InfoText {
+                    Image {
                         anchors.centerIn: parent
                         visible: cover.status !== Image.Ready
-                        text: cover.status === Image.Loading ? "Loading artwork…" : "♫"
-                        color: root.theme.palette.muted
-                        font.pixelSize: cover.status === Image.Loading ? root.theme.font_size : root.theme.icon_size * 3
+                        source: "image://icons/builtin/media"
+                        width: root.theme.icon_size * 3; height: width
+                        sourceSize: Qt.size(width, height)
                     }
                 }
                 InfoText {

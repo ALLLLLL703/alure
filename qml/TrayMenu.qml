@@ -9,6 +9,7 @@ FocusScope {
     property bool bottomAligned: false
     readonly property var menu: Services.tray.menu
     readonly property var theme: Config.model.theme
+    opacity: Config.model.modules.tray.style.opacity
     Component.onCompleted: { Services.tray.openMenu(trayItem); list.forceActiveFocus() }
     Component.onDestruction: menu.close()
     Connections {
@@ -34,7 +35,8 @@ FocusScope {
             ShellButton {
                 objectName: "tray-menu-back"
                 visible: root.menu.canGoBack
-                text: "‹ Back"
+                text: "Back"
+                iconName: "previous"
                 enabled: !root.menu.loading
                 Layout.fillWidth: true
                 onClicked: root.menu.back()
@@ -70,9 +72,18 @@ FocusScope {
                     enabled: !separator && modelData.enabled && !root.menu.loading
                     accent: ListView.isCurrentItem
                     // DBusMenu mnemonics use underscores, not Qt's ampersands.
-                    text: separator ? "" : (modelData["toggle-type"] ? (modelData["toggle-state"] === 1 ? (modelData["toggle-type"] === "radio" ? "● " : "✓ ") : modelData["toggle-state"] === 0 ? "○ " : "− ") : "") + String(modelData.label || "").replace(/__|_/g, m => m === "__" ? "_" : "") + (modelData.submenu ? "  ›" : "")
-                    iconName: !separator ? modelData["icon-name"] || "" : ""
-                    iconSource: iconName ? "image://icons/theme/" + iconName : ""
+                    text: separator ? "" : String(modelData.label || "").replace(/__|_/g, m => m === "__" ? "_" : "")
+                    iconName: separator ? "" : modelData["toggle-type"] ? (modelData["toggle-state"] === 1 ? "check" : modelData["toggle-state"] === 0 ? "circle" : "minus") : modelData["icon-name"] || ""
+                    iconSource: iconName ? "image://icons/" + (modelData["toggle-type"] ? "builtin/" : "theme/") + iconName : ""
+                    rightPadding: padding + (modelData.submenu ? iconSize : 0)
+                    Image {
+                        visible: !!parent.modelData.submenu
+                        anchors.right: parent.right; anchors.rightMargin: parent.padding
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.iconSize; height: width
+                        source: "image://icons/builtin/next"
+                        sourceSize: Qt.size(width, height)
+                    }
                     Accessible.description: modelData.submenu ? "Submenu" : ""
                     onClicked: root.menu.select(modelData.id)
                     Rectangle {

@@ -34,6 +34,7 @@ PanelPlacement panelPlacement(const QVariantMap &panel, QSize screenSize) {
     int zone = panel.value("exclusive_zone").toInt();
     // The compositor adds the anchored margin to a positive protocol zone.
     if (zone == -1) zone = thickness;
+    if (zone > 0) zone = std::max(0, zone + panel.value("window_gap").toInt());
     return {vertical ? QSize(thickness, length) : QSize(length, thickness), m, anchors, edge, layer, zone, vertical};
 }
 PanelHost::PanelHost(ConfigStore &config, QQmlEngine &engine, bool preview, QObject *parent)

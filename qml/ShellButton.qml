@@ -4,6 +4,7 @@ import QtQuick.Controls
 Button {
     id: control
     property bool accent: false
+    property int horizontalAlignment: Text.AlignLeft
     property bool highlightBackground: true
     property string accessibleDescription: ""
     property string iconName: ""
@@ -48,6 +49,8 @@ Button {
             width: Math.max(0, control.availableWidth - (control.iconName ? control.iconSize + parent.spacing : 0))
             height: Math.max(implicitHeight, control.iconSize)
             verticalAlignment: Text.AlignVCenter
+            horizontalAlignment: control.horizontalAlignment
+            anchors.verticalCenter: parent.verticalCenter
             elide: Text.ElideRight
             color: control.accent ? control.theme.palette.accent : control.foreground
             font: control.font

@@ -17,7 +17,8 @@ Item {
         return size
     }
     readonly property real stretchSize: stretchCount ? Math.max(0, availableLength - naturalLength) / stretchCount : 0
-    readonly property real mainLength: naturalLength + stretchCount * stretchSize
+    readonly property real contentLength: naturalLength + stretchCount * stretchSize
+    readonly property real mainLength: Math.min(contentLength, Math.max(0, availableLength))
     implicitWidth: vertical ? crossSize : mainLength
     implicitHeight: vertical ? mainLength : crossSize
     function offset(index) {
@@ -25,6 +26,12 @@ Item {
         for (let i = 0; i < index; ++i) { const item = entries.itemAt(i); if (item) position += item.mainLength }
         return position
     }
+    Flickable {
+        anchors.fill: parent
+        clip: true
+        contentWidth: group.vertical ? width : group.contentLength
+        contentHeight: group.vertical ? group.contentLength : height
+        flickableDirection: group.vertical ? Flickable.VerticalFlick : Flickable.HorizontalFlick
     Repeater {
         id: entries
         model: group.tokens
@@ -61,5 +68,6 @@ Item {
                 accessibleDescription: "Alure settings"
             }
         }
+    }
     }
 }

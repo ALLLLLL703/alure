@@ -6,8 +6,8 @@ namespace Alure {
 class ClipboardImageProvider final : public QQuickImageProvider {
 public:
     explicit ClipboardImageProvider(ClipboardService *service) : QQuickImageProvider(Image), m_service(service) {}
-    QImage requestImage(const QString &, QSize *size, const QSize &) override {
-        const auto image = m_service ? m_service->previewImage() : QImage{};
+    QImage requestImage(const QString &id, QSize *size, const QSize &) override {
+        const auto image = m_service ? m_service->previewImage(id.section('/', 0, 0)) : QImage{};
         if (size) *size = image.size();
         return image;
     }

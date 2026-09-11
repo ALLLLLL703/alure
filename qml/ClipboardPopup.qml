@@ -9,7 +9,7 @@ Control {
     readonly property var service: Services.clipboard
     readonly property bool viewActive: visible && !!Window.window && Window.window.visible
     readonly property var rows: service.items.filter(row => String(row.label).toLocaleLowerCase().includes(search.text.toLocaleLowerCase()))
-    readonly property var preview: service.preview.id === selectedId ? service.preview : ({})
+    opacity: Config.model.modules.clipboard.style.opacity
     property string selectedId: ""
     property string confirmAction: ""
     property string statusText: ""
@@ -60,8 +60,7 @@ Control {
         RowLayout {
             Layout.fillWidth: true
             InfoText { text: "Clipboard"; font.bold: true; font.pixelSize: root.theme.font_size * 1.3; Layout.fillWidth: true }
-            ShellButton { text: "↻"; Accessible.name: "Refresh clipboard history"; enabled: !root.service.busy; onClicked: root.service.refresh() }
-            ShellButton { objectName: "popup-close"; text: "×"; Accessible.name: "Close clipboard"; onClicked: Shell.closePopup() }
+            ShellButton { iconName: "refresh"; Accessible.name: "Refresh clipboard history"; enabled: !root.service.busy; onClicked: root.service.refresh() }
         }
         TextField {
             id: search
@@ -81,7 +80,9 @@ Control {
         ListView {
             id: history
             objectName: "clipboard-history"
-            Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredHeight: 180
+            Layout.fillWidth: true; Layout.fillHeight: true
+            cacheBuffer: 0
+            spacing: root.theme.spacing / 2
             clip: true
             model: root.rows
             currentIndex: root.rows.findIndex(row => row.id === root.selectedId)
@@ -94,55 +95,36 @@ Control {
                 width: history.width
                 highlighted: root.selectedId === modelData.id
                 hoverEnabled: true
-                contentItem: Text {
-                    text: entry.modelData.label
-                    textFormat: Text.PlainText
-                    font: root.font
-                    elide: Text.ElideRight
-                    color: entry.highlighted ? root.theme.palette.background : root.theme.palette.foreground
-                    verticalAlignment: Text.AlignVCenter
+                readonly property var preview: root.service.previews[modelData.id] || ({})
+                Component.onCompleted: Qt.callLater(function() { root.service.previewItem(entry.modelData.id) })
+                contentItem: ColumnLayout {
+                    spacing: root.theme.spacing / 2
+                    Image {
+                        objectName: "clipboard-image-" + entry.modelData.id
+                        visible: entry.preview.kind === "image"
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: visible ? root.options.inline_image_height : 0
+                        source: visible ? entry.preview.imageUrl || "" : ""
+                        asynchronous: false; cache: false
+                        fillMode: Image.PreserveAspectFit
+                        Accessible.name: "Clipboard image"
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: entry.preview.kind !== "image"
+                        text: entry.highlighted && entry.preview.kind === "text" ? entry.preview.text : entry.modelData.label
+                        textFormat: Text.PlainText
+                        font: root.font
+                        wrapMode: Text.Wrap
+                        maximumLineCount: entry.highlighted ? root.options.inline_text_lines : 2
+                        elide: Text.ElideRight
+                        color: entry.highlighted ? root.theme.palette.background : root.theme.palette.foreground
+                    }
                 }
                 background: Rectangle { color: entry.highlighted ? root.theme.palette.accent : entry.hovered ? root.theme.palette.surface : "transparent"; radius: root.theme.radius / 2 }
                 onClicked: root.select(modelData.id)
                 onDoubleClicked: { if (root.canAct) root.act("copy", false) }
             }
-        }
-        Rectangle {
-            Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredHeight: 200
-            visible: !!root.selectedId
-            color: root.theme.palette.surface
-            radius: root.theme.radius
-            clip: true
-            Image {
-                objectName: "clipboard-image"
-                anchors.fill: parent; anchors.margins: root.theme.padding
-                visible: root.preview.kind === "image"
-                source: visible ? root.preview.imageUrl || "" : ""
-                // Synchronous memory-only provider, no disk thumbnail cache or network requests.
-                asynchronous: false; cache: false
-                fillMode: Image.PreserveAspectFit
-                Accessible.name: "Clipboard image preview"
-            }
-            ScrollView {
-                anchors.fill: parent; anchors.margins: root.theme.padding
-                visible: root.preview.kind !== "image"
-                TextArea {
-                    objectName: "clipboard-text"
-                    readOnly: true; selectByMouse: true
-                    textFormat: TextEdit.PlainText
-                    wrapMode: TextEdit.Wrap
-                    text: root.preview.text || (root.service.busy ? "Loading preview…" : "Select an entry")
-                    color: root.theme.palette.foreground
-                    font: root.font
-                    background: null
-                }
-            }
-        }
-        InfoText {
-            visible: !!root.selectedId && !!root.preview.id
-            Layout.fillWidth: true
-            text: (root.preview.kind === "image" ? root.preview.width + " × " + root.preview.height + " · " : "") + (root.preview.bytes || 0) + " bytes" + (root.preview.truncated ? " · text preview truncated" : "")
-            color: root.theme.palette.muted
         }
         RowLayout {
             ShellButton { objectName: "clipboard-copy"; text: "Copy"; enabled: root.canAct && !!root.selectedId; onClicked: root.act("copy", false) }

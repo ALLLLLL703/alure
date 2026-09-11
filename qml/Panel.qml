@@ -30,7 +30,7 @@ Item {
         readonly property real viewportLength: root.vertical ? height : width
         readonly property real crossSize: root.vertical ? width : height
         readonly property real zoneGap: root.theme.spacing
-        readonly property real totalLength: root.zoned ? Math.max(viewportLength, 2 * Math.max(left.naturalLength, right.naturalLength) + center.naturalLength + 2 * zoneGap) : Math.max(viewportLength, left.naturalLength)
+        readonly property real totalLength: root.zoned ? viewportLength : Math.max(viewportLength, left.naturalLength)
         clip: true
         contentWidth: root.vertical ? width : totalLength
         contentHeight: root.vertical ? totalLength : height
@@ -55,7 +55,7 @@ Item {
             panel: root.panel
             vertical: root.vertical
             crossSize: modules.crossSize
-            availableLength: modules.totalLength - 2 * Math.max(left.naturalLength, right.naturalLength) - 2 * modules.zoneGap
+            availableLength: Math.min(modules.totalLength, center.naturalLength)
             x: root.vertical ? 0 : (modules.totalLength - mainLength) / 2
             y: root.vertical ? (modules.totalLength - mainLength) / 2 : 0
             onRequested: (name, anchor) => Shell.openModule(name, root.panel.id, root.outputName, anchor)

@@ -11,6 +11,7 @@ Item {
     signal menuRequested(string itemId, Item anchor)
     readonly property var config: Config.model.modules[moduleName]
     readonly property var style: config.style
+    opacity: style.opacity
     readonly property var service: moduleName === "calendar" ? null : Services[moduleName] || null
     readonly property bool listMode: (moduleName === "workspaces" || moduleName === "tray") && service && service.available && service.items.length > 0
     readonly property bool sharedIcon: listMode && moduleName === "workspaces" && style.show_icon
@@ -77,6 +78,7 @@ Item {
                     iconSource: root.moduleName !== "tray" ? "" : modelData.iconUrl || "image://icons/theme/" + (modelData.Status === "NeedsAttention" ? modelData.AttentionIconName || modelData.IconName || root.style.icon : modelData.IconName || root.style.icon)
                     iconSize: root.style.icon_size
                     accent: root.moduleName === "workspaces" && !!modelData.is_active
+                    horizontalAlignment: root.moduleName === "workspaces" ? Text.AlignHCenter : Text.AlignLeft
                     highlightBackground: root.moduleName !== "workspaces" || root.style.active_indicator === "pill"
                     Rectangle {
                         visible: entry.accent && root.style.active_indicator === "underline"

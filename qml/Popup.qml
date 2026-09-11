@@ -8,6 +8,7 @@ Control {
     required property string moduleName
     readonly property var theme: Config.model.theme
     readonly property var config: Config.model.modules[moduleName]
+    opacity: config.style.opacity
     readonly property var service: moduleName === "calendar" ? null : Services[moduleName] || null
     readonly property bool ready: !!service && service.available
     readonly property bool canAct: ready && config.behavior.allow_actions && !service.busy
@@ -53,8 +54,7 @@ Control {
         RowLayout {
             Layout.fillWidth: true
             InfoText { text: Ui.title(root.moduleName); font.bold: true; font.pixelSize: root.theme.font_size * 1.35; Layout.fillWidth: true }
-            ShellButton { text: "↻"; Accessible.name: "Refresh"; visible: !!root.service; enabled: !!root.service && !root.service.busy; onClicked: root.service.refresh() }
-            ShellButton { objectName: "popup-close"; text: "×"; Accessible.name: "Close details"; onClicked: Shell.closePopup() }
+            ShellButton { iconName: "refresh"; Accessible.name: "Refresh"; visible: !!root.service; enabled: !!root.service && !root.service.busy; onClicked: root.service.refresh() }
         }
         InfoText {
             visible: root.moduleName !== "calendar"
