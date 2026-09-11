@@ -52,6 +52,7 @@ class FixtureService : public QObject {
     Q_PROPERTY(bool available MEMBER available NOTIFY changed)
     Q_PROPERTY(bool busy MEMBER busy NOTIFY changed)
     Q_PROPERTY(bool adjusting MEMBER adjusting NOTIFY changed)
+    Q_PROPERTY(QVariant pendingPercent MEMBER pendingPercent NOTIFY changed)
     Q_PROPERTY(QString diagnostic MEMBER diagnostic NOTIFY changed)
     Q_PROPERTY(QVariantMap state MEMBER state NOTIFY changed)
     Q_PROPERTY(QVariantList items MEMBER items NOTIFY changed)
@@ -61,6 +62,7 @@ public:
     QString openedMenu;
     Q_INVOKABLE void openMenu(const QString &id) { openedMenu = id; }
     bool available = true, busy = false, adjusting = false;
+    QVariant pendingPercent;
     QString diagnostic;
     QVariantMap state;
     QVariantList items;
@@ -492,6 +494,30 @@ QtObject { property var order: Fields.describe("modules.taskbar.behavior.orderin
         QVERIFY(service.actionCount > before); QVERIFY(desired > dragged); QVERIFY(heldPendingValue);
         QCOMPARE(slider->property("value").toDouble(), 23.);
         QCOMPARE(slider->mapToScene(QPointF()).y(), initialY);
+    }
+    void volumePendingFeedbackIsNotObserved() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        FixtureService service; FixtureShell shell;
+        service.state = {{"backend", "pulseaudio"}, {"percent", 40}, {"canSetVolume", true}, {"canMute", true}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Shell", &shell);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"volume", QVariant::fromValue(&service)}});
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(440, 560);
+        view.setInitialProperties({{"moduleName", "volume"}}); view.setSource(QUrl("qrc:/qml/Popup.qml")); QCOMPARE(view.status(), QQuickView::Ready);
+        view.show(); QTest::qWait(30);
+        auto *status = itemNamed(view.rootObject(), "provider-status"), *slider = itemNamed(view.rootObject(), "volume-slider");
+        QVERIFY(status); QVERIFY(slider);
+        const auto initialY = slider->mapToScene(QPointF()).y();
+        service.pendingPercent = 75.; service.adjusting = true; service.busy = true; emit service.changed();
+        QCOMPARE(status->property("text").toString(), "Pending volume: 75%");
+        QCOMPARE(service.state.value("percent").toInt(), 40);
+        QCOMPARE(slider->property("value").toDouble(), 40.); // no invented observation
+        QVERIFY(slider->isEnabled()); QCOMPARE(slider->mapToScene(QPointF()).y(), initialY);
+        service.pendingPercent = QVariant{}; service.adjusting = false; service.busy = false; service.state["percent"] = 73; emit service.changed();
+        QCOMPARE(slider->property("value").toDouble(), 73.);
+        QVERIFY(!status->property("text").toString().contains("Pending"));
+        service.diagnostic = "Audio action failed: Fixture rejection"; service.available = false; emit service.changed();
+        QCOMPARE(status->property("text").toString(), service.diagnostic);
     }
     void volumeBackendCapabilities() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());

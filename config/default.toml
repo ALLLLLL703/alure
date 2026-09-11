@@ -128,7 +128,7 @@ show_label = true
 [modules.workspaces.behavior]
 popup_enabled = true
 allow_actions = true
-socket_path = "" # empty uses NIRI_SOCKET; reconnect at interval_ms
+socket_path = "" # empty uses NIRI_SOCKET; standalone EventStream, reconnect at interval_ms
 ordering = "output-index" # output name, numeric idx, numeric ID; or provider order
 interval_ms = 1000
 timeout_ms = 3000
@@ -255,7 +255,7 @@ allow_actions = true
 set_volume_command = ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@"]
 mute_command = ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]
 max_percent = 100
-debounce_ms = 100
+debounce_ms = 100 # minimum write spacing; idle dispatch next event turn, real read after at most two setters
 interval_ms = 2000
 timeout_ms = 3000
 command = ["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"]

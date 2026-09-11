@@ -17,6 +17,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QElapsedTimer>
+#include <QPointer>
 #include <QImage>
 using namespace Alure;
 namespace {
@@ -183,6 +184,142 @@ private slots:
         config["enabled"] = false; service.configure(config); QVERIFY(!service.adjusting());
         QTest::qWait(200); QCOMPARE(contents(capture).count('\n'), 5); // queued 95 cancelled on disable
     }
+    void audioIdleDispatchAndPendingFeedback() {
+        QTemporaryDir dir;
+        const QVariantList setter{QString(SERVICE_FIXTURE), "audio-gated", dir.path(), "write"};
+        VolumeService service;
+        service.configure(audioModule({{"backend", "pipewire"}, {"command", command("audio-pipewire")},
+            {"set_volume_command", setter}, {"debounce_ms", 2000}, {"timeout_ms", 10000}}));
+        QTRY_VERIFY(service.available() && !service.busy());
+        QVERIFY(service.action("adjustVolume", {{"delta", 5}}));
+        QCOMPARE(service.pendingPercent().toDouble(), 47.);
+        QCOMPARE(service.state().value("percent").toDouble(), 42.);
+        // Generous process-start budget, deliberately shorter than configured cadence.
+        QTRY_VERIFY_WITH_TIMEOUT(contents(dir.filePath("calls")).contains("write|0.470\n"), 1000);
+        QVERIFY(service.busy()); QVERIFY(service.adjusting());
+        put(dir.filePath("release-write"), "");
+        QTRY_VERIFY(!service.busy() && !service.adjusting());
+        QVERIFY(!service.pendingPercent().isValid());
+        QCOMPARE(service.state().value("percent").toDouble(), 42.); // ACK is not a snapshot
+    }
+    void audioQueuedWritePrecedesReadback() {
+        QTemporaryDir dir;
+        const auto gated = [&](const QString &operation) { return QVariantList{QString(SERVICE_FIXTURE), "audio-gated", dir.path(), operation}; };
+        put(dir.filePath("snapshot-info"), R"({"default_sink_name":"speakers"})");
+        put(dir.filePath("snapshot-sinks"), R"([{"index":7,"name":"speakers","mute":false,"volume":{"mono":{"value":32768}}}])");
+        put(dir.filePath("release-info"), ""); put(dir.filePath("release-sinks"), "");
+        VolumeService service;
+        service.configure(audioModule({{"backend", "pulseaudio"}, {"pulse_info_command", gated("info")},
+            {"pulse_sinks_command", gated("sinks")}, {"pulse_set_volume_command", gated("write")}, {"debounce_ms", 10}, {"timeout_ms", 10000}}));
+        QTRY_VERIFY(service.available() && !service.busy());
+        QVERIFY(service.action("setVolume", {{"percent", 60}}));
+        QTRY_VERIFY(contents(dir.filePath("calls")).contains("write|7|60.000%\n"));
+        // Continuous input during a held write must retain one latest target.
+        for (int i = 0; i < 10; ++i) { QVERIFY(service.action("adjustVolume", {{"delta", 1}})); QTest::qWait(5); }
+        QCOMPARE(service.pendingPercent().toDouble(), 70.);
+        QVERIFY(QFile::remove(dir.filePath("release-info")));
+        put(dir.filePath("release-write"), "");
+        // The old implementation launches info first and gets stuck at its gate.
+        QTRY_VERIFY(contents(dir.filePath("calls")).contains("write|7|70.000%\n"));
+        QTRY_COMPARE(contents(dir.filePath("calls")).count("info|"), 2);
+        QCOMPARE(contents(dir.filePath("calls")), QByteArray("info|\nsinks|\nwrite|7|60.000%\nwrite|7|70.000%\ninfo|\n"));
+        QCOMPARE(service.state().value("percent").toDouble(), 50.); QVERIFY(service.adjusting());
+        put(dir.filePath("snapshot-sinks"), R"([{"index":7,"name":"speakers","mute":false,"volume":{"mono":{"value":49152}}}])");
+        put(dir.filePath("release-info"), "");
+        QTRY_VERIFY(!service.adjusting() && !service.busy());
+        QCOMPARE(service.state().value("percent").toDouble(), 75.); // final actual readback, not 70
+        QCOMPARE(contents(dir.filePath("calls")).count("sinks|"), 2);
+    }
+    void audioContinuousInputGetsObservedReadback() {
+        QTemporaryDir dir;
+        const auto gated = [&](const QString &operation) { return QVariantList{QString(SERVICE_FIXTURE), "audio-gated", dir.path(), operation}; };
+        put(dir.filePath("snapshot-info"), R"({"default_sink_name":"speakers"})");
+        put(dir.filePath("snapshot-sinks"), R"([{"index":7,"name":"speakers","mute":false,"volume":{"mono":{"value":32768}}}])");
+        put(dir.filePath("release-info"), ""); put(dir.filePath("release-sinks"), ""); put(dir.filePath("consume-write-release"), "");
+        VolumeService service;
+        service.configure(audioModule({{"backend", "pulseaudio"}, {"pulse_info_command", gated("info")},
+            {"pulse_sinks_command", gated("sinks")}, {"pulse_set_volume_command", gated("write")}, {"debounce_ms", 10}, {"timeout_ms", 10000}}));
+        QTRY_VERIFY(service.available() && !service.busy());
+        QVERIFY(service.action("setVolume", {{"percent", 60}}));
+        QTRY_VERIFY(contents(dir.filePath("calls")).contains("write|7|60.000%\n"));
+        QVERIFY(QFile::remove(dir.filePath("release-info")));
+        QVERIFY(service.action("setVolume", {{"percent", 70}})); put(dir.filePath("release-write"), "");
+        QTRY_VERIFY(contents(dir.filePath("calls")).contains("write|7|70.000%\n"));
+        // Keep the next target queued throughout the second write and fair read.
+        QVERIFY(service.action("setVolume", {{"percent", 80}})); put(dir.filePath("release-write"), "");
+        QTRY_COMPARE(contents(dir.filePath("calls")).count("info|"), 2);
+        for (int i = 0; i < 10; ++i) { QVERIFY(service.action("setVolume", {{"percent", 80 + i}})); QTest::qWait(5); }
+        QCOMPARE(contents(dir.filePath("calls")).count("write|"), 2);
+        QCOMPARE(service.state().value("percent").toDouble(), 50.); QVERIFY(service.adjusting());
+        put(dir.filePath("snapshot-sinks"), R"([{"index":7,"name":"speakers","mute":false,"volume":{"mono":{"value":49152}}}])");
+        put(dir.filePath("release-info"), "");
+        QTRY_COMPARE(service.state().value("percent").toDouble(), 75.);
+        QTRY_VERIFY(contents(dir.filePath("calls")).contains("write|7|89.000%\n"));
+        QVERIFY(service.adjusting()); QCOMPARE(service.pendingPercent().toDouble(), 89.);
+        // A later fair/final read detects a changed default sink and cancels its queued target.
+        QVERIFY(service.action("setVolume", {{"percent", 90}})); put(dir.filePath("release-write"), "");
+        QTRY_VERIFY(contents(dir.filePath("calls")).contains("write|7|90.000%\n"));
+        QVERIFY(service.action("setVolume", {{"percent", 95}}));
+        put(dir.filePath("snapshot-sinks"), R"([{"index":8,"name":"speakers","mute":false,"volume":{"mono":{"value":32768}}}])");
+        put(dir.filePath("release-write"), "");
+        QTRY_VERIFY(service.diagnostic().contains("Audio output changed"));
+        QVERIFY(!service.adjusting()); QCOMPARE(contents(dir.filePath("calls")).count("write|"), 4);
+        QVERIFY(!contents(dir.filePath("calls")).contains("95.000%"));
+    }
+    void audioInputDuringSlowRead() {
+        QTemporaryDir dir;
+        const auto gated = [&](const QString &operation) { return QVariantList{QString(SERVICE_FIXTURE), "audio-gated", dir.path(), operation}; };
+        put(dir.filePath("snapshot-read"), "Volume: 0.42\n"); put(dir.filePath("release-read"), "");
+        VolumeService service;
+        auto config = audioModule({{"backend", "pipewire"}, {"command", gated("read")}, {"set_volume_command", gated("write")},
+            {"debounce_ms", 2000}, {"timeout_ms", 10000}});
+        service.configure(config); QTRY_VERIFY(service.available() && !service.busy());
+        QVERIFY(QFile::remove(dir.filePath("release-read"))); service.refresh();
+        QTRY_COMPARE(contents(dir.filePath("calls")).count("read|"), 2);
+        for (int i = 0; i < 10; ++i) { QVERIFY(service.action("adjustVolume", {{"delta", 1}})); QTest::qWait(5); }
+        QCOMPARE(contents(dir.filePath("calls")).count("write|"), 0);
+        QCOMPARE(service.pendingPercent().toDouble(), 52.);
+        put(dir.filePath("release-read"), "");
+        QTRY_VERIFY_WITH_TIMEOUT(contents(dir.filePath("calls")).contains("write|0.520\n"), 1000);
+        QVERIFY(service.action("setVolume", {{"percent", 99}}));
+        config["enabled"] = false; service.configure(config);
+        QVERIFY(!service.adjusting()); QVERIFY(!service.pendingPercent().isValid());
+        put(dir.filePath("release-write"), ""); QTest::qWait(100);
+        QCOMPARE(contents(dir.filePath("calls")).count("write|"), 1); QVERIFY(!service.available());
+    }
+    void audioReadbackFailureCancelsTarget() {
+        QTemporaryDir dir;
+        const auto gated = [&](const QString &operation) { return QVariantList{QString(SERVICE_FIXTURE), "audio-gated", dir.path(), operation}; };
+        put(dir.filePath("snapshot-read"), "Volume: 0.42\n"); put(dir.filePath("release-read"), "");
+        VolumeService service;
+        service.configure(audioModule({{"backend", "pipewire"}, {"command", gated("read")}, {"set_volume_command", gated("write")}, {"timeout_ms", 10000}}));
+        QTRY_VERIFY(service.available() && !service.busy());
+        QVERIFY(service.action("setVolume", {{"percent", 60}}));
+        QTRY_VERIFY(contents(dir.filePath("calls")).contains("write|0.600\n"));
+        QVERIFY(QFile::remove(dir.filePath("release-read"))); put(dir.filePath("release-write"), "");
+        QTRY_COMPARE(contents(dir.filePath("calls")).count("read|"), 2);
+        QVERIFY(service.action("setVolume", {{"percent", 70}}));
+        put(dir.filePath("fail-read"), ""); put(dir.filePath("release-read"), "");
+        QTRY_VERIFY(!service.busy()); QVERIFY(!service.available()); QVERIFY(!service.adjusting());
+        QVERIFY(!service.pendingPercent().isValid()); QVERIFY(service.diagnostic().contains("No readable audio output"));
+        QCOMPARE(contents(dir.filePath("calls")).count("write|"), 1);
+    }
+    void audioFailedQueuedWriteIsNotReplayed() {
+        QTemporaryDir dir;
+        const QVariantList setter{QString(SERVICE_FIXTURE), "audio-gated", dir.path(), "write"};
+        VolumeService service;
+        service.configure(audioModule({{"command", command("audio-pipewire")}, {"set_volume_command", setter}, {"timeout_ms", 10000}}));
+        QTRY_VERIFY(service.available() && !service.busy());
+        QVERIFY(service.action("setVolume", {{"percent", 60}}));
+        QTRY_VERIFY(contents(dir.filePath("calls")).contains("write|0.600\n"));
+        QVERIFY(service.action("setVolume", {{"percent", 90}}));
+        put(dir.filePath("fail-write"), ""); put(dir.filePath("release-write"), "");
+        QTRY_VERIFY(!service.busy()); QVERIFY(!service.adjusting()); QVERIFY(!service.pendingPercent().isValid());
+        QVERIFY(!service.available()); QVERIFY(service.diagnostic().contains("Audio action failed"));
+        service.refresh(); QTRY_VERIFY(service.available() && !service.busy());
+        QCOMPARE(contents(dir.filePath("calls")).count("write|"), 1);
+        QCOMPARE(service.state().value("backend").toString(), "pipewire");
+    }
     void audioContinuousInput() {
         QTemporaryDir dir; const auto capture = dir.filePath("actions");
         VolumeService service; service.configure(audioModule({{"backend", "pulseaudio"},
@@ -240,10 +377,13 @@ private slots:
         service.configure(audioModule({{"backend", "pulseaudio"}, {"debounce_ms", 300},
             {"pulse_sinks_command", QVariantList{QString(SERVICE_FIXTURE), "read-file", sinks}},
             {"pulse_set_volume_command", QVariantList{QString(SERVICE_FIXTURE), "capture-args", capture}}}));
-        QTRY_VERIFY(service.available() && !service.busy()); QVERIFY(service.action("setVolume", {{"percent", 60}}));
+        QTRY_VERIFY(service.available() && !service.busy());
         auto changed = data; changed.replace("\"index\":7", "\"index\":8"); put(sinks, changed);
-        service.refresh(); QTRY_COMPARE(service.state().value("sinkIndex").toString(), "8");
+        service.refresh(); // Bind queued input to the old sink while this read is in flight.
+        QVERIFY(service.action("setVolume", {{"percent", 60}}));
         QTRY_VERIFY(service.diagnostic().contains("Audio output changed")); QVERIFY(!QFile::exists(capture));
+        QVERIFY(!service.adjusting()); QVERIFY(!service.pendingPercent().isValid());
+        service.refresh(); QTRY_COMPARE(service.state().value("sinkIndex").toString(), "8");
     }
     void audioReadOnlyLive() {
         if (!qEnvironmentVariableIsSet("ALURE_TEST_LIVE_VOLUME_READ")) QSKIP("Explicit read-only live probe is opt-in.");
@@ -388,7 +528,7 @@ private slots:
     }
     void niriWorkspaceOrdering() {
         QTemporaryDir dir; QLocalServer server; const auto path = dir.filePath("socket"); QVERIFY(server.listen(path));
-        const QByteArray shuffled = R"({"Ok":{"Workspaces":[
+        const QByteArray shuffled = R"({"WorkspacesChanged":{"workspaces":[
             {"id":40,"idx":2,"output":"DP-2","is_active":false,"is_focused":false},
             {"id":100,"idx":10,"output":"DP-1","is_active":false,"is_focused":false},
             {"id":30,"idx":1,"output":"DP-2","is_active":true,"is_focused":false},
@@ -402,7 +542,8 @@ private slots:
             auto *socket = server.nextPendingConnection(); connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
             connect(socket, &QLocalSocket::readyRead, socket, [socket, shuffled] {
                 if (!socket->canReadLine()) return;
-                socket->readLine(); socket->write(shuffled.simplified() + '\n');
+                QCOMPARE(socket->readLine(), QByteArray("\"EventStream\"\n"));
+                socket->write("{\"Ok\":\"Handled\"}\n" + shuffled.simplified() + '\n');
             });
         });
         const auto ids = [](const QVariantList &rows) {
@@ -418,25 +559,173 @@ private slots:
         service.configure(module("workspaces", {{"socket_path", path}, {"ordering", "output-index"}})); QTRY_VERIFY(service.available());
         QCOMPARE(ids(service.items()), sorted);
     }
-    void niriMultiOutputAndReconnect() {
+    void niriWorkspaceEventsAndExactActions() {
         QTemporaryDir dir; QLocalServer server; const auto path = dir.filePath("socket"); QVERIFY(server.listen(path));
-        QByteArray activation;
+        QPointer<QLocalSocket> stream, action;
+        QByteArray activation; int subscriptions = 0;
+        const QByteArray snapshot = R"({"WorkspacesChanged":{"workspaces":[
+            {"id":10,"idx":1,"output":"DP-1","is_active":true,"is_focused":true},
+            {"id":11,"idx":2,"output":"DP-1","is_active":false,"is_focused":false},
+            {"id":20,"idx":1,"output":"DP-2","is_active":true,"is_focused":false},
+            {"id":9007199254740993,"idx":2,"output":"DP-2","is_active":false,"is_focused":false}
+        ]}})";
         connect(&server, &QLocalServer::newConnection, this, [&] {
             auto *socket = server.nextPendingConnection(); connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
-            connect(socket, &QLocalSocket::readyRead, socket, [socket, &activation] {
+            connect(socket, &QLocalSocket::readyRead, socket, [&, socket] {
                 if (!socket->canReadLine()) return;
                 const auto line = socket->readLine();
-                if (line.contains("Action")) { activation = line; socket->write("{\"Ok\":\"Handled\"}\n"); }
-                else socket->write(R"({"Ok":{"Workspaces":[{"id":10,"idx":1,"name":null,"output":"DP-1","is_active":true,"is_focused":true},{"id":20,"idx":1,"name":null,"output":"DP-2","is_active":true,"is_focused":false}]}})" "\n");
+                if (line.contains("Action")) { activation = line; action = socket; }
+                else {
+                    QCOMPARE(line, QByteArray("\"EventStream\"\n")); ++subscriptions; stream = socket;
+                    socket->write("{\"Ok\":\"Handled\"}\n" + snapshot.simplified() + '\n');
+                }
             });
         });
-        NiriService service; auto config = module("workspaces", {{"socket_path", path}, {"interval_ms", 100}, {"timeout_ms", 100}});
-        service.configure(config); QTRY_VERIFY(service.available()); QCOMPARE(service.items().size(), 2);
-        QVERIFY(service.action("activate", {{"id", 20}})); QTRY_VERIFY(!activation.isEmpty());
-        QCOMPARE(QJsonDocument::fromJson(activation).object()["Action"].toObject()["FocusWorkspace"].toObject()["reference"].toObject()["Id"].toInt(), 20);
-        QTRY_VERIFY(!service.busy()); server.close(); service.refresh(); QTRY_VERIFY(!service.available());
-        QVERIFY(server.listen(path)); QTRY_VERIFY(service.available());
-        config["enabled"] = false; service.configure(config); QSignalSpy changed(&service, &Service::changed); QTest::qWait(250); QCOMPARE(changed.size(), 0);
+        NiriService service; auto config = module("workspaces", {{"socket_path", path}, {"interval_ms", 60000}, {"timeout_ms", 5000}});
+        service.configure(config); QTRY_VERIFY(service.available()); QCOMPARE(service.items().size(), 4);
+        const auto row = [&](const QString &id) {
+            for (const auto &entry : service.items()) if (entry.toMap().value("id").toString() == id) return entry.toMap();
+            return QVariantMap{};
+        };
+        // External activation: no action or refresh, and no 60-second poll wait.
+        stream->write("{\"WorkspaceActivated\":{\"id\":9007199254740993,"); stream->flush();
+        QTest::qWait(20); QVERIFY(row("20").value("is_active").toBool());
+        stream->write("\"focused\":false}}\n");
+        QTRY_VERIFY(row("9007199254740993").value("is_active").toBool());
+        QVERIFY(!row("20").value("is_active").toBool());
+        QVERIFY(row("10").value("is_active").toBool()); QVERIFY(row("10").value("is_focused").toBool());
+        QVERIFY(!row("9007199254740993").value("is_focused").toBool());
+        QVERIFY(!service.action("activate", {{"id", "9007199254740992"}}));
+        QVERIFY(service.action("activate", {{"id", "9007199254740993"}})); QTRY_VERIFY(action);
+        QCOMPARE(QJsonDocument::fromJson(activation).object()["Action"].toObject()["FocusWorkspace"].toObject()["reference"].toObject()["Id"].toInteger(), qint64(9007199254740993LL));
+        QVERIFY(!service.action("activate", {{"id", "11"}})); // separate action socket is serialized
+        action->write("{\"Ok\":\"Handled\"}\n"); QTRY_VERIFY(!service.busy());
+        QVERIFY(row("10").value("is_focused").toBool()); // ACK is not focus
+        stream->write("{\"WorkspaceActivated\":{\"id\":9007199254740993,\"focused\":true}}\n");
+        QTRY_VERIFY(row("9007199254740993").value("is_focused").toBool());
+        QVERIFY(!row("10").value("is_focused").toBool()); QVERIFY(row("10").value("is_active").toBool());
+        // Multiple complete events in one read; unknown IDs/events do not damage state.
+        stream->write("{\"WorkspaceActivated\":{\"id\":999,\"focused\":true}}\n{\"WindowsChanged\":{\"windows\":[]}}\n{\"WorkspaceActivated\":{\"id\":11,\"focused\":true}}\n");
+        QTRY_VERIFY(row("11").value("is_focused").toBool()); QVERIFY(!row("10").value("is_active").toBool());
+        QVERIFY(row("9007199254740993").value("is_active").toBool());
+        stream->write("{\"WorkspaceUrgencyChanged\":{\"id\":20,\"urgent\":true}}\n{\"WorkspaceActiveWindowChanged\":{\"workspace_id\":20,\"active_window_id\":9007199254740993}}\n");
+        QTRY_VERIFY(row("20").value("is_urgent").toBool());
+        QTRY_COMPARE(row("20").value("active_window_id").toLongLong(), qint64(9007199254740993LL));
+        action.clear(); QVERIFY(service.action("activate", {{"id", "20"}})); QTRY_VERIFY(action);
+        action->write("{\"Err\":\"Fixture denied\"}\n"); QTRY_VERIFY(!service.busy());
+        QVERIFY(service.available()); QVERIFY(service.state().value("actionError").toString().contains("Fixture denied"));
+        QVERIFY(row("11").value("is_focused").toBool());
+        stream->write("{\"WorkspacesChanged\":{\"workspaces\":[]}}\n"); QTRY_VERIFY(service.items().isEmpty()); QVERIFY(service.available());
+        QVERIFY(!service.action("activate", {{"id", "11"}})); QCOMPARE(subscriptions, 1);
+        // Reconnect starts from a full replacement, never the old incremental cache.
+        stream->abort(); QTRY_VERIFY(!service.available()); service.refresh();
+        QTRY_VERIFY(service.available()); QCOMPARE(subscriptions, 2); QVERIFY(row("10").value("is_focused").toBool());
+        QVERIFY(service.state().value("actionError").toString().isEmpty());
+        config["enabled"] = false; service.configure(config); QSignalSpy changed(&service, &Service::changed);
+        QTest::qWait(100); QCOMPARE(changed.size(), 0); QVERIFY(service.items().isEmpty()); QVERIFY(!service.busy());
+    }
+    void niriWorkspaceStreamFailures_data() {
+        QTest::addColumn<QByteArray>("reply"); QTest::addColumn<QString>("diagnostic");
+        QTest::newRow("missing-ack") << QByteArray("{\"WorkspacesChanged\":{\"workspaces\":[]}}\n") << QString("acknowledgement");
+        QTest::newRow("rejected-stream") << QByteArray("{\"Err\":\"Denied\"}\n") << QString("Denied");
+        QTest::newRow("invalid-json") << QByteArray("{\"Ok\":\"Handled\"}\nnot-json\n") << QString("Invalid");
+        QTest::newRow("oversized-fragment") << QByteArray("{\"Ok\":\"Handled\"}\n") + QByteArray(1024 * 1024 + 1, 'x') << QString("1 MiB");
+        QTest::newRow("missing-snapshot") << QByteArray("{\"Ok\":\"Handled\"}\n") << QString("timed out");
+        QTest::newRow("invalid-activation") << QByteArray("{\"Ok\":\"Handled\"}\n{\"WorkspaceActivated\":{\"id\":1,\"focused\":1}}\n") << QString("activation");
+    }
+    void niriWorkspaceStreamFailures() {
+        QFETCH(QByteArray, reply); QFETCH(QString, diagnostic);
+        QTemporaryDir dir; QLocalServer server; const auto path = dir.filePath("socket"); QVERIFY(server.listen(path));
+        connect(&server, &QLocalServer::newConnection, this, [&] {
+            auto *socket = server.nextPendingConnection(); connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
+            connect(socket, &QLocalSocket::readyRead, socket, [socket, reply] {
+                if (!socket->canReadLine()) return;
+                socket->readLine(); socket->write(reply);
+            });
+        });
+        NiriService service; service.configure(module("workspaces", {{"socket_path", path}, {"interval_ms", 60000}, {"timeout_ms", 500}}));
+        QTRY_VERIFY2(service.diagnostic().contains(diagnostic), qPrintable(service.diagnostic()));
+        QVERIFY(!service.available()); QVERIFY(!service.busy()); QVERIFY(service.items().isEmpty());
+    }
+    void niriWorkspaceActionFailures_data() {
+        QTest::addColumn<QByteArray>("reply"); QTest::addColumn<QString>("diagnostic");
+        QTest::newRow("rejected") << QByteArray("{\"Err\":\"Denied\"}\n") << QString("Denied");
+        QTest::newRow("invalid-ack") << QByteArray("{\"Ok\":{}}\n") << QString("acknowledgement");
+        QTest::newRow("malformed") << QByteArray("oops\n") << QString("acknowledgement");
+        QTest::newRow("timeout") << QByteArray("{\"Ok\":") << QString("timed out");
+        QTest::newRow("disconnect") << QByteArray("disconnect") << QString("Niri workspace action");
+        QTest::newRow("oversized") << QByteArray(1024 * 1024 + 1, 'x') << QString("1 MiB");
+    }
+    void niriWorkspaceActionFailures() {
+        QFETCH(QByteArray, reply); QFETCH(QString, diagnostic);
+        QTemporaryDir dir; QLocalServer server; const auto path = dir.filePath("socket"); QVERIFY(server.listen(path));
+        int actions = 0, subscriptions = 0;
+        connect(&server, &QLocalServer::newConnection, this, [&] {
+            auto *socket = server.nextPendingConnection(); connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
+            connect(socket, &QLocalSocket::readyRead, socket, [&, socket] {
+                if (!socket->canReadLine()) return;
+                if (socket->readLine().contains("Action")) {
+                    ++actions;
+                    if (reply == "disconnect") socket->abort(); else socket->write(reply);
+                } else {
+                    ++subscriptions;
+                    socket->write("{\"Ok\":\"Handled\"}\n{\"WorkspacesChanged\":{\"workspaces\":[{\"id\":10,\"idx\":1,\"output\":\"DP-1\",\"is_active\":true,\"is_focused\":true}]}}\n");
+                }
+            });
+        });
+        NiriService service; auto config = module("workspaces", {{"socket_path", path}, {"interval_ms", 60000}, {"timeout_ms", 1000}});
+        service.configure(config); QTRY_VERIFY(service.available()); const auto observed = service.items();
+        QVERIFY(service.action("activate", {{"id", "10"}}));
+        QTRY_VERIFY(service.state().value("actionError").toString().contains(diagnostic));
+        QVERIFY(!service.busy()); QVERIFY(service.available()); QCOMPARE(service.items(), observed);
+        service.refresh(); QTest::qWait(30); QCOMPARE(actions, 1); QCOMPARE(subscriptions, 1); // no replay/poll
+        auto options = config.value("behavior").toMap(); options["allow_actions"] = false; config["behavior"] = options;
+        service.configure(config); QTRY_VERIFY(service.available());
+        QVERIFY(!service.action("activate", {{"id", "10"}})); QCOMPARE(actions, 1);
+        QVERIFY(service.state().value("actionError").toString().isEmpty());
+    }
+    void niriWorkspaceReconfigureDropsPartialInput() {
+        QTemporaryDir dir; QLocalServer server; const auto path = dir.filePath("socket"); QVERIFY(server.listen(path));
+        int subscriptions = 0, actions = 0;
+        connect(&server, &QLocalServer::newConnection, this, [&] {
+            auto *socket = server.nextPendingConnection(); connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
+            connect(socket, &QLocalSocket::readyRead, socket, [&, socket] {
+                if (!socket->canReadLine()) return;
+                if (socket->readLine().contains("Action")) { ++actions; socket->write("{\"Ok\":"); return; }
+                ++subscriptions;
+                if (subscriptions == 1) socket->write("{\"Ok\":\"Handled\"}\n{\"WorkspacesChanged\":{\"workspaces\":[");
+                else socket->write("{\"Ok\":\"Handled\"}\n{\"WorkspacesChanged\":{\"workspaces\":[{\"id\":20,\"idx\":1,\"output\":\"DP-2\",\"is_active\":true,\"is_focused\":true}]}}\n");
+            });
+        });
+        NiriService service; auto config = module("workspaces", {{"socket_path", path}, {"interval_ms", 60000}, {"timeout_ms", 500}});
+        service.configure(config); QTRY_COMPARE(subscriptions, 1); QVERIFY(!service.available());
+        auto options = config.value("behavior").toMap(); options["ordering"] = "provider"; config["behavior"] = options;
+        service.configure(config); QTRY_VERIFY(service.available()); QCOMPARE(subscriptions, 2);
+        QCOMPARE(service.items().first().toMap().value("id").toString(), "20");
+        QVERIFY(service.action("activate", {{"id", "20"}})); QTRY_COMPARE(actions, 1); QVERIFY(service.busy());
+        config["enabled"] = false; service.configure(config); QSignalSpy changed(&service, &Service::changed);
+        QTest::qWait(600); QCOMPARE(changed.size(), 0); QVERIFY(service.items().isEmpty()); QVERIFY(!service.busy());
+        config["enabled"] = true; service.configure(config); QTRY_VERIFY(service.available());
+        QCOMPARE(subscriptions, 3); QCOMPARE(actions, 1); QVERIFY(service.state().value("actionError").toString().isEmpty());
+    }
+    void niriWorkspaceRetryAndReconfigure() {
+        QTemporaryDir dir; const auto path = dir.filePath("socket"); QLocalServer server;
+        NiriService service; auto config = module("workspaces", {{"socket_path", path}, {"interval_ms", 100}, {"timeout_ms", 500}});
+        service.configure(config); QTRY_VERIFY(service.diagnostic().contains("Niri"));
+        QVERIFY(server.listen(path)); int subscriptions = 0;
+        connect(&server, &QLocalServer::newConnection, this, [&] {
+            auto *socket = server.nextPendingConnection(); connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
+            connect(socket, &QLocalSocket::readyRead, socket, [&, socket] {
+                if (!socket->canReadLine()) return;
+                QCOMPARE(socket->readLine(), QByteArray("\"EventStream\"\n")); ++subscriptions;
+                socket->write("{\"Ok\":\"Handled\"}\n{\"WorkspacesChanged\":{\"workspaces\":[]}}\n");
+            });
+        });
+        QTRY_VERIFY(service.available()); QTest::qWait(600); QCOMPARE(subscriptions, 1); // healthy idle stream survives deadline/retry ticks
+        config = module("workspaces", {{"socket_path", path}, {"interval_ms", 100}, {"timeout_ms", 500}, {"allow_actions", false}});
+        service.configure(config); QTRY_VERIFY(service.available()); QCOMPARE(subscriptions, 2);
+        QVERIFY(!service.action("activate", {{"id", "10"}}));
+        config["enabled"] = false; service.configure(config); QTest::qWait(150); QCOMPARE(subscriptions, 2);
     }
     void mediaAndBluetooth() {
         auto bus = QDBusConnection::sessionBus(); FakePlayer player, stopped;

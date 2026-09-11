@@ -10,21 +10,8 @@
 namespace Alure {
 VolumeService::VolumeService(QObject *parent) : Service(parent) {
     m_debounce.setSingleShot(true);
-    connect(&m_debounce, &QTimer::timeout, this, [this] {
-        if (!m_pending || !enabled()) return;
-        if (busy()) { m_debounce.start(m_options.value("debounce_ms").toInt()); return; }
-        const auto pending = std::exchange(m_pending, std::nullopt).value();
-        if (!available() || !m_options.value("allow_actions").toBool()) { emit changed(); return; }
-        if (pending.backend != m_active || pending.sink != m_sink) {
-            fail("Audio output changed before the volume adjustment; retry the control."); return;
-        }
-        auto argv = command(volumeKey());
-        if (argv.isEmpty()) { emit changed(); return; }
-        m_dispatched = pending;
-        if (m_active == Backend::PulseAudio) argv << m_sink << QString::number(pending.percent, 'f', 3) + "%";
-        else argv << QString::number(pending.percent / 100., 'f', 3);
-        executeAction(argv);
-    });
+    m_debounce.setTimerType(Qt::PreciseTimer);
+    connect(&m_debounce, &QTimer::timeout, this, &VolumeService::dispatchVolume);
     connect(&m_runner, &CommandRunner::completed, this, [this](int code, const QByteArray &output, const QString &processError) {
         const auto generation = m_generation;
         // A FailedToStart callback is still inside QProcess cleanup. Defer a
@@ -35,11 +22,17 @@ VolumeService::VolumeService(QObject *parent) : Service(parent) {
         if (!enabled() || m_phase == Phase::Idle) return;
         if (code != 0 || !processError.isEmpty()) {
             const auto error = processError.isEmpty() ? QString("Command exited %1: %2").arg(code).arg(QString::fromUtf8(output).left(512)) : processError;
-            if (m_phase == Phase::Action) { m_phase = Phase::Idle; m_pending.reset(); m_dispatched.reset(); fail("Audio action failed: " + error); }
+            if (m_phase == Phase::Action) { m_phase = Phase::Idle; m_debounce.stop(); m_pending.reset(); m_dispatched.reset(); fail("Audio action failed: " + error); }
             else readFailed(error);
             return;
         }
-        if (m_phase == Phase::Action) { m_phase = Phase::Idle; refresh(); return; }
+        if (m_phase == Phase::Action) {
+            m_phase = Phase::Idle;
+            // Give an overdue target priority, but bound the write burst so
+            // continuous input cannot starve observed feedback/sink detection.
+            if (m_pending && m_writesSinceReadback < maximumWritesBeforeReadback) scheduleVolume(); else refresh();
+            return;
+        }
         QVariantMap snapshot; QString error;
         if (m_phase == Phase::PipeWire) {
             QVariantList rows;
@@ -60,10 +53,12 @@ QStringList VolumeService::command(const char *key) const {
 const char *VolumeService::volumeKey() const { return m_active == Backend::PulseAudio ? "pulse_set_volume_command" : "set_volume_command"; }
 const char *VolumeService::muteKey() const { return m_active == Backend::PulseAudio ? "pulse_mute_command" : "mute_command"; }
 void VolumeService::stop() {
-    m_phase = Phase::Idle; m_debounce.stop(); m_pending.reset(); m_dispatched.reset(); m_runner.cancel();
+    m_phase = Phase::Idle; m_debounce.stop(); m_lastDispatch.invalidate(); m_writesSinceReadback = 0;
+    m_pending.reset(); m_dispatched.reset(); m_runner.cancel();
     m_pulseInfo.clear(); m_sink.clear(); m_attempted.clear(); m_errors.clear(); m_active = Backend::PipeWire;
 }
 void VolumeService::poll() {
+    if (m_pending && m_writesSinceReadback < maximumWritesBeforeReadback) { scheduleVolume(); return; }
     m_attempted.clear(); m_errors.clear();
     const auto backend = m_options.value("backend").toString();
     probe(backend == "pulseaudio" ? Backend::PulseAudio : backend == "pipewire" ? Backend::PipeWire : m_active);
@@ -80,16 +75,43 @@ void VolumeService::readFailed(const QString &error) {
     m_errors << (m_probe == Backend::PulseAudio ? "PulseAudio: " : "PipeWire: ") + error;
     const auto other = m_probe == Backend::PulseAudio ? Backend::PipeWire : Backend::PulseAudio;
     if (m_options.value("backend").toString() == "auto" && !m_attempted.contains(other)) { probe(other); return; }
-    m_phase = Phase::Idle; m_pulseInfo.clear(); m_pending.reset(); m_dispatched.reset();
+    m_phase = Phase::Idle; m_debounce.stop(); m_pulseInfo.clear(); m_pending.reset(); m_dispatched.reset();
     fail("No readable audio output. " + m_errors.join("; "));
 }
 void VolumeService::publishVolume(QVariantMap snapshot) {
-    m_active = m_probe; m_phase = Phase::Idle; m_pulseInfo.clear(); m_dispatched.reset();
+    m_active = m_probe; m_phase = Phase::Idle; m_pulseInfo.clear(); m_dispatched.reset(); m_writesSinceReadback = 0;
     m_sink = snapshot.value("sinkIndex").toString();
     snapshot["backend"] = m_active == Backend::PulseAudio ? "pulseaudio" : "pipewire";
     snapshot["canSetVolume"] = !command(volumeKey()).isEmpty();
     snapshot["canMute"] = !command(muteKey()).isEmpty();
+    if (m_pending && (m_pending->backend != m_active || m_pending->sink != m_sink)) {
+        m_debounce.stop(); m_pending.reset();
+        fail("Audio output changed before the volume adjustment; retry the control."); return;
+    }
     publish(snapshot);
+    scheduleVolume();
+}
+void VolumeService::scheduleVolume() {
+    if (!m_pending || !enabled() || busy() || m_debounce.isActive()) return;
+    const auto cadence = m_options.value("debounce_ms").toInt();
+    const int remaining = m_lastDispatch.isValid() ? static_cast<int>(std::max<qint64>(0, cadence - m_lastDispatch.elapsed())) : 0;
+    // Next event turn coalesces synchronous input without delaying the idle edge.
+    m_debounce.start(remaining);
+}
+void VolumeService::dispatchVolume() {
+    if (!m_pending || !enabled() || busy()) return;
+    const auto pending = std::exchange(m_pending, std::nullopt).value();
+    if (!available() || !m_options.value("allow_actions").toBool()) { m_dispatched.reset(); emit changed(); return; }
+    if (pending.backend != m_active || pending.sink != m_sink) {
+        m_dispatched.reset(); fail("Audio output changed before the volume adjustment; retry the control."); return;
+    }
+    auto argv = command(volumeKey());
+    if (argv.isEmpty()) { m_dispatched.reset(); emit changed(); return; }
+    m_dispatched = pending;
+    if (m_active == Backend::PulseAudio) argv << m_sink << QString::number(pending.percent, 'f', 3) + "%";
+    else argv << QString::number(pending.percent / 100., 'f', 3);
+    m_lastDispatch.start(); ++m_writesSinceReadback;
+    executeAction(argv);
 }
 bool VolumeService::executeAction(QStringList argv) {
     m_phase = Phase::Action; setBusy(true);
@@ -114,9 +136,7 @@ bool VolumeService::act(const QString &name, const QVariantMap &args) {
         }
         if (percent < 0 || percent > maximum) return false;
         m_pending = PendingVolume{percent, m_active, m_sink};
-        // Rate-limit rather than restart on every mouse move: continuous input
-        // still reaches the backend, with at most one latest-value pending slot.
-        if (!m_debounce.isActive()) m_debounce.start(m_options.value("debounce_ms").toInt());
+        scheduleVolume();
         emit changed(); return true;
     }
     if (name != "toggleMute") return false;

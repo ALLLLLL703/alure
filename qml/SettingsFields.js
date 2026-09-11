@@ -80,6 +80,13 @@ function describe(path, value) {
         help.exclusive_zone = "Always only: −1 reserves panel thickness; 0 reserves nothing. Dodge-windows/auto-hide ignore reservation and window gap in both states."
         help.window_gap = "Extra reservation in always mode only. Dynamic visibility modes never reserve space."
     }
+    if (path.startsWith("modules.volume.")) {
+        help.debounce_ms = "Minimum cadence between volume writes, not an idle-input delay. Overdue targets run after the current command; real readback occurs after at most two setters and at the end of input."
+    }
+    if (path.startsWith("modules.workspaces.")) {
+        help.interval_ms = "Reconnect retry interval. Workspace state is updated immediately by a standalone Niri event stream, not polling."
+        help.timeout_ms = "Deadline for the stream acknowledgement/initial workspace snapshot and each action acknowledgement. Healthy idle streams do not time out."
+    }
     if (path.startsWith("modules.brightness.")) {
         help.scroll_enabled = "Adjust the selected brightness kind by scrolling over the panel module. Keyboard input accumulates full notches."
         help.scroll_inverted = "Reverse the delivered wheel direction. Off: positive/up increases brightness."

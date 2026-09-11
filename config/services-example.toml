@@ -2,13 +2,13 @@
 # Conservative service configuration example; no installation/update command.
 [modules.workspaces.behavior]
 ordering = "provider" # preserve IPC array order; default output-index sorts output/idx/id
-interval_ms = 1500
+interval_ms = 1500 # reconnect retry only; live workspace switches arrive via EventStream
 socket_path = "" # NIRI_SOCKET from this process's environment
 [modules.media.behavior]
 interval_ms = 2000
 [modules.volume.behavior]
 max_percent = 125
-debounce_ms = 150
+debounce_ms = 150 # minimum write spacing, not idle delay; observed readback after at most two setters
 [modules.updates.behavior]
 interval_ms = 7200000
 update_command = [] # empty disables the explicit update action

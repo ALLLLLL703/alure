@@ -154,9 +154,9 @@ not a second enable switch. Disable unused modules explicitly to avoid their wor
 
 | Module | Additional keys / defaults / validation |
 |---|---|
-| workspaces | `socket_path=""`: string, empty selects NIRI_SOCKET; otherwise absolute path without NUL. Native JSON socket; `command` is unused. `ordering="output-index"`: string enum `output-index` / `provider`. Default interval 1000, timeout 3000. |
+| workspaces | `socket_path=""`: string, empty selects NIRI_SOCKET; otherwise absolute path without NUL. Native JSON event stream; `command` is unused. `ordering="output-index"`: string enum `output-index` / `provider`. Default reconnect interval 1000, initial snapshot/action acknowledgement timeout 3000; healthy workspace updates are event-driven, not interval-delayed. |
 | media / tray | DBus integrations; `command` unused. Default interval 1000, timeout 3000. |
-| volume | `backend="auto"` (`auto`, `pipewire`, `pulseaudio`); PulseAudio command defaults and validation: [audio.md](audio.md). `set_volume_command=["wpctl","set-volume","@DEFAULT_AUDIO_SINK@"]` appends a decimal volume ratio; `mute_command=["wpctl","set-mute","@DEFAULT_AUDIO_SINK@","toggle"]`; `max_percent=100` integer 1..150; `debounce_ms=100` integer 10..2000 (latest-value coalescing cadence); `scroll_enabled=true`, `scroll_step=5` integer 1..100 percentage points/notch, `scroll_inverted=false`. Read interval 2000, timeout 3000. |
+| volume | `backend="auto"` (`auto`, `pipewire`, `pulseaudio`); PulseAudio command defaults and validation: [audio.md](audio.md). `set_volume_command=["wpctl","set-volume","@DEFAULT_AUDIO_SINK@"]` appends a decimal volume ratio; `mute_command=["wpctl","set-mute","@DEFAULT_AUDIO_SINK@","toggle"]`; `max_percent=100` integer 1..150; `debounce_ms=100` integer 10..2000 (minimum write cadence; idle input dispatches next event turn, busy completion waits only remaining cadence); `scroll_enabled=true`, `scroll_step=5` integer 1..100 percentage points/notch, `scroll_inverted=false`. Read interval 2000, timeout 3000. |
 | updates | `update_command=[]`: empty disables explicit update action. Default read `command=["checkupdates"]`, interval 1800000 (30 min), timeout 120000. No install command is preconfigured or automatic. |
 | wifi | `radio_command=["nmcli","radio","wifi"]` appends on/off; `radio_status_command=["nmcli","-t","-f","WIFI","general"]`; `saved_command=["nmcli","-t","-f","UUID,NAME,TYPE","connection","show"]`; `connect_command=["nmcli","connection","up","uuid"]` appends an observed UUID. Read command lists ACTIVE,SSID,SIGNAL with `--rescan no`. Interval 10000, timeout 5000 **per subprocess**. |
 | bluetooth | Native BlueZ DBus; `command` unused. Interval 10000, timeout 5000 per DBus call. |
@@ -168,7 +168,7 @@ null/empty output first), then numeric `idx`, then numeric stable `id` to break 
 `ordering="provider"` preserves incoming IPC array order. This is a presentation
 policy shared by panel and details, not output filtering or workspace renumbering;
 activation still uses stable IDs. Changing ordering on valid reload restarts the
-workspace request and applies to its next snapshot (or restart with watching off).
+workspace subscription and applies to its next full snapshot (or restart with watching off).
 Invalid values/types produce a `modules.workspaces.behavior.ordering` diagnostic.
 
 All known `*_command` options use the same argv-array validation as `command`:

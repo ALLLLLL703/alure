@@ -60,7 +60,8 @@ Control {
         }
         InfoText {
             visible: root.moduleName !== "calendar"
-            text: !root.service ? "No provider is implemented for this module." : root.service.diagnostic || (root.moduleName === "taskbar" ? root.service.state.actionError || "" : "") || (root.service.busy && !(root.moduleName === "volume" && root.ready) ? "Refreshing…" : root.ready ? "Live system data" + (root.moduleName === "volume" && root.service.state.backend ? " · " + root.service.state.backend : "") : "Provider unavailable")
+            objectName: "provider-status"
+            text: !root.service ? "No provider is implemented for this module." : root.service.diagnostic || ((root.moduleName === "taskbar" || root.moduleName === "workspaces") ? root.service.state.actionError || "" : "") || (root.moduleName === "volume" && root.ready && root.service.pendingPercent !== undefined && root.service.pendingPercent !== null ? "Pending volume: " + Math.round(root.service.pendingPercent) + "%" : root.service.busy && !(root.moduleName === "volume" && root.ready) ? "Refreshing…" : root.ready ? "Live system data" + (root.moduleName === "volume" && root.service.state.backend ? " · " + root.service.state.backend : "") : "Provider unavailable")
             color: root.ready ? root.theme.palette.muted : root.theme.palette.accent
             Layout.fillWidth: true
         }

@@ -24,7 +24,7 @@ pulse_set_volume_command = ["pactl", "set-sink-volume"]
 pulse_mute_command = ["pactl", "set-sink-mute"]
 allow_actions = true
 max_percent = 100
-debounce_ms = 100
+debounce_ms = 100 # minimum spacing between writes; idle input dispatches next event turn
 interval_ms = 2000
 timeout_ms = 3000
 ```
@@ -83,11 +83,27 @@ the newest pending/in-flight target, so fast wheel input does not reuse stale
 server values. Absolute `setVolume({percent})` replaces that target. Both accept
 new input while an audio job is busy; mute and all other services retain their
 existing busy guards. Only one command and one latest-value pending slot exist.
-`debounce_ms` now sets the coalescing cadence (default 100 ms), rather than
-indefinitely postponing writes until pointer motion stops.
+`debounce_ms` sets the minimum coalescing cadence between dispatched volume
+writes (default 100 ms), not a delay on every input. The first idle input is
+sent on the next event-loop turn (synchronous inputs still coalesce). Subsequent
+writes wait only the remaining monotonic cadence; a busy command does not
+restart that delay. An overdue queued write takes priority over an unnecessary
+readback, with a fairness limit of two consecutive setters before a real read.
+This bounds observed panel/OSD feedback and changed-default-sink detection during
+continuous input without adding a full read sequence after every setter. After
+the final write, Alure immediately reads actual volume/mute state; an
+already-running read is allowed to finish before dispatch, including default-sink
+validation. Slow commands can still delay observation by up to two setters plus
+the read sequence, each subject to `timeout_ms`. No concurrent commands or
+speculative read results are introduced.
 
 The volume service's `adjusting` property remains true until pending writes and
-readback finish; `state.percent` still contains only observed data. The slider
+readback finish; `state.percent` still contains only observed data. The separate
+`pendingPercent` property is the latest requested target (null/invalid when none),
+not proof of a successful write. The existing popup status line immediately shows
+“Pending volume: N%”; diagnostics take precedence. Panel percentages and OSD still
+use observed snapshots only, and the pending status clears on readback, failure,
+disable or reconfigure. The slider
 keeps its mouse grab across busy transitions and ignores snapshots while pressed
 or adjusting, then reconciles with the final readback. Progress messages no longer
 insert/remove rows or move the slider during dragging; provider errors remain
@@ -113,12 +129,23 @@ Interaction regression checks use offscreen wheel/press/move/release events and
 slow fixture commands, not host audio writes. They reproduce the old slider's
 snapshot overwrite and verify uninterrupted dragging, post-release readback,
 unchanged slider position, wheel direction/step/gates/clicks, queued input on both
-backends, clamping and cancellation. No full CTest suite or live GUI test was run.
+backends, clamping and cancellation. No full CTest suite or live GUI test was run
+for that initial interaction stage; later validation is recorded below.
 
 Upstream command contracts (and the installed `pactl(1)` manual):
 https://github.com/pulseaudio/pulseaudio/blob/master/man/pactl.1.xml.in
 
+Latency regressions, subsequently executed by the parent (see
+[verification and limits](latency.md)), use file-gated fixture commands to verify
+idle dispatch before a long cadence,
+continuous latest-value accumulation during held reads/writes, queued-write
+priority, bounded observed readback while input remains queued, final actual
+readback, changed-sink detection during a gesture, write failure and cancellation. Pending feedback
+has a separate offscreen UI regression source. No host audio writes are required.
+
 Qt input/binding references:
+- https://doc.qt.io/qt-6/qtimer.html (starting an active timer restarts its delay)
+- https://doc.qt.io/qt-6/qelapsedtimer.html (monotonic elapsed cadence)
 - https://doc.qt.io/qt-6/qml-qtquick-wheelhandler.html
 - https://doc.qt.io/qt-6/qml-qtquick-wheelevent.html
 - https://doc.qt.io/qt-6/qml-qtquick-controls-slider.html

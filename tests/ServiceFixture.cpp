@@ -48,6 +48,26 @@ int main(int argc, char **argv) {
         if (!listing.open(QIODevice::WriteOnly | QIODevice::Truncate)) return 6;
         listing.write(rows.join('\n')); return 0;
     }
+    if (mode == "audio-gated") {
+        const auto root = app.arguments().value(2), operation = app.arguments().value(3);
+        QFile log(root + "/calls"); if (!log.open(QIODevice::WriteOnly | QIODevice::Append)) return 1;
+        log.write(operation.toUtf8() + '|' + app.arguments().mid(4).join('|').toUtf8() + '\n'); log.close();
+        // File gates make command ordering deterministic without touching audio.
+        QTimer gate; gate.setInterval(5);
+        QObject::connect(&gate, &QTimer::timeout, &app, [&app, root, operation] {
+            if (!QFile::exists(root + "/release-" + operation)) return;
+            if (QFile::exists(root + "/consume-" + operation + "-release")) QFile::remove(root + "/release-" + operation);
+            if (QFile::exists(root + "/fail-" + operation)) { QTextStream(stderr) << "Fixture rejection"; app.exit(1); return; }
+            if (operation != "write") {
+                QFile data(root + "/snapshot-" + operation);
+                if (!data.open(QIODevice::ReadOnly)) { app.exit(2); return; }
+                QFile output; if (!output.open(stdout, QIODevice::WriteOnly)) { app.exit(3); return; }
+                output.write(data.readAll());
+            }
+            app.quit();
+        });
+        gate.start(); return app.exec();
+    }
     if (mode.startsWith("audio-") && app.arguments().size() == 3) {
         QFile file(app.arguments().value(2)); if (!file.open(QIODevice::WriteOnly | QIODevice::Append)) return 1;
         file.write(mode.toUtf8() + '\n');
