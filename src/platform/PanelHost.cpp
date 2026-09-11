@@ -37,8 +37,18 @@ PanelPlacement panelPlacement(const QVariantMap &panel, QSize screenSize) {
     if (zone > 0) zone = std::max(0, zone + panel.value("window_gap").toInt());
     return {vertical ? QSize(thickness, length) : QSize(length, thickness), m, anchors, edge, layer, zone, vertical};
 }
+OsdPlacement osdPlacement(const QVariantMap &options, QSize screenSize) {
+    const int width = std::max(1, screenSize.width()), height = std::max(1, screenSize.height());
+    const int horizontal = std::clamp(options.value("margin_horizontal").toInt(), 0, (width - 1) / 2);
+    const int bottom = std::clamp(options.value("margin_bottom").toInt(), 0, height - 1);
+    const QSize size(std::clamp(options.value("width").toInt(), 1, width - 2 * horizontal),
+                     std::clamp(options.value("height").toInt(), 1, height - bottom));
+    return {size, QMargins(horizontal, 0, horizontal, bottom), QPoint((width - size.width()) / 2, height - bottom - size.height())};
+}
 PanelHost::PanelHost(ConfigStore &config, QQmlEngine &engine, bool preview, QObject *parent)
     : QObject(parent), m_config(config), m_engine(engine), m_preview(preview) {
+    m_osdTimer.setSingleShot(true);
+    connect(&m_osdTimer, &QTimer::timeout, this, &PanelHost::closeOsd);
     connect(&config, &ConfigStore::modelChanged, this, &PanelHost::scheduleRebuild);
     connect(qGuiApp, &QGuiApplication::screenAdded, this, &PanelHost::scheduleRebuild);
     connect(qGuiApp, &QGuiApplication::screenRemoved, this, &PanelHost::scheduleRebuild);
@@ -50,6 +60,7 @@ PanelHost::~PanelHost() {
     // Window destruction emits focus/visibility signals. Tear down windows while
     // the popup's borrowed parent/anchor and keyboard-policy state are still alive.
     closePopup();
+    closeOsd();
     m_toast.reset(); m_popup.reset(); m_windows.clear();
 }
 void PanelHost::scheduleRebuild() {
@@ -63,7 +74,7 @@ void PanelHost::trace(const QString &message) const {
 }
 void PanelHost::rebuild() {
     trace("rebuilding panels after config/output change");
-    closePopup(); closeToast();
+    closePopup(); closeToast(); closeOsd();
     const auto iconTheme = m_config.model().value("theme").toMap().value("icon_theme").toString();
     static const QString desktopIconTheme = QIcon::themeName();
     QIcon::setThemeName(iconTheme.isEmpty() ? desktopIconTheme : iconTheme);
@@ -300,6 +311,43 @@ void PanelHost::syncNotifications(const QVariantList &items) {
         if ((options.value("output").toString() == "primary" && candidate == QGuiApplication::primaryScreen()) || options.value("output").toString() == candidate->name()) { screen = candidate; break; }
     if (screen) createToast({{"notification", latest}}, screen);
     else qWarning().noquote() << "Alure: notification banner output unavailable:" << options.value("output").toString();
+}
+
+void PanelHost::closeOsd() {
+    m_osdTimer.stop(); m_osdWindows.clear();
+}
+void PanelHost::showOsd(const QVariantMap &snapshot) {
+    const auto options = m_config.model().value("ui").toMap().value("osd").toMap();
+    const auto kind = snapshot.value("kind").toString();
+    closeOsd();
+    if (m_rebuildPending || !options.value("enabled").toBool() || !options.value(kind + "_enabled").toBool()) return;
+    const auto output = options.value("output").toString();
+    for (auto *screen : QGuiApplication::screens()) {
+        if (output != "*" && !(output == "primary" && screen == QGuiApplication::primaryScreen()) && output != screen->name()) continue;
+        const auto placement = osdPlacement(options, screen->size());
+        auto view = std::make_unique<QQuickView>(&m_engine, nullptr);
+        view->setScreen(screen); view->setTitle("Alure OSD"); view->setColor(Qt::transparent);
+        view->setFlags(Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus | Qt::WindowTransparentForInput);
+        view->setResizeMode(QQuickView::SizeRootObjectToView); view->resize(placement.size);
+        if (!m_preview) {
+            using W = LayerShellQt::Window;
+            auto *layer = W::get(view.get());
+            layer->setScope("alure-osd"); layer->setScreen(screen);
+            layer->setLayer(W::LayerOverlay);
+            // -1 ignores other surfaces' zones and reserves no space itself.
+            layer->setExclusiveZone(-1); layer->setDesiredSize(placement.size);
+            layer->setAnchors(W::AnchorBottom); layer->setMargins(placement.margins);
+            layer->setKeyboardInteractivity(W::KeyboardInteractivityNone); layer->setActivateOnShow(false);
+        }
+        if (!QGuiApplication::platformName().startsWith("wayland")) view->setPosition(screen->geometry().topLeft() + placement.position);
+        view->setInitialProperties({{"snapshot", snapshot}}); view->setSource(QUrl("qrc:/qml/Osd.qml"));
+        if (view->status() == QQuickView::Error) { qWarning() << "OSD QML failed:" << view->errors(); continue; }
+        view->show(); m_osdWindows.push_back(std::move(view));
+    }
+    if (!m_osdWindows.empty()) {
+        trace("show OSD " + kind);
+        m_osdTimer.start(options.value("duration_ms").toInt());
+    } else qWarning().noquote() << "Alure: OSD output unavailable:" << output;
 }
 
 }

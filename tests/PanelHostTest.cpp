@@ -5,6 +5,19 @@
 class PanelHostTest : public QObject {
     Q_OBJECT
 private slots:
+    void osdLowerCenterPlacement() {
+        QVariantMap model; QString error; QVERIFY(Alure::ConfigStore::parse({}, model, error));
+        auto options = model.value("ui").toMap().value("osd").toMap();
+        const auto p = Alure::osdPlacement(options, {1920, 1080});
+        QCOMPARE(p.size, QSize(300, 100)); QCOMPARE(p.position, QPoint(810, 916));
+        QCOMPARE(p.margins, QMargins(16, 0, 16, 64));
+        options["margin_horizontal"] = 4096; options["margin_bottom"] = 4096;
+        for (const auto &extent : {QSize(1, 1), QSize(240, 120), QSize(3840, 2160)}) {
+            const auto clamped = Alure::osdPlacement(options, extent);
+            QVERIFY(QRect(QPoint(), extent).contains(QRect(clamped.position, clamped.size)));
+            QVERIFY(clamped.size.width() > 0); QVERIFY(clamped.size.height() > 0);
+        }
+    }
     void popupPlacement_data() {
         QTest::addColumn<QString>("edge"); QTest::addColumn<QString>("alignment"); QTest::addColumn<int>("offset");
         for (const auto &edge : {"top", "bottom", "left", "right"})

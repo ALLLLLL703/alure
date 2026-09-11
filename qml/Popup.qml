@@ -76,6 +76,16 @@ Control {
                     active: root.moduleName === "calendar"
                     sourceComponent: CalendarView { }
                 }
+                Loader {
+                    Layout.fillWidth: true
+                    active: root.moduleName === "brightness"
+                    sourceComponent: ColumnLayout {
+                        spacing: root.theme.spacing
+                        BrightnessControl { service: root.service; config: root.config; kind: "screen" }
+                        BrightnessControl { service: root.service; config: root.config; kind: "keyboard" }
+                        InfoText { text: root.service ? root.service.state.actionError || "" : ""; visible: text.length > 0; color: root.theme.palette.accent; Layout.fillWidth: true }
+                    }
+                }
                 ColumnLayout {
                     visible: root.moduleName === "volume" && root.ready
                     Layout.fillWidth: true
@@ -241,7 +251,7 @@ Control {
                         }
                     }
                 }
-                InfoText { visible: root.ready && root.moduleName !== "volume" && root.service.items.length === 0; text: "No items reported."; color: root.theme.palette.muted; Layout.fillWidth: true }
+                InfoText { visible: root.ready && root.moduleName !== "volume" && root.moduleName !== "brightness" && root.service.items.length === 0; text: "No items reported."; color: root.theme.palette.muted; Layout.fillWidth: true }
             }
         }
     }

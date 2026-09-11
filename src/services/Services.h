@@ -1,6 +1,8 @@
 #pragma once
 #include "CommandServices.h"
 #include "VolumeService.h"
+#include "BrightnessService.h"
+#include "OsdController.h"
 #include "NiriService.h"
 #include "DBusServices.h"
 #include "TrayService.h"
@@ -14,6 +16,7 @@ class Services : public QObject {
     Q_PROPERTY(Alure::Service* media READ media CONSTANT)
     Q_PROPERTY(Alure::Service* tray READ tray CONSTANT)
     Q_PROPERTY(Alure::Service* volume READ volume CONSTANT)
+    Q_PROPERTY(Alure::Service* brightness READ brightness CONSTANT)
     Q_PROPERTY(Alure::Service* updates READ updates CONSTANT)
     Q_PROPERTY(Alure::Service* wifi READ wifi CONSTANT)
     Q_PROPERTY(Alure::Service* bluetooth READ bluetooth CONSTANT)
@@ -26,6 +29,8 @@ public:
     Service *media() { return &m_media; }
     Service *tray() { return &m_tray; }
     Service *volume() { return &m_volume; }
+    Service *brightness() { return &m_brightness; }
+    OsdController *osd() { return &m_osd; }
     Service *updates() { return &m_updates; }
     Service *wifi() { return &m_wifi; }
     Service *bluetooth() { return &m_bluetooth; }
@@ -36,6 +41,8 @@ private:
     void apply(const QVariantMap &model);
     NiriService m_workspaces;
     VolumeService m_volume;
+    BrightnessService m_brightness;
+    OsdController m_osd;
     CommandService m_updates{CommandService::Updates}, m_wifi{CommandService::Wifi};
     MediaService m_media;
     TrayService m_tray;

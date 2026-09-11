@@ -1,6 +1,6 @@
 .pragma library
 function title(name) {
-    const names = {clipboard: "Clipboard", workspaces: "Workspaces", media: "Now playing", tray: "System tray", volume: "Sound", updates: "Updates", wifi: "Wi-Fi", bluetooth: "Bluetooth", notifications: "Notifications", calendar: "Calendar", battery: "Battery"}
+    const names = {clipboard: "Clipboard", workspaces: "Workspaces", media: "Now playing", tray: "System tray", volume: "Sound", brightness: "Brightness", updates: "Updates", wifi: "Wi-Fi", bluetooth: "Bluetooth", notifications: "Notifications", calendar: "Calendar", battery: "Battery"}
     return names[name] || name
 }
 function moduleDescription(name) {
@@ -10,6 +10,7 @@ function moduleDescription(name) {
         clipboard: "Search clipboard history, preview images, copy or delete entries.",
         tray: "Access application tray icons and menus.",
         volume: "Adjust audio output volume and mute.",
+        brightness: "Adjust display brightness and discrete keyboard backlight levels.",
         updates: "Check updates and run the configured update command.",
         wifi: "View Wi-Fi networks and connect saved profiles.",
         bluetooth: "Manage Bluetooth power and paired-device connections.",
@@ -30,6 +31,7 @@ function format(pattern, data) {
 }
 function values(name, state, items) {
     const result = Object.assign({}, state)
+    if (name === "brightness") result.percent = state.percent === undefined || state.percent === null ? "—" : Math.round(state.percent)
     if (name === "media" && items.length) Object.assign(result, items[0])
     if (name === "bluetooth") result.status = state.connectedCount ? state.connectedCount + " connected" : "Ready"
     if (name === "wifi" && !state.connected) result.ssid = state.powered ? "Not connected" : "Radio off"

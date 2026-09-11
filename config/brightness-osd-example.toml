@@ -1,0 +1,57 @@
+# Merge these tables into your Alure TOML; reload applies them immediately.
+# Add "brightness" to your existing panel's modules / modules_right list yourself.
+# Explicit existing lists are never migrated or reordered automatically.
+[modules.brightness]
+enabled = true
+[modules.brightness.behavior]
+allow_actions = true # false monitors only; no hardware writes
+popup_enabled = true
+interval_ms = 500
+timeout_ms = 3000
+debounce_ms = 100
+set_command = ["brightnessctl"] # [] disables writes; argv prefix, no implicit shell
+scroll_enabled = true
+scroll_inverted = false
+scroll_target = "screen"
+[modules.brightness.behavior.screen]
+enabled = true
+allow_actions = true
+sysfs_path = "/sys/class/backlight"
+device = "intel_backlight" # exact basename, not wildcard; "" autodetects
+min_percent = 10
+max_percent = 90
+step = 5
+[modules.brightness.behavior.keyboard]
+enabled = true
+allow_actions = true
+sysfs_path = "/sys/class/leds"
+device = "" # only :kbd_backlight devices; not caps/mute LEDs
+min_level = 0
+max_level = -1 # use hardware maximum, commonly 2 or 3
+step = 1
+[ui.osd]
+enabled = true
+volume_enabled = true # includes mute, even when percent did not change
+screen_enabled = true
+keyboard_enabled = true
+output = "primary" # "*" all outputs, or exact output name (no fallback)
+width = 320
+height = 104
+margin_bottom = 72
+margin_horizontal = 16
+duration_ms = 1800
+padding = 16
+spacing = 8
+font_size = 14
+icon_size = 24
+show_icon = true
+show_label = true
+volume_icon = "volume"
+screen_icon = "brightness"
+keyboard_icon = "keyboard"
+bar_height = 6
+radius = 14
+opacity = 0.92
+background = "" # inherit theme; or Qt color such as #202532
+foreground = ""
+accent = ""

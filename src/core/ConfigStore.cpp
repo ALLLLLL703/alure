@@ -132,6 +132,27 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
         choice(ui, "popup_alignment", {"center", "start", "end"}, "ui.");
         choice(ui, "popup_direction", {"inward", "top", "bottom", "left", "right"}, "ui.");
         range(ui, "animation_ms", 0, 2000, "ui.");
+        const auto osd = ui.value("osd").toMap();
+        for (const auto &key : {"background", "foreground", "accent"})
+          if (!osd.value(key).toString().isEmpty() && !QColor::isValidColorName(osd.value(key).toString()))
+            invalid("ui.osd." + QString(key), "invalid Qt color");
+        for (const auto &key : {"volume_icon", "screen_icon", "keyboard_icon"})
+          if (!QRegularExpression("^[A-Za-z0-9][A-Za-z0-9_.-]*$").match(osd.value(key).toString()).hasMatch())
+            invalid("ui.osd." + QString(key), "expected icon name, not a path");
+        range(osd, "width", 160, 1920, "ui.osd.");
+        range(osd, "height", 60, 1080, "ui.osd.");
+        range(osd, "margin_bottom", 0, 4096, "ui.osd.");
+        range(osd, "margin_horizontal", 0, 4096, "ui.osd.");
+        range(osd, "duration_ms", 100, 600000, "ui.osd.");
+        range(osd, "padding", 0, 64, "ui.osd.");
+        range(osd, "spacing", 0, 32, "ui.osd.");
+        range(osd, "font_size", 6, 72, "ui.osd.");
+        range(osd, "icon_size", 8, 128, "ui.osd.");
+        range(osd, "bar_height", 1, 32, "ui.osd.");
+        range(osd, "radius", 0, 128, "ui.osd.");
+        range(osd, "opacity", 0, 1, "ui.osd.");
+        nonempty(osd, "output", "ui.osd.");
+        if (osd.value("output").toString().contains(QChar::Null)) invalid("ui.osd.output", "must not contain NUL");
         const auto toast = ui.value("toast").toMap();
         range(toast, "width", 240, 1920, "ui.toast.");
         range(toast, "height", 80, 1080, "ui.toast.");
@@ -236,6 +257,34 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
                 const auto preferred = behavior.value("preferred_player").toString();
                 if (!preferred.isEmpty() && !QRegularExpression("^org\\.mpris\\.MediaPlayer2\\.[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$").match(preferred).hasMatch())
                     invalid(path + "preferred_player", "expected empty or a full MPRIS service name/prefix");
+            }
+            if (it.key() == "brightness") {
+              range(behavior, "debounce_ms", 10, 2000, path);
+              choice(behavior, "scroll_target", {"screen", "keyboard"}, path);
+              for (const auto &kind : {QString("screen"), QString("keyboard")}) {
+                const auto deviceOptions = behavior.value(kind).toMap();
+                const auto devicePath = path + kind + '.';
+                const auto directory = deviceOptions.value("sysfs_path").toString();
+                if (!QDir::isAbsolutePath(directory) || directory.contains(QChar::Null))
+                  invalid(devicePath + "sysfs_path", "expected absolute directory path without NUL");
+                const auto device = deviceOptions.value("device").toString();
+                if (!device.isEmpty() && (!QRegularExpression("^[A-Za-z0-9_][A-Za-z0-9_.:-]*$").match(device).hasMatch() ||
+                    (kind == "keyboard" && !device.endsWith(":kbd_backlight"))))
+                  invalid(devicePath + "device", "expected exact device basename (keyboard must end :kbd_backlight)");
+                if (kind == "screen") {
+                  range(deviceOptions, "min_percent", 0, 100, devicePath);
+                  range(deviceOptions, "max_percent", 1, 100, devicePath);
+                  range(deviceOptions, "step", 1, 100, devicePath);
+                  if (deviceOptions.value("min_percent").toInt() > deviceOptions.value("max_percent").toInt())
+                    invalid(devicePath + "min_percent", "exceeds max_percent");
+                } else {
+                  range(deviceOptions, "min_level", 0, 2147483647, devicePath);
+                  range(deviceOptions, "max_level", -1, 2147483647, devicePath);
+                  range(deviceOptions, "step", 1, 2147483647, devicePath);
+                  if (deviceOptions.value("max_level").toInt() != -1 && deviceOptions.value("min_level").toInt() > deviceOptions.value("max_level").toInt())
+                    invalid(devicePath + "min_level", "exceeds max_level");
+                }
+              }
             }
             if (it.key() == "volume") {
                 choice(behavior, "backend", {"auto", "pipewire", "pulseaudio"}, path);

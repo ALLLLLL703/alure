@@ -6,6 +6,7 @@
 #include <QVariantMap>
 #include <QSet>
 #include <QPointer>
+#include <QTimer>
 #include <memory>
 #include <vector>
 class QQmlEngine;
@@ -25,6 +26,8 @@ struct PanelPlacement {
 };
 // Pure contract, shared with geometry tests; all values are logical pixels.
 PanelPlacement panelPlacement(const QVariantMap &panel, QSize screenSize);
+struct OsdPlacement { QSize size; QMargins margins; QPoint position; };
+OsdPlacement osdPlacement(const QVariantMap &options, QSize screenSize);
 class PanelHost final : public QObject {
     Q_OBJECT
 public:
@@ -36,6 +39,8 @@ public:
     Q_INVOKABLE bool openSettings();
     Q_INVOKABLE void closeToast();
     void syncNotifications(const QVariantList &items);
+    void showOsd(const QVariantMap &snapshot);
+    void closeOsd();
 private:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void releasePopupKeyboard();
@@ -49,6 +54,8 @@ private:
     bool m_rebuildPending = false;
     std::vector<std::unique_ptr<QQuickView>> m_windows;
     std::unique_ptr<QQuickView> m_popup, m_toast;
+    std::vector<std::unique_ptr<QQuickView>> m_osdWindows;
+    QTimer m_osdTimer;
     QSet<QString> m_seenNotifications;
     QString m_toastId;
     QPointer<QQuickView> m_popupParent;

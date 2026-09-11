@@ -139,6 +139,83 @@ void replaceText(QQuickWindow *window, QQuickItem *item, const QString &text) {
 class UiTest : public QObject {
     Q_OBJECT
 private slots:
+    void brightnessPopupContinuousDrag() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        FixtureService service; FixtureShell shell;
+        QVariantMap screen{{"available", true}, {"canSet", true}, {"device", "intel"}, {"level", 40}, {"maximum", 100}, {"percent", 40}, {"minimum", 1}, {"limit", 100}};
+        QVariantMap keyboard{{"available", true}, {"canSet", true}, {"device", "platform::kbd_backlight"}, {"level", 1}, {"maximum", 2}, {"percent", 50}, {"minimum", 0}, {"limit", 2}};
+        service.state = {{"screen", screen}, {"keyboard", keyboard}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Shell", &shell);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"brightness", QVariant::fromValue(&service)}});
+        QStringList warnings; connect(&engine, &QQmlEngine::warnings, this, [&](const QList<QQmlError> &errors) { for (const auto &error : errors) warnings << error.toString(); });
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(440, 560);
+        view.setInitialProperties({{"moduleName", "brightness"}}); view.setSource(QUrl("qrc:/qml/Popup.qml")); QCOMPARE(view.status(), QQuickView::Ready);
+        view.show(); QTest::qWait(40);
+        auto *slider = itemNamed(view.rootObject(), "screen-brightness-slider"); QVERIFY(slider); QVERIFY(slider->isEnabled());
+        auto *kbd = itemNamed(view.rootObject(), "keyboard-brightness-slider"); QVERIFY(kbd); QCOMPARE(kbd->property("to").toInt(), 2); QCOMPARE(kbd->property("stepSize").toInt(), 1);
+        clickItem(&view, itemNamed(view.rootObject(), "keyboard-brightness-up")); QCOMPARE(service.lastAction, "adjustBrightness"); QCOMPARE(service.lastArguments.value("kind").toString(), "keyboard"); QCOMPARE(service.lastArguments.value("delta").toInt(), 1);
+        auto *handle = slider->property("handle").value<QQuickItem *>(); QVERIFY(handle);
+        const auto start = handle->mapToScene(QPointF(handle->width()/2, handle->height()/2)).toPoint();
+        QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, start); QTest::mouseMove(&view, start + QPoint(30, 0));
+        const auto held = slider->property("value").toDouble();
+        screen["percent"] = 10; service.state["screen"] = screen; service.busy = true; service.adjusting = true; emit service.changed();
+        QCOMPARE(slider->property("value").toDouble(), held); QVERIFY(slider->property("pressed").toBool()); QVERIFY(slider->isEnabled());
+        QTest::mouseMove(&view, start + QPoint(70, 0)); const auto desired = slider->property("value").toDouble();
+        QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, start + QPoint(70, 0));
+        QCOMPARE(service.lastAction, "setBrightness"); QCOMPARE(service.lastArguments.value("kind").toString(), "screen"); QVERIFY(desired > held);
+        service.busy = false; emit service.changed(); QCOMPARE(slider->property("value").toDouble(), desired);
+        service.adjusting = false; emit service.changed(); QCOMPARE(slider->property("value").toDouble(), 10.);
+        keyboard["canSet"] = false; service.state["keyboard"] = keyboard; emit service.changed(); QVERIFY(!kbd->isEnabled());
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
+    }
+    void brightnessWheelAndSettings() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        FixtureService service; service.state = {{"screen", QVariantMap{{"canSet", true}}}, {"keyboard", QVariantMap{{"canSet", true}}}, {"percent", 40}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"brightness", QVariant::fromValue(&service)}});
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(180, 48);
+        view.setInitialProperties({{"moduleName", "brightness"}, {"vertical", false}, {"crossSize", 48}});
+        view.setSource(QUrl("qrc:/qml/ModuleStrip.qml")); QCOMPARE(view.status(), QQuickView::Ready); view.show(); QTest::qWait(30);
+        auto *button = itemNamed(view.rootObject(), "brightness-button"); QVERIFY(button);
+        const auto pos = button->mapToScene(QPointF(button->width()/2, button->height()/2)).toPoint(); QTest::mouseMove(&view, pos);
+        const auto wheel = [&](int delta) { QWheelEvent event(pos, view.mapToGlobal(pos), {}, {0, delta}, Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false); QCoreApplication::sendEvent(&view, &event); };
+        wheel(120); QCOMPARE(service.lastAction, "adjustBrightness"); QCOMPARE(service.lastArguments.value("kind").toString(), "screen"); QCOMPARE(service.lastArguments.value("delta").toDouble(), 5.);
+        QVERIFY(config.saveText("[modules.brightness.behavior]\nscroll_target='keyboard'\nscroll_inverted=true"));
+        const int count = service.actionCount; wheel(60); QCOMPARE(service.actionCount, count); wheel(60); QCOMPARE(service.actionCount, count + 1);
+        QCOMPARE(service.lastArguments.value("kind").toString(), "keyboard"); QCOMPARE(service.lastArguments.value("delta").toInt(), -1);
+        QVERIFY(config.saveText("[modules.brightness.behavior]\nscroll_enabled=false")); wheel(120); QCOMPARE(service.actionCount, count + 1);
+        QQmlComponent fields(&engine);
+        fields.setData("import QtQml\nimport \"qrc:/qml/SettingsFields.js\" as Fields\nQtObject { property var level: Fields.describe('modules.brightness.behavior.keyboard.max_level', -1); property var color: Fields.describe('ui.osd.accent', ''); property var osd: Fields.fields(Config.model.ui.osd, 'ui.osd'); property var devices: Fields.fields(Config.model.modules.brightness.behavior, 'modules.brightness.behavior') }", QUrl());
+        std::unique_ptr<QObject> object(fields.create()); QVERIFY2(object, qPrintable(fields.errorString()));
+        QCOMPARE(object->property("level").value<QJSValue>().property("low").toInt(), -1);
+        QCOMPARE(object->property("color").value<QJSValue>().property("kind").toString(), "color");
+        QCOMPARE(object->property("osd").value<QJSValue>().property("length").toInt(), config.model().value("ui").toMap().value("osd").toMap().size());
+        QVERIFY(object->property("devices").value<QJSValue>().property("length").toInt() > 20);
+    }
+    void osdPassiveWindowAndDuration() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload()); QVERIFY(config.saveText("[[panels]]\nenabled=false\n[ui.osd]\nduration_ms=150"));
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider); engine.rootContext()->setContextProperty("Config", &config);
+        QStringList warnings; connect(&engine, &QQmlEngine::warnings, this, [&](const QList<QQmlError> &errors) { for (const auto &error : errors) warnings << error.toString(); });
+        Alure::PanelHost host(config, engine, true);
+        const auto osds = [] { QList<QWindow *> result; for (auto *w : QGuiApplication::allWindows()) if (w->title() == "Alure OSD" && w->isVisible()) result << w; return result; };
+        host.showOsd({{"kind", "volume"}, {"percent", 40}, {"muted", true}});
+        QCOMPARE(osds().size(), 1); auto *window = osds().first();
+        QVERIFY(window->flags().testFlag(Qt::WindowDoesNotAcceptFocus)); QVERIFY(window->flags().testFlag(Qt::WindowTransparentForInput));
+        auto *view = qobject_cast<QQuickView *>(window); QVERIFY(view); QCOMPARE(view->status(), QQuickView::Ready);
+        QVERIFY(view->rootObject()->property("muted").toBool()); QCOMPARE(view->rootObject()->property("label").toString(), "Muted");
+        QTRY_VERIFY(osds().isEmpty());
+        host.showOsd({{"kind", "keyboard"}, {"percent", 50}, {"level", 1}, {"maximum", 2}});
+        QCOMPARE(osds().size(), 1); view = qobject_cast<QQuickView *>(osds().first()); QVERIFY(view);
+        QCOMPARE(itemNamed(view->rootObject(), "osd-value")->property("text").toString(), "1 / 2");
+        host.showOsd({{"kind", "screen"}, {"percent", 80}}); QCOMPARE(osds().size(), 1); // replace, do not stack
+        QVERIFY(config.saveText("[[panels]]\nenabled=false\n[ui.osd]\nenabled=false")); QTest::qWait(20); QVERIFY(osds().isEmpty());
+        host.showOsd({{"kind", "screen"}, {"percent", 30}}); QVERIFY(osds().isEmpty());
+        QVERIFY(config.saveText("[[panels]]\nenabled=false\n[ui.osd]\noutput='nonexistent-output'")); QTest::qWait(20);
+        host.showOsd({{"kind", "screen"}, {"percent", 30}}); QVERIFY(osds().isEmpty());
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
+    }
     void volumeWheelInput() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
         FixtureService service;

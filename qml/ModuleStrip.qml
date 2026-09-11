@@ -13,6 +13,10 @@ Item {
     readonly property var style: config.style
     opacity: style.opacity
     readonly property var service: moduleName === "calendar" ? null : Services[moduleName] || null
+    readonly property string brightnessKind: moduleName === "brightness" ? config.behavior.scroll_target : "screen"
+    readonly property var brightnessDevice: moduleName === "brightness" && service ? service.state[brightnessKind] || ({}) : ({})
+    property real keyboardWheelRemainder: 0
+    onBrightnessKindChanged: keyboardWheelRemainder = 0
     readonly property bool listMode: (moduleName === "workspaces" || moduleName === "tray") && service && service.available && service.items.length > 0
     readonly property bool sharedIcon: listMode && moduleName === "workspaces" && style.show_icon
     readonly property real iconExtent: sharedIcon ? style.icon_size + 2 * Config.model.ui.panel_padding : 0
@@ -37,13 +41,27 @@ Item {
         accessibleDescription: Ui.title(root.moduleName) + " · " + root.summary
         WheelHandler {
             target: null
-            enabled: root.moduleName === "volume" && root.config.enabled && root.config.behavior.scroll_enabled
-                     && root.config.behavior.allow_actions && !!root.service && root.service.available && !!root.service.state.canSetVolume
+            enabled: (root.moduleName === "volume" || root.moduleName === "brightness") && root.config.enabled && root.config.behavior.scroll_enabled
+                     && root.config.behavior.allow_actions && !!root.service && root.service.available
+                     && (root.moduleName === "volume" ? !!root.service.state.canSetVolume : !!root.brightnessDevice.canSet)
+            onEnabledChanged: root.keyboardWheelRemainder = 0
             onWheel: event => {
                 event.accepted = false
                 if (event.angleDelta.y === 0) return
-                const delta = event.angleDelta.y / 120 * root.config.behavior.scroll_step * (root.config.behavior.scroll_inverted ? -1 : 1)
-                event.accepted = root.service.action("adjustVolume", {delta: delta})
+                const direction = root.config.behavior.scroll_inverted ? -1 : 1
+                if (root.moduleName === "volume") {
+                    const delta = event.angleDelta.y / 120 * root.config.behavior.scroll_step * direction
+                    event.accepted = root.service.action("adjustVolume", {delta: delta})
+                } else {
+                    let notches = event.angleDelta.y / 120 * direction
+                    if (root.brightnessKind === "keyboard") {
+                        root.keyboardWheelRemainder += notches
+                        notches = Math.trunc(root.keyboardWheelRemainder)
+                        root.keyboardWheelRemainder -= notches
+                        if (notches === 0) { event.accepted = true; return }
+                    }
+                    event.accepted = root.service.action("adjustBrightness", {kind: root.brightnessKind, delta: notches * root.config.behavior[root.brightnessKind].step})
+                }
             }
         }
     }

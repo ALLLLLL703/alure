@@ -40,6 +40,32 @@ escape_closes = true
 toggle_on_click = true # pressing the same module button closes its dropdown
 show_settings = true
 settings_icon = "settings"
+[ui.osd] # observed changes only; first reading and reloads are silent
+enabled = true
+volume_enabled = true # includes mute changes
+screen_enabled = true
+keyboard_enabled = true
+volume_icon = "volume"
+screen_icon = "brightness"
+keyboard_icon = "keyboard"
+output = "primary" # primary, * (all outputs), or exact screen name
+width = 300
+height = 100
+margin_bottom = 64 # lower-center, logical pixels; ignores panel reservations
+margin_horizontal = 16 # minimum clearance from either screen edge
+duration_ms = 1800
+padding = 16
+spacing = 8
+font_size = 14
+icon_size = 24
+show_icon = true
+show_label = true
+bar_height = 6
+radius = 14
+opacity = 0.92
+background = "" # empty inherits theme palette
+foreground = ""
+accent = ""
 [ui.toast]
 enabled = true
 output = "primary"
@@ -75,10 +101,10 @@ layer = "top" # background, bottom, top, overlay
 margins = { top = 8, right = 8, bottom = 8, left = 8 }
 layout = "linear" # linear or three-zone; vertical panels use top/center/bottom
 spacer_size = 24 # logical pixels for each @spacer; @stretch shares remaining space
-modules = ["workspaces", "media", "tray", "volume", "updates", "wifi", "bluetooth", "notifications", "clipboard", "calendar", "battery"]
+modules = ["workspaces", "media", "tray", "volume", "brightness", "updates", "wifi", "bluetooth", "notifications", "clipboard", "calendar", "battery"]
 modules_left = ["workspaces", "media"]
 modules_center = ["calendar"]
-modules_right = ["tray", "volume", "updates", "wifi", "bluetooth", "notifications", "clipboard", "battery"]
+modules_right = ["tray", "volume", "brightness", "updates", "wifi", "bluetooth", "notifications", "clipboard", "battery"]
 # Lists accept @spacer, @stretch and @settings. Settings is appended if not placed.
 
 # Module UI and live service contracts.
@@ -363,3 +389,44 @@ interval_ms = 30000
 timeout_ms = 3000
 command = []
 format = "{percent}%"
+
+[modules.brightness]
+enabled = true
+[modules.brightness.style]
+opacity = 1.0
+icon = "brightness"
+icon_size = 18
+max_width = 140
+min_width = 30
+foreground = ""
+background = ""
+show_icon = true
+show_label = true
+[modules.brightness.behavior]
+popup_enabled = true
+allow_actions = true
+interval_ms = 500 # external changes appear within one successful poll
+timeout_ms = 3000
+command = [] # native sysfs reads; no subprocess
+set_command = ["brightnessctl"] # appends --class CLASS --device NAME set RAW_LEVEL
+format = "{percent}%" # screen if available, otherwise keyboard
+debounce_ms = 100
+scroll_enabled = true
+scroll_inverted = false
+scroll_target = "screen" # screen or keyboard; each has its own native step
+[modules.brightness.behavior.screen]
+enabled = true
+allow_actions = true
+sysfs_path = "/sys/class/backlight"
+device = "" # empty = first readable device sorted by name; exact basename otherwise
+min_percent = 1
+max_percent = 100
+step = 5 # percent points per wheel notch/button press
+[modules.brightness.behavior.keyboard]
+enabled = true
+allow_actions = true
+sysfs_path = "/sys/class/leds"
+device = "" # only names ending :kbd_backlight; excludes caps/mute LEDs
+min_level = 0
+max_level = -1 # -1 = hardware maximum; otherwise capped to hardware
+step = 1 # discrete native levels, e.g. 0, 1, 2 (not percent)

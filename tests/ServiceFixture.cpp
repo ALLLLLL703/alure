@@ -5,6 +5,23 @@
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     const auto mode = app.arguments().value(1);
+    if (mode == "brightness-write" || mode == "brightness-denied") {
+        const auto root = app.arguments().value(2);
+        // Only explicit temporary fixture roots may ever be written by this helper.
+        if (!root.startsWith("/tmp/") || root.contains("..")) return 20;
+        const auto args = app.arguments().mid(3);
+        if (args.size() != 6 || args[0] != "--class" || args[2] != "--device" || args[4] != "set" ||
+            (args[1] != "backlight" && args[1] != "leds") || args[3].contains('/')) return 21;
+        QFile log(root + "/calls"); if (!log.open(QIODevice::WriteOnly | QIODevice::Append)) return 22;
+        log.write(args.join('|').toUtf8() + '\n'); log.close();
+        if (mode == "brightness-denied") { QTextStream(stderr) << "Permission denied"; return 1; }
+        QTimer::singleShot(150, &app, [&app, root, args] {
+            QFile value(root + '/' + args[1] + '/' + args[3] + "/brightness");
+            if (!value.open(QIODevice::WriteOnly | QIODevice::Truncate)) { app.exit(23); return; }
+            value.write(args[5].toUtf8()); value.close(); app.quit();
+        });
+        return app.exec();
+    }
     if (mode == "clipboard" || mode == "clipboard-copy") {
         const auto root = app.arguments().value(2);
         QFile log(root + "/calls"); if (!log.open(QIODevice::WriteOnly | QIODevice::Append)) return 1;
