@@ -80,10 +80,16 @@ for UI, per-module style, controls_style and icon_theme keys.
 | length | 0 | Integer 0..32768; 0 fills the edge, otherwise centered along edge and clamped to output |
 | exclusive_zone | -1 | Integer -1..32768; -1 sends clamped thickness as the protocol zone, 0 disables reservation, positive sends an explicit protocol zone; the compositor adds the anchored edge margin to positive zones |
 | layer | top | background / bottom / top / overlay |
+| visibility | see below | Per-panel table: `mode="always"` (always/dodge-windows/auto-hide), `show_delay_ms=100`, `hide_delay_ms=350` (integers 0..10000), `edge_trigger_px=2` (integer 1..16), `unknown_geometry="hide"` (hide/show). Dynamic modes never reserve space; reload applies. |
 | margins | all 8 | Table top/right/bottom/left integers 0..4096 logical pixels |
 | modules | all ten names in default example | Ordered string array, no duplicate or undefined names |
 
-Bars are always non-keyboard-interactive. Output add/remove, primary-screen and
+See [panel visibility](panel-visibility.md) for edge input, popup pinning, the shared
+Niri subscription and conservative tiled-geometry precision limits. Settings exposes
+all visibility keys. `exclusive_zone` and `window_gap` apply only in `always` mode.
+
+Bars are normally non-keyboard-interactive (explicit popups temporarily use on-demand
+keyboard policy). Hover reveal does not activate them. Output add/remove, primary-screen and
 geometry changes trigger rebuild. QQuickWindow default alpha buffer is enabled
 before the first window; scene clear color is transparent. Edge reservation and
 placement are real LayerShellQt requests, not a compositor configuration change.

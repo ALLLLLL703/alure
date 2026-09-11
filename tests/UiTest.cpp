@@ -3,6 +3,8 @@
 #include "PopupPlacement.h"
 #include "NotificationService.h"
 #include "ClipboardHost.h"
+#include "TaskbarService.h"
+#include <QLocalServer>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDBusMessage>
@@ -99,6 +101,14 @@ public:
     Q_INVOKABLE void openModule(const QString &, const QString &, const QString &, QQuickItem *) {}
 };
 namespace {
+// Lifecycle tests drive hover explicitly; queued platform Enter events from
+// mapping/mask changes must not overwrite that synthetic pointer state.
+class IgnoreSpontaneousHover : public QObject {
+protected:
+    bool eventFilter(QObject *, QEvent *event) override {
+        return event->spontaneous() && (event->type() == QEvent::Enter || event->type() == QEvent::Leave);
+    }
+};
 QQuickItem *itemNamed(QQuickItem *item, const QString &name) {
     if (item->objectName() == name) return item;
     for (auto *child : item->childItems()) if (auto *found = itemNamed(child, name)) return found;
@@ -139,6 +149,115 @@ void replaceText(QQuickWindow *window, QQuickItem *item, const QString &text) {
 class UiTest : public QObject {
     Q_OBJECT
 private slots:
+    void panelAutoHideLifecycle_data() {
+        QTest::addColumn<QString>("edge");
+        QTest::addColumn<int>("margin");
+        for (const auto *edge : {"top", "bottom", "left", "right"})
+            for (int margin : {0, 4, 24})
+                QTest::newRow(qPrintable(QString("%1-margin-%2").arg(edge).arg(margin))) << QString(edge) << margin;
+    }
+    void panelAutoHideLifecycle() {
+        QFETCH(QString, edge);
+        QFETCH(int, margin);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        const QString source = QString("[ui]\nshow_settings=false\n[[panels]]\nedge='%1'\nlayer='top'\nthickness=16\nlength=300\nmodules=['calendar']\nmargins={top=%2,bottom=%2,left=%2,right=%2}\nvisibility={mode='auto-hide',show_delay_ms=10,hide_delay_ms=20,edge_trigger_px=16}").arg(edge).arg(margin);
+        QVERIFY(config.previewText(source));
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{});
+        Alure::PanelHost host(config, engine, true);
+        QPointer<QQuickView> body, trigger;
+        for (auto *window : QGuiApplication::topLevelWindows()) {
+            if (window->title() == "Alure · main") body = qobject_cast<QQuickView *>(window);
+            if (window->title() == "Alure edge · main") trigger = qobject_cast<QQuickView *>(window);
+        }
+        QVERIFY(body); QVERIFY(trigger);
+        IgnoreSpontaneousHover hover;
+        body->installEventFilter(&hover); trigger->installEventFilter(&hover);
+        const auto size = body->size();
+        const bool vertical = edge == "left" || edge == "right";
+        const bool farEdge = edge == "bottom" || edge == "right";
+        const int cross = vertical ? trigger->width() : trigger->height();
+        const QRegion bridge(margin == 0 ? QRect(-1, -1, 1, 1)
+            : vertical ? QRect(farEdge ? cross - margin : 0, 0, margin, trigger->height())
+                       : QRect(0, farEdge ? cross - margin : 0, trigger->width(), margin));
+        QCOMPARE(trigger->mask(), bridge); // Initial revealed mask excludes the body too.
+        const auto effectiveBridge = bridge.intersected(QRegion(QRect(QPoint(), trigger->size())));
+        QVERIFY(effectiveBridge.translated(trigger->position()).intersected(QRegion(body->geometry())).isEmpty());
+        QEvent leave(QEvent::Leave);
+        QCoreApplication::sendEvent(body, &leave); QCoreApplication::sendEvent(trigger, &leave);
+        QTRY_VERIFY(!body->property("panelBodyVisible").toBool());
+        QVERIFY(body->isVisible()); // Mapped size stays stable; only scene/input changes.
+        QVERIFY(!body->rootObject()->isVisible());
+        QVERIFY(body->mask().intersected(QRegion(QRect(QPoint(), size))).isEmpty());
+        QCOMPARE(vertical ? trigger->mask().boundingRect().width() : trigger->mask().boundingRect().height(), 16);
+        QEnterEvent enter(QPointF(1, 1), QPointF(1, 1), QPointF(1, 1));
+        QCoreApplication::sendEvent(trigger, &enter); QCoreApplication::sendEvent(trigger, &leave);
+        QTest::qWait(30); QVERIFY(!body->property("panelBodyVisible").toBool()); // Short edge pass cancels reveal.
+        QCoreApplication::sendEvent(trigger, &enter);
+        QTRY_VERIFY(body->property("panelBodyVisible").toBool());
+        QCOMPARE(body->size(), size); QVERIFY(body->rootObject()->isVisible());
+        QCOMPARE(body->mask(), QRegion(QRect(QPoint(), size)));
+        QCOMPARE(trigger->mask(), bridge);
+        QCoreApplication::sendEvent(body, &enter); QCoreApplication::sendEvent(trigger, &leave);
+        auto *anchor = itemNamed(body->rootObject(), "calendar-button"); QVERIFY(anchor);
+        host.openModule("calendar", "main", body->screen()->name(), anchor);
+        QCoreApplication::sendEvent(body, &leave);
+        QTest::qWait(50); QVERIFY(body->property("panelBodyVisible").toBool()); // Queued popup and open popup pin it.
+        host.closePopup();
+        QTRY_VERIFY(!body->property("panelBodyVisible").toBool());
+        QVERIFY(!config.previewText(source + "\nvisibility.mode='always'")); // TOML duplicate is rejected without rebuilding.
+        QVERIFY(trigger); QVERIFY(body);
+        QString always = source; always.replace("mode='auto-hide'", "mode='always'");
+        QVERIFY(config.previewText(always));
+        QTRY_VERIFY(trigger.isNull()); QTRY_VERIFY(body.isNull());
+        for (auto *window : QGuiApplication::topLevelWindows()) QVERIFY(window->title() != "Alure edge · main");
+        QVERIFY(config.previewText("panels=[]"));
+        QTRY_VERIFY([&] { for (auto *window : QGuiApplication::topLevelWindows()) if (window->title() == "Alure · main") return false; return true; }());
+    }
+    void taskbarLayoutPreservesDelegates() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        // Default panels remain always-visible: layout traffic must not churn
+        // the taskbar even when no dodge panel is consuming the shared stream.
+        QLocalServer server; QVERIFY(server.listen(dir.filePath("niri.sock")));
+        QPointer<QLocalSocket> stream;
+        connect(&server, &QLocalServer::newConnection, &server, [&] {
+            auto *socket = server.nextPendingConnection();
+            connect(socket, &QLocalSocket::readyRead, &server, [&, socket] {
+                if (!socket->canReadLine()) return;
+                QCOMPARE(socket->readLine().trimmed(), QByteArray("\"EventStream\""));
+                stream = socket;
+                socket->write(R"({"WorkspacesChanged":{"workspaces":[{"id":10,"output":"A","is_active":true,"is_focused":true}]}}
+{"WindowsChanged":{"windows":[{"id":2,"title":"Stable task","app_id":"org.test.App","workspace_id":10,"is_focused":true}]}}
+)");
+            });
+        });
+        Alure::TaskbarService service; FixtureShell shell;
+        auto module = config.model().value("modules").toMap().value("taskbar").toMap();
+        auto behavior = module.value("behavior").toMap();
+        behavior["socket_path"] = server.fullServerName(); module["behavior"] = behavior;
+        service.configure(module); QTRY_VERIFY(service.available()); QVERIFY(stream);
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"taskbar", QVariant::fromValue(&service)}});
+        engine.rootContext()->setContextProperty("Shell", &shell);
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView);
+        view.setInitialProperties({{"moduleName", "taskbar"}, {"vertical", false}, {"crossSize", 36}, {"outputName", "A"}});
+        view.setSource(QUrl("qrc:/qml/ModuleStrip.qml")); QVERIFY(view.status() == QQuickView::Ready);
+        view.resize(220, 36); view.show();
+        QTRY_VERIFY(itemNamed(view.rootObject(), "taskbar-entry-2"));
+        QPointer<QQuickItem> entry = itemNamed(view.rootObject(), "taskbar-entry-2");
+        const auto items = service.items();
+        QSignalSpy changed(&service, &Alure::Service::changed);
+        QSignalSpy geometry(&service, &Alure::TaskbarService::panelWindowsChanged);
+        stream->write(R"({"WindowLayoutsChanged":{"changes":[[2,{"tile_pos_in_workspace_view":[10,20],"window_size":[400,260],"window_offset_in_tile":[0,0]}]]}}
+)"); stream->flush();
+        QTRY_COMPARE(geometry.count(), 1);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCOMPARE(changed.count(), 0); QCOMPARE(service.items(), items);
+        QVERIFY(service.panelWindows().first().toMap().value("layout").toMap().contains("window_size"));
+        QVERIFY(entry); QCOMPARE(itemNamed(view.rootObject(), "taskbar-entry-2"), entry.data());
+    }
     void taskbarStripScopesAndActions() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
         QVERIFY(config.previewText("[modules.workspaces]\nenabled=false\n[modules.taskbar.style]\nshow_label=true\ntask_width=140\nlabel_size=18\n[modules.taskbar.behavior]\nworkspace_scope='active'\noutput_scope='panel'"));
@@ -1161,7 +1280,7 @@ QtObject { property var order: Fields.describe("modules.taskbar.behavior.orderin
             return paths;
         };
         const QStringList themePriority{"theme.name", "theme.font", "theme.font_size", "theme.opacity", "theme.spacing", "theme.padding", "theme.radius", "theme.icon_size", "theme.icon_mode", "theme.icon_theme"};
-        const QStringList expectedPanel{"panels.0.edge", "panels.0.enabled", "panels.0.exclusive_zone", "panels.0.id", "panels.0.layer", "panels.0.layout", "panels.0.length", "panels.0.margins.bottom", "panels.0.margins.left", "panels.0.margins.right", "panels.0.margins.top", "panels.0.modules", "panels.0.output", "panels.0.spacer_size", "panels.0.thickness"};
+        const QStringList expectedPanel{"panels.0.edge", "panels.0.enabled", "panels.0.exclusive_zone", "panels.0.id", "panels.0.layer", "panels.0.layout", "panels.0.length", "panels.0.margins.bottom", "panels.0.margins.left", "panels.0.margins.right", "panels.0.margins.top", "panels.0.output", "panels.0.spacer_size", "panels.0.thickness", "panels.0.visibility.edge_trigger_px", "panels.0.visibility.hide_delay_ms", "panels.0.visibility.mode", "panels.0.visibility.show_delay_ms", "panels.0.visibility.unknown_geometry", "panels.0.window_gap"};
         for (int pass = 0; pass < 2; ++pass) {
             QCOMPARE(fieldPaths().mid(0, themePriority.size()), themePriority);
             const auto remaining = fieldPaths().mid(themePriority.size()); auto sorted = remaining; sorted.sort();

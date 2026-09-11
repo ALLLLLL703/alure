@@ -337,6 +337,12 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
             nonempty(panel, "output", "panels[].");
             choice(panel, "edge", {"top", "bottom", "left", "right"}, "panels[].");
             choice(panel, "layer", {"background", "bottom", "top", "overlay"}, "panels[].");
+            const auto visibility = panel.value("visibility").toMap();
+            choice(visibility, "mode", {"always", "dodge-windows", "auto-hide"}, "panels[].visibility.");
+            choice(visibility, "unknown_geometry", {"hide", "show"}, "panels[].visibility.");
+            range(visibility, "show_delay_ms", 0, 10000, "panels[].visibility.");
+            range(visibility, "hide_delay_ms", 0, 10000, "panels[].visibility.");
+            range(visibility, "edge_trigger_px", 1, 16, "panels[].visibility.");
             choice(panel, "layout", {"linear", "three-zone"}, "panels[].");
             range(panel, "spacer_size", 0, 4096, "panels[].");
             range(panel, "thickness", 16, 512, "panels[].");

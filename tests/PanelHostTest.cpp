@@ -5,6 +5,76 @@
 class PanelHostTest : public QObject {
     Q_OBJECT
 private slots:
+    void visibilityPolicy() {
+        for (const auto *mode : {"always", "dodge-windows", "auto-hide"}) {
+            QVERIFY(Alure::panelWantsVisible(mode, true, false, true));
+            QVERIFY(Alure::panelWantsVisible(mode, false, true, true));
+        }
+        QVERIFY(Alure::panelWantsVisible("always", false, false, true));
+        QVERIFY(Alure::panelWantsVisible("dodge-windows", false, false, false));
+        QVERIFY(!Alure::panelWantsVisible("dodge-windows", false, false, true));
+        QVERIFY(!Alure::panelWantsVisible("auto-hide", false, false, false));
+    }
+    void floatingIntersectionAndUnknownGeometry() {
+        const QRectF bar(8, 8, 1904, 44);
+        QVariantMap layout{{"tile_pos_in_workspace_view", QVariantList{100.0, 20.0}},
+                           {"window_offset_in_tile", QVariantList{2.0, 33.0}},
+                           {"window_size", QVariantList{400, 260}}};
+        QVariantMap row{{"output", "A"}, {"workspace_active", true}, {"is_floating", true}, {"layout", layout}};
+        const auto intersects = [&](bool available = true, bool hideUnknown = true) {
+            return Alure::panelIntersectsWindows(bar, "A", {row}, available, hideUnknown);
+        };
+        QVERIFY(!intersects()); // Tile overlaps, but client starts at y=53: offset is essential.
+        layout["window_offset_in_tile"] = QVariantList{2.0, 31.5}; row["layout"] = layout;
+        QVERIFY(intersects()); // Fractional half-pixel overlap.
+        row["output"] = "B"; QVERIFY(!intersects()); row["output"] = "A";
+        row["workspace_active"] = false; QVERIFY(!intersects()); row["workspace_active"] = true;
+        layout["tile_pos_in_workspace_view"] = QVariant();
+        layout["pos_in_scrolling_layout"] = QVariantList{1, 1};
+        row["layout"] = layout; row["is_floating"] = false;
+        QVERIFY(intersects()); QVERIFY(!intersects(true, false));
+        row["workspace_active"] = false; QVERIFY(!intersects());
+        QVERIFY(intersects(false)); QVERIFY(!intersects(false, false));
+        QVERIFY(!Alure::panelIntersectsWindows(bar, "A", {}, true, true));
+    }
+    void dynamicPlacementNeverReserves() {
+        QVariantMap model; QString error; QVERIFY(Alure::ConfigStore::parse({}, model, error));
+        auto panel = model.value("panels").toList().first().toMap(); panel["length"] = 500;
+        const QSize extent(1920, 1080);
+        for (const auto *mode : {"dodge-windows", "auto-hide"}) {
+            panel["visibility"] = QVariantMap{{"mode", mode}};
+            panel["exclusive_zone"] = 400; panel["window_gap"] = 256;
+            for (const auto *edge : {"top", "bottom", "left", "right"}) {
+                panel["edge"] = edge;
+                const auto placement = Alure::panelPlacement(panel, extent);
+                QCOMPARE(placement.exclusiveZone, -1);
+                const auto rect = Alure::panelOutputRect(placement, extent);
+                QVERIFY(QRect(QPoint(), extent).contains(rect));
+                if (QString(edge) == "top") QCOMPARE(rect, QRect(710, 8, 500, 44));
+                if (QString(edge) == "bottom") QCOMPARE(rect, QRect(710, 1028, 500, 44));
+                if (QString(edge) == "left") QCOMPARE(rect, QRect(8, 290, 44, 500));
+                if (QString(edge) == "right") QCOMPARE(rect, QRect(1868, 290, 44, 500));
+            }
+        }
+    }
+    void dynamicPlacementMarginsAndTinyOutputs() {
+        QVariantMap model; QString error; QVERIFY(Alure::ConfigStore::parse({}, model, error));
+        auto panel = model.value("panels").toList().first().toMap();
+        panel["visibility"] = QVariantMap{{"mode", "auto-hide"}};
+        panel["length"] = 501;
+        panel["margins"] = QVariantMap{{"top", 8}, {"bottom", 80}, {"left", 11}, {"right", 101}};
+        const auto p = Alure::panelPlacement(panel, {1920, 1080});
+        QCOMPARE(Alure::panelOutputRect(p, {1920, 1080}), QRect(710, 8, 501, 44)); // Unanchored margins do not shift center.
+        panel["margins"] = QVariantMap{{"top", 4096}, {"bottom", 4096}, {"left", 4096}, {"right", 4096}};
+        for (const auto &extent : {QSize(1, 1), QSize(100, 80), QSize(1920, 1080)}) {
+            for (const auto *edge : {"top", "bottom", "left", "right"}) {
+                panel["edge"] = edge;
+                const auto placement = Alure::panelPlacement(panel, extent);
+                QCOMPARE(placement.exclusiveZone, -1);
+                QVERIFY(QRect(QPoint(), extent).contains(Alure::panelOutputRect(placement, extent)));
+            }
+        }
+    }
     void osdLowerCenterPlacement() {
         QVariantMap model; QString error; QVERIFY(Alure::ConfigStore::parse({}, model, error));
         auto options = model.value("ui").toMap().value("osd").toMap();

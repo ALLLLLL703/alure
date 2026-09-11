@@ -1,0 +1,42 @@
+# Three independent panel modes. Missing keys inherit config/default.toml.
+# Save/reload applies; runtime.watch=false requires restarting panels.
+[[panels]]
+id = "reserved-top"
+output = "primary"
+edge = "top"
+modules = ["workspaces", "calendar"]
+[panels.visibility]
+mode = "always"
+show_delay_ms = 100
+hide_delay_ms = 350
+edge_trigger_px = 2
+unknown_geometry = "hide"
+
+[[panels]]
+id = "dodge-bottom"
+output = "primary"
+edge = "bottom"
+length = 600
+layer = "top"
+modules = ["taskbar"]
+[panels.visibility]
+mode = "dodge-windows" # Never reserves space, even when revealed.
+show_delay_ms = 100
+hide_delay_ms = 350
+edge_trigger_px = 2
+unknown_geometry = "hide" # Niri 26.04 tiled fallback, NOT exact tiled overlap.
+# show ignores unknown rectangles; known floating client geometry still dodges.
+
+[[panels]]
+id = "auto-right"
+output = "primary"
+edge = "right"
+length = 360
+layer = "overlay" # Reveal over fullscreen too; does not request keyboard focus.
+modules = ["tray", "volume", "brightness", "notifications"]
+[panels.visibility]
+mode = "auto-hide"
+show_delay_ms = 150
+hide_delay_ms = 500
+edge_trigger_px = 3
+unknown_geometry = "show" # Used only if mode is switched to dodge-windows.

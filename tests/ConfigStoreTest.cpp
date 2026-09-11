@@ -30,6 +30,25 @@ private slots:
         QVERIFY(store.reload()); QVERIFY(!QFile::exists(store.path()));
         QCOMPARE(store.model(), model);
     }
+    void panelVisibilityOptions() {
+        QVariantMap model; QString error;
+        QVERIFY(ConfigStore::parse({}, model, error));
+        const auto options = model.value("panels").toList().first().toMap().value("visibility").toMap();
+        QCOMPARE(options.value("mode").toString(), "always");
+        QCOMPARE(options.value("unknown_geometry").toString(), "hide");
+        QCOMPARE(options.value("show_delay_ms").toInt(), 100);
+        QCOMPARE(options.value("hide_delay_ms").toInt(), 350);
+        QCOMPARE(options.value("edge_trigger_px").toInt(), 2);
+        for (const auto *mode : {"always", "dodge-windows", "auto-hide"}) {
+            QVERIFY2(ConfigStore::parse(QString("[[panels]]\nvisibility={mode='%1',show_delay_ms=0,hide_delay_ms=10000,edge_trigger_px=16,unknown_geometry='show'}").arg(mode).toUtf8(), model, error), qPrintable(error));
+            QCOMPARE(model.value("panels").toList().first().toMap().value("visibility").toMap().value("mode").toString(), QString(mode));
+        }
+        for (const auto *setting : {"mode='dodge'", "mode=1", "unknown_geometry='guess'", "unknown_geometry=true", "show_delay_ms=-1", "hide_delay_ms=10001", "show_delay_ms=1.5", "edge_trigger_px=0", "edge_trigger_px=17", "edge_trigger_px='2'"}) {
+            QVERIFY(!ConfigStore::parse(QByteArray("[[panels]]\n[panels.visibility]\n") + setting, model, error));
+            QVERIFY2(error.contains("visibility"), qPrintable(error));
+        }
+        QVERIFY(!ConfigStore::parse("[[panels]]\nvisibility='always'", model, error));
+    }
     void volumeScrollOptions() {
         QVariantMap model; QString error; QVERIFY(ConfigStore::parse({}, model, error));
         const auto options = model.value("modules").toMap().value("volume").toMap().value("behavior").toMap();

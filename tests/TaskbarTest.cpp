@@ -1,5 +1,6 @@
 #include "TaskbarService.h"
 #include "ConfigStore.h"
+#include "Services.h"
 #include <QLocalServer>
 #include <QJsonDocument>
 #include <QTemporaryDir>
@@ -89,6 +90,55 @@ private slots:
         QTRY_VERIFY(!service.items().last().toMap().value("is_focused").toBool());
         fixture.event(R"({"WindowsChanged":{"windows":[]}})"); QTRY_VERIFY(service.items().isEmpty());
         QVERIFY(service.available());
+    }
+    void dodgeSubscriptionWithoutTaskbarUi() {
+        NiriFixture fixture;
+        QTemporaryDir directory; ConfigStore config(directory.filePath("config.toml")); QVERIFY(config.reload());
+        QString source;
+        const auto modules = config.model().value("modules").toMap();
+        for (auto it = modules.begin(); it != modules.end(); ++it) source += "[modules." + it.key() + "]\nenabled=false\n";
+        source += "[modules.taskbar.behavior]\nsocket_path='" + fixture.server.fullServerName() + "'\ninterval_ms=100\ntimeout_ms=150\n";
+        source += "[[panels]]\nvisibility.mode='dodge-windows'\n";
+        QVERIFY(config.previewText(source));
+        Services services(config);
+        QTRY_VERIFY(services.taskbar()->available());
+        QVERIFY(!config.model().value("modules").toMap().value("taskbar").toMap().value("enabled").toBool());
+        QVERIFY(!services.taskbar()->action("activate", {{"id", "2"}}));
+        QString always = source; always.replace("dodge-windows", "always");
+        QVERIFY(config.previewText(always));
+        QVERIFY(!services.taskbar()->enabled()); QVERIFY(services.taskbar()->items().isEmpty());
+        QVERIFY(!services.taskbar()->panelWindowsAvailable()); QVERIFY(services.taskbar()->panelWindows().isEmpty());
+        QVERIFY(config.previewText(source)); QTRY_VERIFY(services.taskbar()->available());
+    }
+    void windowLayoutEvents() {
+        NiriFixture fixture; TaskbarService service;
+        service.configure(module(fixture.options())); QTRY_VERIFY(service.available());
+        const auto presentation = service.items();
+        QSignalSpy changed(&service, &Service::changed);
+        QSignalSpy geometry(&service, &TaskbarService::panelWindowsChanged);
+        fixture.event(R"({"WindowLayoutsChanged":{"changes":[[9007199254740993,{"tile_pos_in_workspace_view":[100,150],"window_size":[400,260],"window_offset_in_tile":[2,3]}],[999,{}]]}})");
+        QTRY_COMPARE(geometry.count(), 1);
+        QVERIFY(geometry.last().at(1).toBool());
+        QVERIFY(service.panelWindowsAvailable());
+        QCOMPARE(changed.count(), 0); QCOMPARE(service.items(), presentation);
+        auto layout = service.panelWindows().last().toMap().value("layout").toMap();
+        QCOMPARE(layout.value("tile_pos_in_workspace_view").toList(), (QVariantList{100LL, 150LL}));
+        QCOMPARE(layout.value("window_offset_in_tile").toList(), (QVariantList{2LL, 3LL}));
+        QCOMPARE(service.panelWindows().size(), 3); // Unknown IDs never create phantom windows.
+        fixture.event(R"({"WindowLayoutsChanged":{"changes":[[9007199254740993,{"tile_pos_in_workspace_view":null,"window_size":[400,260],"window_offset_in_tile":[0,0]}]]}})");
+        QTRY_COMPARE(geometry.count(), 2);
+        QVERIFY(service.panelWindows().last().toMap().value("layout").toMap().value("tile_pos_in_workspace_view").isNull());
+        QCOMPARE(changed.count(), 0); QCOMPARE(service.items(), presentation);
+        fixture.event(R"({"WorkspacesChanged":{"workspaces":[{"id":0,"output":"A","is_active":true}]}})");
+        fixture.event(R"({"WindowOpenedOrChanged":{"window":{"id":2,"workspace_id":null,"title":"Unassigned"}}})");
+        QTRY_COMPARE(service.items().first().toMap().value("title").toString(), "Unassigned");
+        QVERIFY(service.items().first().toMap().value("output").toString().isEmpty());
+        QVERIFY(!service.items().first().toMap().value("workspace_active").toBool());
+        fixture.initial.clear();
+        fixture.event(R"({"WindowLayoutsChanged":{"changes":[[2]]}})");
+        QTRY_VERIFY(!service.available()); QVERIFY(service.items().isEmpty());
+        QVERIFY(!service.panelWindowsAvailable()); QVERIFY(service.panelWindows().isEmpty());
+        QVERIFY(!geometry.last().at(1).toBool());
     }
     void orderingGatesReconnectAndFailures() {
         NiriFixture fixture; TaskbarService service; auto options = fixture.options(); options["ordering"] = "title";

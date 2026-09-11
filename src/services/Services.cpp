@@ -14,6 +14,19 @@ void Services::apply(const QVariantMap &model) {
     for (auto it = services.begin(); it != services.end(); ++it) {
         auto module = modules.value(it.key()).toMap();
         if (it.key() == "notifications" && !module.value("behavior").toMap().value("server_enabled").toBool()) module["enabled"] = false;
+        if (it.key() == "taskbar" && !module.value("enabled").toBool()) {
+            // Dodge shares the existing event stream, independently of taskbar UI enablement.
+            for (const auto &entry : model.value("panels").toList()) {
+                const auto panel = entry.toMap();
+                if (panel.value("enabled").toBool() && panel.value("visibility").toMap().value("mode") == "dodge-windows") {
+                    module["enabled"] = true;
+                    auto behavior = module.value("behavior").toMap();
+                    behavior["allow_actions"] = false;
+                    module["behavior"] = behavior;
+                    break;
+                }
+            }
+        }
         it.value()->configure(module);
     }
     m_osd.observeVolume(m_volume.available(), m_volume.state());

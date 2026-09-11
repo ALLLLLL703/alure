@@ -15,13 +15,82 @@
 #include <QMouseEvent>
 #include <QTextStream>
 #include <algorithm>
+#include <cmath>
+#include <optional>
+#include <QRegion>
 namespace Alure {
+struct PanelHost::VisibilityState {
+    QQuickView *body; // Owned by m_windows; visibility states are destroyed first.
+    std::unique_ptr<QQuickView> trigger;
+    QTimer timer;
+    QVariantMap options;
+    QRect outputRect, edgeMask, bridgeMask;
+    QString output;
+    bool bodyHovered = false, edgeHovered = false;
+    bool visible = true, target = true;
+};
+namespace {
+std::optional<QPointF> layoutPair(const QVariant &value) {
+    const auto pair = value.toList();
+    if (pair.size() != 2) return std::nullopt;
+    for (const auto &coordinate : pair) {
+        const auto type = coordinate.metaType().id();
+        if (type != QMetaType::Double && type != QMetaType::LongLong && type != QMetaType::Int) return std::nullopt;
+    }
+    bool xOk = false, yOk = false;
+    const double x = pair[0].toDouble(&xOk), y = pair[1].toDouble(&yOk);
+    if (!xOk || !yOk || !std::isfinite(x) || !std::isfinite(y)) return std::nullopt;
+    return QPointF(x, y);
+}
+}
+bool panelIntersectsWindows(const QRectF &panelRect, const QString &output,
+                            const QVariantList &windows, bool available, bool hideUnknown) {
+    if (!available) return hideUnknown;
+    for (const auto &entry : windows) {
+        const auto row = entry.toMap();
+        if (row.value("output").toString() != output || !row.value("workspace_active").toBool()) continue;
+        const auto layout = row.value("layout").toMap();
+        const auto position = layoutPair(layout.value("tile_pos_in_workspace_view"));
+        const auto offset = layoutPair(layout.value("window_offset_in_tile"));
+        const auto size = layoutPair(layout.value("window_size"));
+        // Client visual geometry excludes Niri borders/shadows. Never infer pixels
+        // from pos_in_scrolling_layout (column/row indices, not a viewport).
+        if (!position || !offset || !size || size->x() <= 0 || size->y() <= 0) {
+            if (hideUnknown) return true;
+            continue;
+        }
+        if (panelRect.intersects(QRectF(*position + *offset, QSizeF(size->x(), size->y())))) return true;
+    }
+    return false;
+}
+bool panelWantsVisible(const QString &mode, bool pointerInside, bool pinned, bool obstructed) {
+    return mode == "always" || pointerInside || pinned || (mode == "dodge-windows" && !obstructed);
+}
+QRect panelOutputRect(const PanelPlacement &p, QSize screenSize) {
+    // Niri/Smithay applies margins only on anchored edges. Fixed-length bars
+    // are centered on the unanchored axis, not inside the asymmetric margins.
+    int x = screenSize.width() / 2 - p.size.width() / 2;
+    int y = screenSize.height() / 2 - p.size.height() / 2;
+    using W = LayerShellQt::Window;
+    if (p.anchors.testFlag(W::AnchorLeft)) x = p.margins.left();
+    else if (p.anchors.testFlag(W::AnchorRight)) x = screenSize.width() - p.margins.right() - p.size.width();
+    if (p.anchors.testFlag(W::AnchorTop)) y = p.margins.top();
+    else if (p.anchors.testFlag(W::AnchorBottom)) y = screenSize.height() - p.margins.bottom() - p.size.height();
+    return {QPoint(x, y), p.size};
+}
 PanelPlacement panelPlacement(const QVariantMap &panel, QSize screenSize) {
     using W = LayerShellQt::Window;
     const auto edgeName = panel.value("edge").toString();
     const bool vertical = edgeName == "left" || edgeName == "right";
     const auto margins = panel.value("margins").toMap();
-    const QMargins m(margins.value("left").toInt(), margins.value("top").toInt(), margins.value("right").toInt(), margins.value("bottom").toInt());
+    const auto mode = panel.value("visibility").toMap().value("mode", "always").toString();
+    QMargins m(margins.value("left").toInt(), margins.value("top").toInt(), margins.value("right").toInt(), margins.value("bottom").toInt());
+    if (mode != "always") {
+        // Keep dynamic bodies and their edge bridges reachable even on tiny or resized outputs.
+        const int xLimit = std::max(0, (screenSize.width() - 1) / 2), yLimit = std::max(0, (screenSize.height() - 1) / 2);
+        m = QMargins(std::clamp(m.left(), 0, xLimit), std::clamp(m.top(), 0, yLimit),
+                     std::clamp(m.right(), 0, xLimit), std::clamp(m.bottom(), 0, yLimit));
+    }
     const auto edge = edgeName == "top" ? W::AnchorTop : edgeName == "bottom" ? W::AnchorBottom : edgeName == "left" ? W::AnchorLeft : W::AnchorRight;
     W::Anchors anchors(edge);
     const int available = std::max(1, vertical ? screenSize.height() - m.top() - m.bottom() : screenSize.width() - m.left() - m.right());
@@ -35,6 +104,9 @@ PanelPlacement panelPlacement(const QVariantMap &panel, QSize screenSize) {
     // The compositor adds the anchored margin to a positive protocol zone.
     if (zone == -1) zone = thickness;
     if (zone > 0) zone = std::max(0, zone + panel.value("window_gap").toInt());
+    // Dynamic surfaces ignore other reservations and never reserve space themselves.
+    // This remains constant through every reveal/hide transition.
+    if (mode != "always") zone = -1;
     return {vertical ? QSize(thickness, length) : QSize(length, thickness), m, anchors, edge, layer, zone, vertical};
 }
 OsdPlacement osdPlacement(const QVariantMap &options, QSize screenSize) {
@@ -61,12 +133,13 @@ PanelHost::~PanelHost() {
     // the popup's borrowed parent/anchor and keyboard-policy state are still alive.
     closePopup();
     closeOsd();
-    m_toast.reset(); m_popup.reset(); m_windows.clear();
+    m_toast.reset(); m_popup.reset(); clearVisibility(); m_windows.clear();
 }
 void PanelHost::scheduleRebuild() {
     if (m_rebuildPending) return;
     closePopup();
     m_rebuildPending = true;
+    for (const auto &state : m_visibility) state->timer.stop();
     QTimer::singleShot(0, this, [this] { m_rebuildPending = false; rebuild(); });
 }
 void PanelHost::trace(const QString &message) const {
@@ -79,6 +152,7 @@ void PanelHost::rebuild() {
     static const QString desktopIconTheme = QIcon::themeName();
     QIcon::setThemeName(iconTheme.isEmpty() ? desktopIconTheme : iconTheme);
     m_popup.reset(); // Destroy transient children before their layer parents.
+    clearVisibility(); // Stops single-shot timers and destroys edge surfaces first.
     m_windows.clear();
     const auto screens = QGuiApplication::screens();
     for (auto *screen : screens) {
@@ -96,11 +170,14 @@ void PanelHost::rebuild() {
             auto view = std::make_unique<QQuickView>(&m_engine, nullptr);
             view->setScreen(screen);
             view->setProperty("panelId", panel.value("id"));
+            view->setProperty("panelBodyVisible", true);
             view->setTitle("Alure · " + panel.value("id").toString());
             view->installEventFilter(this);
             view->setColor(Qt::transparent);
             view->setResizeMode(QQuickView::SizeRootObjectToView);
             view->resize(placement.size);
+            if (panel.value("visibility").toMap().value("mode", "always") != "always")
+                view->setFlags(Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus);
             if (!m_preview) {
                 view->setFlags(Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus);
                 auto *layer = LayerShellQt::Window::get(view.get()); // QObject owned by QWindow
@@ -123,10 +200,112 @@ void PanelHost::rebuild() {
                 continue;
             }
             view->show();
+            configureVisibility(view.get(), panel, placement);
             m_windows.push_back(std::move(view));
         }
         if (!matched) qWarning().noquote() << "Panel" << panel.value("id").toString() << "waiting for output" << output;
     }
+}
+void PanelHost::configureVisibility(QQuickView *view, const QVariantMap &panel, const PanelPlacement &placement) {
+    const auto options = panel.value("visibility").toMap();
+    if (options.value("mode", "always") == "always") return;
+    auto state = std::make_unique<VisibilityState>();
+    state->body = view;
+    state->options = options;
+    state->output = view->screen()->name();
+    state->outputRect = panelOutputRect(placement, view->screen()->size());
+    state->timer.setSingleShot(true);
+    connect(&state->timer, &QTimer::timeout, this, [this, state = state.get()] {
+        setPanelVisible(*state, state->target);
+    });
+    const int screenCross = std::max(1, placement.vertical ? view->screen()->size().width() : view->screen()->size().height());
+    const int edgeWidth = std::min(options.value("edge_trigger_px").toInt(), screenCross);
+    using W = LayerShellQt::Window;
+    const int gap = placement.edge == W::AnchorTop ? placement.margins.top() : placement.edge == W::AnchorBottom ? placement.margins.bottom()
+                  : placement.edge == W::AnchorLeft ? placement.margins.left() : placement.margins.right();
+    // Only the thin physical edge takes input while hidden. While revealed, the
+    // transparent bridge covers the configured margin so crossing it keeps hover.
+    const int cross = std::clamp(std::max(edgeWidth, gap), 1, screenCross);
+    const QSize triggerSize = placement.vertical ? QSize(cross, placement.size.height()) : QSize(placement.size.width(), cross);
+    const bool farEdge = placement.edge == W::AnchorBottom || placement.edge == W::AnchorRight;
+    state->edgeMask = placement.vertical ? QRect(farEdge ? cross - edgeWidth : 0, 0, edgeWidth, triggerSize.height())
+                                        : QRect(0, farEdge ? cross - edgeWidth : 0, triggerSize.width(), edgeWidth);
+    // The overlay must never intercept the revealed body, even when the hidden
+    // edge strip is wider than the margin. Empty masks mean full-surface input.
+    state->bridgeMask = gap == 0 ? QRect(-1, -1, 1, 1)
+        : placement.vertical ? QRect(farEdge ? cross - gap : 0, 0, gap, triggerSize.height())
+                             : QRect(0, farEdge ? cross - gap : 0, triggerSize.width(), gap);
+    auto trigger = std::make_unique<QQuickView>(&m_engine, nullptr);
+    trigger->setScreen(view->screen());
+    trigger->setTitle("Alure edge · " + panel.value("id").toString());
+    trigger->setColor(Qt::transparent);
+    trigger->setFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus);
+    trigger->resize(triggerSize);
+    trigger->installEventFilter(this);
+    const QMargins margins = placement.vertical ? QMargins(0, placement.margins.top(), 0, placement.margins.bottom())
+                                                : QMargins(placement.margins.left(), 0, placement.margins.right(), 0);
+    if (!m_preview) {
+        auto *layer = W::get(trigger.get());
+        layer->setScope("alure-edge-" + panel.value("id").toString());
+        layer->setScreen(view->screen());
+        layer->setAnchors(placement.anchors); layer->setMargins(margins);
+        layer->setDesiredSize(triggerSize); layer->setExclusiveZone(-1);
+        layer->setLayer(W::LayerOverlay);
+        layer->setKeyboardInteractivity(W::KeyboardInteractivityNone); layer->setActivateOnShow(false);
+    } else {
+        auto edgePlacement = placement; edgePlacement.size = triggerSize; edgePlacement.margins = margins;
+        trigger->setPosition(view->screen()->geometry().topLeft() + panelOutputRect(edgePlacement, view->screen()->size()).topLeft());
+        view->setPosition(view->screen()->geometry().topLeft() + state->outputRect.topLeft());
+    }
+    trigger->setMask(QRegion(state->bridgeMask));
+    state->trigger = std::move(trigger);
+    auto *created = state.get();
+    m_visibility.push_back(std::move(state));
+    created->trigger->show();
+    updateVisibility(*created);
+}
+void PanelHost::syncPanelWindows(const QVariantList &windows, bool available) {
+    if (m_panelWindows == windows && m_panelWindowsAvailable == available) return;
+    m_panelWindows = windows; m_panelWindowsAvailable = available;
+    updateVisibility();
+}
+void PanelHost::clearVisibility() {
+    for (const auto &state : m_visibility) {
+        state->timer.stop();
+        state->body->removeEventFilter(this);
+        state->trigger->removeEventFilter(this);
+    }
+    m_visibility.clear();
+}
+void PanelHost::updateVisibility() {
+    for (const auto &state : m_visibility) updateVisibility(*state);
+}
+void PanelHost::updateVisibility(VisibilityState &state) {
+    if (m_rebuildPending) return;
+    const auto mode = state.options.value("mode").toString();
+    const bool pinned = m_popupParent == state.body;
+    const bool obstructed = mode == "dodge-windows" && panelIntersectsWindows(state.outputRect, state.output,
+        m_panelWindows, m_panelWindowsAvailable, state.options.value("unknown_geometry") == "hide");
+    const bool target = panelWantsVisible(mode, state.bodyHovered || state.edgeHovered, pinned, obstructed);
+    if (pinned) { state.timer.stop(); state.target = true; setPanelVisible(state, true); return; }
+    if (target == state.visible) { state.timer.stop(); state.target = target; return; }
+    if (state.timer.isActive() && state.target == target) return; // Do not postpone indefinitely on layout events.
+    state.target = target;
+    state.timer.start(state.options.value(target ? "show_delay_ms" : "hide_delay_ms").toInt());
+}
+void PanelHost::setPanelVisible(VisibilityState &state, bool visible) {
+    if (state.visible == visible) return;
+    state.visible = visible;
+    // An empty QWindow mask means the full surface, not no input. A nonempty
+    // region outside the surface gives an empty effective Wayland input region.
+    // Keep the body mapped at its fixed size/zone; no layer reconfigure oscillation.
+    state.body->setMask(visible ? QRegion(QRect(QPoint(), state.body->size())) : QRegion(QRect(-1, -1, 1, 1)));
+    state.body->rootObject()->setVisible(visible);
+    state.trigger->setMask(QRegion(visible ? state.bridgeMask : state.edgeMask));
+    state.body->setProperty("panelBodyVisible", visible);
+    if (!visible) state.bodyHovered = false;
+    state.body->update(); state.trigger->update();
+    trace(QString("panel %1 on %2 %3").arg(state.body->property("panelId").toString(), state.output, visible ? "revealed" : "hidden"));
 }
 void PanelHost::releasePopupKeyboard() {
     if (!m_preview && m_popupParent) {
@@ -135,6 +314,7 @@ void PanelHost::releasePopupKeyboard() {
     }
     m_popupParent.clear();
     m_popupHadFocus = false;
+    updateVisibility();
 }
 void PanelHost::closePopup() {
     ++m_popupRequest; trace("hide details");
@@ -142,6 +322,16 @@ void PanelHost::closePopup() {
     releasePopupKeyboard();
 }
 bool PanelHost::eventFilter(QObject *watched, QEvent *event) {
+    if (event->type() == QEvent::Enter || event->type() == QEvent::Leave) {
+        for (const auto &state : m_visibility) {
+            if (watched != state->body && watched != state->trigger.get()) continue;
+            const bool entered = event->type() == QEvent::Enter;
+            if (watched == state->body) state->bodyHovered = entered && state->visible;
+            else state->edgeHovered = entered;
+            updateVisibility(*state);
+            break;
+        }
+    }
     if (!m_popup || !m_popup->isVisible()) return QObject::eventFilter(watched, event);
     if (watched != m_popup.get() && watched != m_popupParent) return QObject::eventFilter(watched, event);
     if ((event->type() == QEvent::KeyPress || event->type() == QEvent::ShortcutOverride) &&
@@ -179,6 +369,7 @@ void PanelHost::openModule(const QString &name, const QString &panelId, const QS
             closePopup();
             const auto request = ++m_popupRequest;
             m_popupParent = window.get();
+            updateVisibility(); // Pin the parent during the queued request as well as the popup/menu.
             if (!m_preview) {
                 // xdg_popup children inherit their layer parent's keyboard policy.
                 // Grant keyboard focus only while details are open, not to idle bars.

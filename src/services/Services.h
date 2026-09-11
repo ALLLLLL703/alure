@@ -27,7 +27,7 @@ class Services : public QObject {
     Q_PROPERTY(Alure::ClipboardService* clipboard READ clipboard CONSTANT)
 public:
     explicit Services(ConfigStore &config, QObject *parent = nullptr);
-    Service *taskbar() { return &m_taskbar; }
+    TaskbarService *taskbar() { return &m_taskbar; }
     Service *workspaces() { return &m_workspaces; }
     Service *media() { return &m_media; }
     Service *tray() { return &m_tray; }

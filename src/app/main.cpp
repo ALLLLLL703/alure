@@ -115,6 +115,8 @@ int main(int argc, char **argv) {
     } else {
         host = std::make_unique<Alure::PanelHost>(config, engine, parser.isSet("preview"));
         QObject::connect(services->notifications(), &Alure::Service::changed, host.get(), [&] { host->syncNotifications(services->notifications()->items()); });
+        QObject::connect(services->taskbar(), &Alure::TaskbarService::panelWindowsChanged, host.get(), &Alure::PanelHost::syncPanelWindows);
+        host->syncPanelWindows(services->taskbar()->panelWindows(), services->taskbar()->panelWindowsAvailable());
         QObject::connect(services->osd(), &Alure::OsdController::requested, host.get(), &Alure::PanelHost::showOsd);
         QObject::connect(services->osd(), &Alure::OsdController::reset, host.get(), &Alure::PanelHost::closeOsd);
         config.startWatching();

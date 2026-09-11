@@ -3,6 +3,7 @@
 #include <QMargins>
 #include <QObject>
 #include <QSize>
+#include <QRectF>
 #include <QVariantMap>
 #include <QSet>
 #include <QPointer>
@@ -26,6 +27,12 @@ struct PanelPlacement {
 };
 // Pure contract, shared with geometry tests; all values are logical pixels.
 PanelPlacement panelPlacement(const QVariantMap &panel, QSize screenSize);
+// Output-local Niri/Smithay anchoring for surfaces ignoring exclusive zones.
+QRect panelOutputRect(const PanelPlacement &placement, QSize screenSize);
+// Rows are unfiltered TaskbarService snapshots, in output-local logical pixels.
+bool panelIntersectsWindows(const QRectF &panelRect, const QString &output,
+                            const QVariantList &windows, bool available, bool hideUnknown);
+bool panelWantsVisible(const QString &mode, bool pointerInside, bool pinned, bool obstructed);
 struct OsdPlacement { QSize size; QMargins margins; QPoint position; };
 OsdPlacement osdPlacement(const QVariantMap &options, QSize screenSize);
 class PanelHost final : public QObject {
@@ -41,7 +48,14 @@ public:
     void syncNotifications(const QVariantList &items);
     void showOsd(const QVariantMap &snapshot);
     void closeOsd();
+    void syncPanelWindows(const QVariantList &windows, bool available);
 private:
+    struct VisibilityState;
+    void configureVisibility(QQuickView *view, const QVariantMap &panel, const PanelPlacement &placement);
+    void clearVisibility();
+    void updateVisibility();
+    void updateVisibility(VisibilityState &state);
+    void setPanelVisible(VisibilityState &state, bool visible);
     bool eventFilter(QObject *watched, QEvent *event) override;
     void releasePopupKeyboard();
     void createPopup(const QString &name, const QVariantMap &panel, QQuickView *parent, QQuickItem *anchor, const QString &trayItem);
@@ -53,6 +67,9 @@ private:
     bool m_preview;
     bool m_rebuildPending = false;
     std::vector<std::unique_ptr<QQuickView>> m_windows;
+    std::vector<std::unique_ptr<VisibilityState>> m_visibility;
+    QVariantList m_panelWindows;
+    bool m_panelWindowsAvailable = false;
     std::unique_ptr<QQuickView> m_popup, m_toast;
     std::vector<std::unique_ptr<QQuickView>> m_osdWindows;
     QTimer m_osdTimer;

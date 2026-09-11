@@ -70,6 +70,8 @@ void TaskbarService::stop() {
     m_haveWindows = m_haveWorkspaces = false;
     m_streamDeadline.stop(); m_actionDeadline.stop(); m_stream.abort(); m_actionSocket.abort();
     m_streamBuffer.clear(); m_actionBuffer.clear(); m_windows.clear(); m_workspaces.clear();
+    m_panelWindows.clear();
+    emit panelWindowsChanged({}, false);
 }
 void TaskbarService::streamFailed(const QString &message) { stop(); setBusy(false); fail(message); }
 void TaskbarService::poll() {
@@ -103,6 +105,17 @@ void TaskbarService::consume(const QJsonObject &event) {
         if (!window.value("id").isDouble()) { streamFailed("Invalid Niri window event"); return; }
         if (window.value("is_focused").toBool()) for (auto &row : m_windows) row["is_focused"] = false;
         m_windows[idOf(window.value("id"))] = windowRow(window);
+    } else if (event.contains("WindowLayoutsChanged")) {
+        const auto changes = event.value("WindowLayoutsChanged").toObject().value("changes");
+        if (!changes.isArray()) { streamFailed("Invalid Niri window layouts event"); return; }
+        for (const auto &entry : changes.toArray()) {
+            const auto pair = entry.toArray();
+            if (pair.size() != 2 || !pair[0].isDouble() || !pair[1].isObject()) {
+                streamFailed("Invalid Niri window layout pair"); return;
+            }
+            const auto id = idOf(pair[0]);
+            if (m_windows.contains(id)) m_windows[id]["layout"] = pair[1].toObject().toVariantMap();
+        }
     } else if (event.contains("WindowClosed")) {
         m_windows.remove(idOf(event.value("WindowClosed").toObject().value("id")));
     } else if (event.contains("WindowFocusChanged")) {
@@ -118,16 +131,17 @@ void TaskbarService::consume(const QJsonObject &event) {
             if (activation.value("focused").toBool()) it.value()["is_focused"] = it.key() == id;
         }
     } else return; // Other compositor events do not affect task presentation.
-    if (m_haveWindows && m_haveWorkspaces) { m_streamDeadline.stop(); publishWindows(); }
+    if (m_haveWindows && m_haveWorkspaces) { m_streamDeadline.stop(); publishWindows(event.contains("WindowLayoutsChanged")); }
 }
-void TaskbarService::publishWindows() {
+void TaskbarService::publishWindows(bool layoutOnly) {
     if (!m_haveWindows || !m_haveWorkspaces) return;
     QString focusedOutput;
     for (const auto &workspace : m_workspaces) if (workspace.value("is_focused").toBool()) focusedOutput = workspace.value("output").toString();
     QVariantList rows;
     for (const auto &window : m_windows) {
         auto row = window;
-        const auto workspace = m_workspaces.value(row.value("workspace_id").toString().toULongLong());
+        const auto workspaceId = row.value("workspace_id").toString();
+        const auto workspace = workspaceId.isEmpty() ? QVariantMap{} : m_workspaces.value(workspaceId.toULongLong());
         row["output"] = workspace.value("output").toString();
         row["workspace_active"] = workspace.value("is_active", false);
         row["workspace_focused"] = workspace.value("is_focused", false);
@@ -139,7 +153,21 @@ void TaskbarService::publishWindows() {
         const auto row = entry.toMap();
         return std::tuple{ordering == "app-id" ? row.value("app_id").toString().toCaseFolded() : ordering == "title" ? row.value("title").toString().toCaseFolded() : QString(), row.value("id").toString().toULongLong()};
     });
-    publish({{"count", rows.size()}}, rows);
+    const bool firstSnapshot = !available();
+    if (firstSnapshot || m_panelWindows != rows) {
+        m_panelWindows = rows;
+        emit panelWindowsChanged(m_panelWindows, true);
+    }
+    if (layoutOnly && !firstSnapshot) return;
+    // Layout is consumed only by panel visibility, not task presentation. Keep
+    // Service::changed quiet for geometry-only events so QML retains delegates.
+    for (auto &entry : rows) {
+        auto row = entry.toMap();
+        row.remove("layout");
+        entry = row;
+    }
+    const QVariantMap snapshot{{"count", rows.size()}};
+    if (firstSnapshot || state() != snapshot || items() != rows) publish(snapshot, rows);
 }
 bool TaskbarService::act(const QString &name, const QVariantMap &args) {
     if (name != "activate" || !available() || !m_options.value("focus_on_click").toBool()) return false;
