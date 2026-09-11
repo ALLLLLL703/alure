@@ -216,40 +216,58 @@ ApplicationWindow {
                     color: window.theme.palette.muted
                     Layout.fillWidth: true
                 }
-                RowLayout {
+                Item {
                     visible: window.section === 0
                     Layout.fillWidth: true
-                    InfoText { text: "Category"; Layout.fillWidth: true }
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 0
+                    implicitHeight: Math.max(categoryLabel.implicitHeight, categoryChoice.implicitHeight)
+                    InfoText { id: categoryLabel; text: "Category"; width: parent.width * 0.44 - window.theme.spacing; anchors.verticalCenter: parent.verticalCenter }
                     ComboBox {
+                        id: categoryChoice
                         objectName: "appearance-group"
                         model: ["Theme & typography", "Layout & popups", "Settings window"]
                         currentIndex: window.appearanceGroup
                         onActivated: { if (window.flushFields()) window.appearanceGroup = currentIndex; else currentIndex = window.appearanceGroup }
-                        Layout.preferredWidth: parent.width * 0.56
+                        width: parent.width * 0.56
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
                         Accessible.name: "Appearance category"
                     }
                 }
-                Flow {
+                // A hidden Flow cannot contain a parent-width selector: its
+                // implicit width then feeds itself while the layout ignores it.
+                ColumnLayout {
                     visible: window.section === 1
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 0
                     spacing: window.theme.spacing / 2
-                    RowLayout {
-                        width: parent.width
-                        InfoText { text: "Panel"; Layout.fillWidth: true }
+                    Item {
+                        Layout.fillWidth: true
+                        implicitHeight: Math.max(panelLabel.implicitHeight, panelChoice.implicitHeight)
+                        InfoText { id: panelLabel; text: "Panel"; width: parent.width * 0.44 - window.theme.spacing; anchors.verticalCenter: parent.verticalCenter }
                         ComboBox {
+                            id: panelChoice
                             model: (window.draft.panels || []).map(p => p.id + " · " + p.edge + " · " + p.output)
                             currentIndex: window.panelIndex
-                            Layout.preferredWidth: parent.width * 0.56
+                            width: parent.width * 0.56
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
                             onActivated: { if (window.flushFields()) window.panelIndex = currentIndex; else currentIndex = window.panelIndex }
                             Accessible.name: "Panel"
                         }
                     }
-                    Repeater {
-                        model: ["add", "remove", "up", "down"]
-                        ShellButton {
-                            required property string modelData
-                            text: modelData
-                            onClicked: { if (window.flushFields()) { window.panelOperation = modelData; panelNotice.open() } }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: window.theme.spacing / 2
+                        Repeater {
+                            model: ["add", "remove", "up", "down"]
+                            ShellButton {
+                                required property string modelData
+                                text: modelData
+                                onClicked: { if (window.flushFields()) { window.panelOperation = modelData; panelNotice.open() } }
+                            }
                         }
                     }
                 }

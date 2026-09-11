@@ -1,5 +1,26 @@
 # UI refinements
 
+## Settings startup fix
+
+The left-label/right-control conversion introduced width feedback: relative
+control width entered the containing layout's implicit size, and a hidden panel
+selector Flow contained an item bound to the Flow's own width. Even while hidden,
+that Flow kept scheduling positioning and changing its implicit size. The GUI
+thread remained in `QQuickWindowPrivate::polishItems` / positioner and text layout,
+preventing the window and even the exit timer from progressing.
+
+Fields and selectors now use explicit-width Item boundaries: the outer layout
+assigns width; only measured content height feeds back. The panel selector uses
+a ColumnLayout with a separate button Flow, retaining the left/right form design.
+
+Verified with isolated offscreen runs: the previous 500ms-exit startup hit an 8s
+external deadline; the fixed build exits normally without layout warnings, with
+both defaults and the user's configuration (read-only). One-second idle samples
+reported 0 CPU ticks in both runs. `UiTest::settingsLayoutSettles` passes at
+900×680, 400×500 and 1280×800, visiting appearance categories, panels and every
+module, resizing, and checking event-loop heartbeat and right-hand control bounds.
+No full CTest suite was run for this targeted fix.
+
 ## Bar and history
 
 - Clipboard images now appear **inside history entries**, not in a separate

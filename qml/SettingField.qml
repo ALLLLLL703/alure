@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "Ui.js" as Ui
 
-ColumnLayout {
+Item {
     id: field
     required property var spec
     required property var host
@@ -15,24 +15,37 @@ ColumnLayout {
     }
     readonly property var theme: Config.model.theme
     property string commandDraft: spec.kind === "argv" ? Config.commandText(spec.value) : ""
+    // The form owns width; only content height flows back to its layout.
+    // Relative control widths must not feed the parent's implicit width.
     Layout.fillWidth: true
-    spacing: theme.spacing / 2
+    Layout.minimumWidth: 0
+    Layout.preferredWidth: 0
+    implicitWidth: 0
+    implicitHeight: row.y + row.height
     function stage(value) { host.stageField(spec.path, Ui.literal(value)) }
-    InfoText { visible: field.spec.showGroup; text: field.spec.group; color: field.theme.palette.accent; font.bold: true; Layout.fillWidth: true }
-    RowLayout {
-        Layout.fillWidth: true
-        spacing: field.theme.spacing
+    InfoText {
+        id: heading
+        visible: field.spec.showGroup
+        width: field.width
+        text: field.spec.group; color: field.theme.palette.accent; font.bold: true
+    }
+    Item {
+        id: row
+        width: field.width
+        y: heading.visible ? heading.implicitHeight + field.theme.spacing / 2 : 0
+        height: Math.max(labels.implicitHeight, controls.implicitHeight)
         ColumnLayout {
-            Layout.fillWidth: true
-            Layout.minimumWidth: 0
+            id: labels
+            width: Math.max(0, row.width - controls.width - field.theme.spacing)
+            anchors.verticalCenter: parent.verticalCenter
             InfoText { text: field.spec.label; font.bold: true; Layout.fillWidth: true }
             InfoText { visible: text.length > 0; text: field.spec.help; color: field.theme.palette.muted; Layout.fillWidth: true }
         }
         ColumnLayout {
-            Layout.preferredWidth: field.width * 0.56
-            Layout.maximumWidth: field.width * 0.56
-            Layout.minimumWidth: 0
-            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+            id: controls
+            width: field.width * 0.56
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
             Switch {
                 palette.dark: field.theme.palette.accent
                 visible: field.spec.kind === "boolean"

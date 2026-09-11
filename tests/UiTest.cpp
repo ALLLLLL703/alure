@@ -137,6 +137,44 @@ void replaceText(QQuickWindow *window, QQuickItem *item, const QString &text) {
 class UiTest : public QObject {
     Q_OBJECT
 private slots:
+    void settingsLayoutSettles_data() {
+        QTest::addColumn<QSize>("extent");
+        QTest::newRow("default") << QSize(900, 680);
+        QTest::newRow("narrow") << QSize(400, 500);
+        QTest::newRow("wide") << QSize(1280, 800);
+    }
+    void settingsLayoutSettles() {
+        QFETCH(QSize, extent);
+        QTest::failOnWarning(QRegularExpression(".*(recursive rearrange|Binding loop|polish loop).*"));
+        QTemporaryDir dir;
+        Alure::ConfigStore config(dir.filePath("settings.toml")); QVERIFY(config.reload());
+        QVERIFY(config.previewText(QString("[settings]\nwidth=%1\nheight=%2\n").arg(extent.width()).arg(extent.height())));
+        QQmlApplicationEngine engine;
+        engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        engine.load(QUrl("qrc:/qml/Settings.qml"));
+        QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window);
+        QTimer heartbeat; heartbeat.setInterval(10); QSignalSpy ticks(&heartbeat, &QTimer::timeout); heartbeat.start();
+        QTest::qWait(60); QVERIFY(!ticks.isEmpty()); QVERIFY(window->isVisible());
+        for (int group = 0; group < 3; ++group) {
+            window->setProperty("appearanceGroup", group); QTest::qWait(30);
+        }
+        window->setProperty("section", 1); QTest::qWait(40);
+        for (const auto &name : config.model().value("modules").toMap().keys()) {
+            window->setProperty("moduleName", name); window->setProperty("section", 2); QTest::qWait(25);
+        }
+        window->setProperty("section", 4); QTest::qWait(30);
+        window->setProperty("section", 0); window->setProperty("appearanceGroup", 0);
+        window->resize(extent + QSize(50, 30)); QTest::qWait(50);
+        auto *choice = itemNamed(window->contentItem(), "field-theme.name-choice"); QVERIFY(choice);
+        auto *field = itemNamed(window->contentItem(), "setting-field-theme.name"); QVERIFY(field);
+        QVERIFY(choice->width() > 0); QVERIFY(choice->width() < field->width() * 0.6);
+        QVERIFY(choice->mapToItem(field, QPointF{}).x() > field->width() * 0.4);
+        const int before = ticks.count(); QTest::qWait(80); QVERIFY(ticks.count() > before);
+        QVERIFY(warnings.isEmpty()); QVERIFY(window->close());
+    }
     void surfaces() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
         FixtureService service; FixtureShell shell;
