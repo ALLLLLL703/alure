@@ -12,6 +12,9 @@ settings remain valid. Missing keys use these defaults:
 ```toml
 [modules.volume.behavior]
 backend = "auto" # auto | pipewire | pulseaudio
+scroll_enabled = true
+scroll_step = 5
+scroll_inverted = false
 command = ["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"]
 set_volume_command = ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@"]
 mute_command = ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]
@@ -60,6 +63,36 @@ Controls use the detected backend's capabilities, not the wpctl command settings
 Only the default output is controlled: no microphone, per-stream mixer or output
 selection UI is added here.
 
+## Wheel and continuous slider input
+
+Hover the panel's Sound module and scroll vertically to adjust volume without
+opening the popup. `scroll_enabled` is a boolean (default true); `scroll_step`
+is integer 1..100 percentage points per notch (default 5); `scroll_inverted`
+is a boolean (default false). Positive/up delivered wheel deltas increase volume;
+inversion reverses this. Settings → Sound exposes all three options. Saved
+changes apply on reload, as described above. Invalid types/ranges are diagnosed.
+
+Mouse-wheel notches use Qt's 120 angle units; high-resolution angle deltas scale
+proportionally. Horizontal and pixel-only events are ignored. This does not
+change mute state, hijack clicks or change other modules. Scrolling is disabled
+when the module, actions, scrolling or the backend's setter is disabled, or the
+provider is unavailable. Targets are clamped to 0..`max_percent`.
+
+`adjustVolume({delta})` takes signed percentage points and accumulates against
+the newest pending/in-flight target, so fast wheel input does not reuse stale
+server values. Absolute `setVolume({percent})` replaces that target. Both accept
+new input while an audio job is busy; mute and all other services retain their
+existing busy guards. Only one command and one latest-value pending slot exist.
+`debounce_ms` now sets the coalescing cadence (default 100 ms), rather than
+indefinitely postponing writes until pointer motion stops.
+
+The volume service's `adjusting` property remains true until pending writes and
+readback finish; `state.percent` still contains only observed data. The slider
+keeps its mouse grab across busy transitions and ignores snapshots while pressed
+or adjusting, then reconciles with the final readback. Progress messages no longer
+insert/remove rows or move the slider during dragging; provider errors remain
+visible in the status area. Disabling/reconfiguring cancels queued work.
+
 ## Dependencies and verification
 
 `pactl` must support JSON output for info/sinks (tested with PulseAudio 17); on
@@ -74,7 +107,19 @@ explicit PipeWire mode, coalesced setters, permissions, disabled controls,
 changed-sink cancellation and no write fallback. Writes were exercised only
 against fixtures recording argv. A separate opt-in read-only probe on the target
 computer selected `pulseaudio` and observed approximately 60%, unmuted. No actual
-volume or mute setting was changed. No full CTest suite or live GUI test was run.
+volume or mute setting was changed during that backend-introduction probe.
+
+Interaction regression checks use offscreen wheel/press/move/release events and
+slow fixture commands, not host audio writes. They reproduce the old slider's
+snapshot overwrite and verify uninterrupted dragging, post-release readback,
+unchanged slider position, wheel direction/step/gates/clicks, queued input on both
+backends, clamping and cancellation. No full CTest suite or live GUI test was run.
 
 Upstream command contracts (and the installed `pactl(1)` manual):
 https://github.com/pulseaudio/pulseaudio/blob/master/man/pactl.1.xml.in
+
+Qt input/binding references:
+- https://doc.qt.io/qt-6/qml-qtquick-wheelhandler.html
+- https://doc.qt.io/qt-6/qml-qtquick-wheelevent.html
+- https://doc.qt.io/qt-6/qml-qtquick-controls-slider.html
+- https://doc.qt.io/qt-6/qml-qtqml-binding.html

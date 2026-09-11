@@ -214,6 +214,9 @@ show_icon = true
 show_label = true
 [modules.volume.behavior]
 backend = "auto" # auto, pipewire (wpctl), pulseaudio (pactl)
+scroll_enabled = true
+scroll_step = 5 # percentage points per wheel notch on the panel module
+scroll_inverted = false
 pulse_info_command = ["pactl", "--format=json", "info"]
 pulse_sinks_command = ["pactl", "--format=json", "list", "sinks"]
 pulse_set_volume_command = ["pactl", "set-sink-volume"] # Alure appends observed sink index and percent

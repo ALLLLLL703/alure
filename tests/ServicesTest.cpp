@@ -16,6 +16,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QElapsedTimer>
 #include <QImage>
 using namespace Alure;
 namespace {
@@ -149,6 +150,50 @@ private slots:
             auto bad = sinks; bad.replace("32768", replacement); QVERIFY(!VolumeService::parsePulse(info, bad, snapshot, error));
         }
     }
+    void audioQueuedAdjustments_data() {
+        QTest::addColumn<QString>("backend");
+        QTest::newRow("pulse") << QString("pulseaudio"); QTest::newRow("pipewire") << QString("pipewire");
+    }
+    void audioQueuedAdjustments() {
+        QFETCH(QString, backend);
+        QTemporaryDir dir; const auto capture = dir.filePath("actions");
+        const QVariantList setter{QString(SERVICE_FIXTURE), "capture-args-slow", capture};
+        auto config = audioModule({{"backend", backend}, {"command", command("audio-pipewire")},
+            {"set_volume_command", setter}, {"pulse_set_volume_command", setter},
+            {"mute_command", QVariantList{QString(SERVICE_FIXTURE), "capture-args", capture}},
+            {"pulse_mute_command", QVariantList{QString(SERVICE_FIXTURE), "capture-args", capture}}});
+        VolumeService service; service.configure(config); QTRY_VERIFY(service.available() && !service.busy());
+        const double observed = service.state().value("percent").toDouble();
+        const auto line = [&](double percent) { return (backend == "pulseaudio" ? "7|" + QString::number(percent, 'f', 3) + "%\n" : QString::number(percent/100., 'f', 3) + "\n").toUtf8(); };
+        QVERIFY(service.action("adjustVolume", {{"delta", 5}})); QVERIFY(service.action("adjustVolume", {{"delta", 5}})); QVERIFY(service.adjusting());
+        QTRY_VERIFY(contents(capture).contains(line(observed + 10))); QVERIFY(service.busy());
+        QVERIFY(!service.action("toggleMute")); // only volume input may queue while busy
+        QVERIFY(service.action("adjustVolume", {{"delta", 5}})); // must start from the in-flight target
+        QTRY_VERIFY(contents(capture).contains(line(observed + 15))); QVERIFY(service.busy());
+        QVERIFY(service.action("setVolume", {{"percent", 80}}));
+        QVERIFY(service.action("adjustVolume", {{"delta", 5}})); QVERIFY(service.action("adjustVolume", {{"delta", -5}}));
+        QTRY_VERIFY(contents(capture).contains(line(80))); QVERIFY(service.busy());
+        QVERIFY(service.action("adjustVolume", {{"delta", 1000}})); QVERIFY(service.action("adjustVolume", {{"delta", -1000}}));
+        QTRY_VERIFY(contents(capture).contains(line(0))); QTRY_VERIFY(!service.adjusting() && !service.busy());
+        QCOMPARE(contents(capture).count('\n'), 4);
+        QCOMPARE(service.state().value("percent").toDouble(), observed); // readback is observed, not fabricated
+        QVERIFY(!service.action("adjustVolume", {{"delta", "invalid"}})); QVERIFY(!service.action("adjustVolume"));
+        QVERIFY(service.action("setVolume", {{"percent", 90}})); QTRY_VERIFY(contents(capture).contains(line(90)));
+        QVERIFY(service.action("adjustVolume", {{"delta", 5}}));
+        config["enabled"] = false; service.configure(config); QVERIFY(!service.adjusting());
+        QTest::qWait(200); QCOMPARE(contents(capture).count('\n'), 5); // queued 95 cancelled on disable
+    }
+    void audioContinuousInput() {
+        QTemporaryDir dir; const auto capture = dir.filePath("actions");
+        VolumeService service; service.configure(audioModule({{"backend", "pulseaudio"},
+            {"pulse_set_volume_command", QVariantList{QString(SERVICE_FIXTURE), "capture-args-slow", capture}}}));
+        QTRY_VERIFY(service.available() && !service.busy());
+        QElapsedTimer elapsed; elapsed.start();
+        while (elapsed.elapsed() < 120) { QVERIFY(service.action("setVolume", {{"percent", 55}})); QTest::qWait(5); }
+        QVERIFY2(contents(capture).contains("7|55.000%\n"), "Continuous moves must not indefinitely postpone the first write");
+        QVERIFY(service.action("setVolume", {{"percent", 80}})); QTRY_VERIFY(contents(capture).contains("7|80.000%\n"));
+        QTRY_VERIFY(!service.adjusting() && !service.busy());
+    }
     void audioFallbackAndActions() {
         QTemporaryDir dir; const auto log = dir.filePath("reads"), capture = dir.filePath("actions");
         const auto logged = [&](const QString &mode) { return QVariantList{QString(SERVICE_FIXTURE), mode, log}; };
@@ -185,7 +230,7 @@ private slots:
         service.configure(config); QTRY_VERIFY(service.available() && !service.busy()); QVERIFY(service.action("setVolume", {{"percent", 50}}));
         config["enabled"] = false; service.configure(config); QTest::qWait(150); QVERIFY(!QFile::exists(capture));
         config["enabled"] = true; auto options = config.value("behavior").toMap(); options["allow_actions"] = false; config["behavior"] = options;
-        service.configure(config); QTRY_VERIFY(service.available() && !service.busy()); QVERIFY(!service.action("setVolume", {{"percent", 50}})); QVERIFY(!service.action("toggleMute"));
+        service.configure(config); QTRY_VERIFY(service.available() && !service.busy()); QVERIFY(!service.action("setVolume", {{"percent", 50}})); QVERIFY(!service.action("toggleMute")); QVERIFY(!service.action("adjustVolume", {{"delta", 5}}));
     }
     void audioDefaultSinkChangedDuringDrag() {
         QTemporaryDir dir; const auto sinks = dir.filePath("sinks"), capture = dir.filePath("actions");

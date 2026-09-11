@@ -35,6 +35,17 @@ Item {
         Accessible.name: Ui.title(root.moduleName) + ": " + root.summary
         onClicked: root.requested(main)
         accessibleDescription: Ui.title(root.moduleName) + " · " + root.summary
+        WheelHandler {
+            target: null
+            enabled: root.moduleName === "volume" && root.config.enabled && root.config.behavior.scroll_enabled
+                     && root.config.behavior.allow_actions && !!root.service && root.service.available && !!root.service.state.canSetVolume
+            onWheel: event => {
+                event.accepted = false
+                if (event.angleDelta.y === 0) return
+                const delta = event.angleDelta.y / 120 * root.config.behavior.scroll_step * (root.config.behavior.scroll_inverted ? -1 : 1)
+                event.accepted = root.service.action("adjustVolume", {delta: delta})
+            }
+        }
     }
     ShellButton {
         id: workspaceIcon

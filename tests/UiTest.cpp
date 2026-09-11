@@ -9,6 +9,7 @@
 #include <QScreen>
 #include <QCloseEvent>
 #include <QEnterEvent>
+#include <QWheelEvent>
 #include "IconProvider.h"
 #include <QGuiApplication>
 #include <QBuffer>
@@ -48,6 +49,7 @@ class FixtureService : public QObject {
     Q_PROPERTY(QObject *menu READ menu CONSTANT)
     Q_PROPERTY(bool available MEMBER available NOTIFY changed)
     Q_PROPERTY(bool busy MEMBER busy NOTIFY changed)
+    Q_PROPERTY(bool adjusting MEMBER adjusting NOTIFY changed)
     Q_PROPERTY(QString diagnostic MEMBER diagnostic NOTIFY changed)
     Q_PROPERTY(QVariantMap state MEMBER state NOTIFY changed)
     Q_PROPERTY(QVariantList items MEMBER items NOTIFY changed)
@@ -56,7 +58,7 @@ public:
     QObject *menu() { return &menuModel; }
     QString openedMenu;
     Q_INVOKABLE void openMenu(const QString &id) { openedMenu = id; }
-    bool available = true, busy = false;
+    bool available = true, busy = false, adjusting = false;
     QString diagnostic;
     QVariantMap state;
     QVariantList items;
@@ -137,6 +139,82 @@ void replaceText(QQuickWindow *window, QQuickItem *item, const QString &text) {
 class UiTest : public QObject {
     Q_OBJECT
 private slots:
+    void volumeWheelInput() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        FixtureService service;
+        service.state = {{"percent", 40}, {"canSetVolume", true}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"volume", QVariant::fromValue(&service)}, {"media", QVariant::fromValue(&service)}});
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(180, 48);
+        view.setInitialProperties({{"moduleName", "volume"}, {"vertical", false}, {"crossSize", 48}});
+        view.setSource(QUrl("qrc:/qml/ModuleStrip.qml")); QCOMPARE(view.status(), QQuickView::Ready); view.show(); QTest::qWait(30);
+        auto *button = itemNamed(view.rootObject(), "volume-button"); QVERIFY(button);
+        QSignalSpy requested(view.rootObject(), SIGNAL(requested(QQuickItem*))); QVERIFY(requested.isValid());
+        const auto pos = button->mapToScene(QPointF(button->width()/2, button->height()/2)).toPoint();
+        QTest::mouseMove(&view, pos);
+        const auto wheel = [&](QPoint delta, QPoint position) {
+            QWheelEvent event(position, view.mapToGlobal(position), {}, delta, Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+            QCoreApplication::sendEvent(&view, &event);
+        };
+        wheel({0, 120}, pos); QCOMPARE(service.lastAction, "adjustVolume"); QCOMPARE(service.lastArguments.value("delta").toDouble(), 5.);
+        wheel({0, -120}, pos); QCOMPARE(service.lastArguments.value("delta").toDouble(), -5.);
+        wheel({0, 60}, pos); QCOMPARE(service.lastArguments.value("delta").toDouble(), 2.5);
+        QCOMPARE(service.actionCount, 3); QCOMPARE(requested.count(), 0);
+        wheel({120, 0}, pos); wheel({0, 120}, {-10, -10}); QCOMPARE(service.actionCount, 3);
+        clickItem(&view, button); QCOMPARE(requested.count(), 1); // wheel handling must not steal clicks
+        QVERIFY(config.saveText("[modules.volume.behavior]\nscroll_step=2\nscroll_inverted=true"));
+        wheel({0, 120}, pos); QCOMPARE(service.lastArguments.value("delta").toDouble(), -2.);
+        const auto count = service.actionCount;
+        for (const auto &source : {"[modules.volume.behavior]\nscroll_enabled=false", "[modules.volume.behavior]\nallow_actions=false", "[modules.volume]\nenabled=false"}) {
+            QVERIFY(config.saveText(source)); wheel({0, 120}, pos); QCOMPARE(service.actionCount, count);
+        }
+        QVERIFY(config.saveText("[modules.volume.behavior]\nscroll_enabled=true"));
+        service.busy = true; emit service.changed(); wheel({0, 120}, pos); QCOMPARE(service.actionCount, count + 1);
+        service.available = false; emit service.changed(); wheel({0, 120}, pos); QCOMPARE(service.actionCount, count + 1);
+        service.available = true; service.state["canSetVolume"] = false; emit service.changed(); wheel({0, 120}, pos); QCOMPARE(service.actionCount, count + 1);
+        service.state["canSetVolume"] = true; emit service.changed(); view.rootObject()->setProperty("moduleName", "media");
+        wheel({0, 120}, pos); QCOMPARE(service.actionCount, count + 1);
+    }
+    void volumeContinuousDrag_data() {
+        QTest::addColumn<int>("width"); QTest::newRow("normal") << 440; QTest::newRow("narrow") << 240;
+    }
+    void volumeContinuousDrag() {
+        QFETCH(int, width);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        FixtureService service; FixtureShell shell;
+        service.state = {{"backend", "pulseaudio"}, {"percent", 40}, {"canSetVolume", true}, {"canMute", true}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Shell", &shell);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"volume", QVariant::fromValue(&service)}});
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(width, 560);
+        view.setInitialProperties({{"moduleName", "volume"}}); view.setSource(QUrl("qrc:/qml/Popup.qml")); QCOMPARE(view.status(), QQuickView::Ready);
+        view.show(); QTest::qWait(30);
+        auto *slider = itemNamed(view.rootObject(), "volume-slider"); QVERIFY(slider);
+        auto *handle = slider->property("handle").value<QQuickItem *>(); QVERIFY(handle);
+        const auto start = handle->mapToScene(QPointF(handle->width()/2, handle->height()/2)).toPoint();
+        const auto initialY = slider->mapToScene(QPointF()).y();
+        QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(&view, start + QPoint(40, 0)); QTest::qWait(20);
+        const auto dragged = slider->property("value").toDouble();
+        service.state["percent"] = 10; emit service.changed();
+        const bool heldLocalValue = slider->property("value").toDouble() == dragged;
+        service.busy = true; service.adjusting = true; emit service.changed();
+        const bool heldGrab = slider->isEnabled() && slider->property("pressed").toBool();
+        const auto before = service.actionCount;
+        QTest::mouseMove(&view, start + QPoint(80, 0)); QTest::qWait(20);
+        const auto desired = slider->property("value").toDouble();
+        QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, start + QPoint(80, 0));
+        service.busy = false; emit service.changed();
+        const bool heldPendingValue = slider->property("value").toDouble() == desired;
+        service.state["percent"] = desired; service.adjusting = false; emit service.changed();
+        service.state["percent"] = 23; emit service.changed();
+        QVERIFY2(heldLocalValue, "Polling must not overwrite a pressed slider");
+        QVERIFY2(heldGrab, "An audio command must not disable/cancel the ongoing drag");
+        QVERIFY(service.actionCount > before); QVERIFY(desired > dragged); QVERIFY(heldPendingValue);
+        QCOMPARE(slider->property("value").toDouble(), 23.);
+        QCOMPARE(slider->mapToScene(QPointF()).y(), initialY);
+    }
     void volumeBackendCapabilities() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
         FixtureService service; FixtureShell shell;

@@ -241,6 +241,7 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
                 choice(behavior, "backend", {"auto", "pipewire", "pulseaudio"}, path);
                 range(behavior, "max_percent", 1, 150, path);
                 range(behavior, "debounce_ms", 10, 2000, path);
+                range(behavior, "scroll_step", 1, 100, path);
             }
             if (it.key() == "notifications") {
                 range(behavior, "icon_max_pixels", 1024, 16777216, path);

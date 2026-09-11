@@ -32,6 +32,8 @@ signals:
 protected:
     virtual void poll() = 0;
     virtual bool act(const QString &, const QVariantMap &) { return false; }
+    // Opt-in for services that coalesce input without starting a concurrent job.
+    virtual bool canQueueAction(const QString &) const { return false; }
     virtual void stop() {}
     void publish(QVariantMap state = {}, QVariantList items = {});
     void fail(const QString &message);

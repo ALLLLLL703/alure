@@ -6,14 +6,17 @@
 namespace Alure {
 class VolumeService final : public Service {
     Q_OBJECT
+    Q_PROPERTY(bool adjusting READ adjusting NOTIFY changed)
 public:
     explicit VolumeService(QObject *parent = nullptr);
     ~VolumeService() override;
+    bool adjusting() const { return m_pending.has_value() || m_dispatched.has_value(); }
     static bool parsePulse(const QByteArray &info, const QByteArray &sinks, QVariantMap &state, QString &error);
 protected:
     void poll() override;
     void stop() override;
     bool act(const QString &name, const QVariantMap &args) override;
+    bool canQueueAction(const QString &name) const override;
 private:
     enum class Backend { PipeWire, PulseAudio };
     enum class Phase { Idle, PipeWire, PulseInfo, PulseSinks, Action };
@@ -34,6 +37,6 @@ private:
     QStringList m_errors;
     QString m_sink;
     QByteArray m_pulseInfo;
-    std::optional<PendingVolume> m_pending;
+    std::optional<PendingVolume> m_pending, m_dispatched;
 };
 }

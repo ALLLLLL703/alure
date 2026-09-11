@@ -3,6 +3,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <algorithm>
 #include <cmath>
 #include <utility>
 
@@ -13,12 +14,13 @@ VolumeService::VolumeService(QObject *parent) : Service(parent) {
         if (!m_pending || !enabled()) return;
         if (busy()) { m_debounce.start(m_options.value("debounce_ms").toInt()); return; }
         const auto pending = std::exchange(m_pending, std::nullopt).value();
-        if (!available() || !m_options.value("allow_actions").toBool()) return;
+        if (!available() || !m_options.value("allow_actions").toBool()) { emit changed(); return; }
         if (pending.backend != m_active || pending.sink != m_sink) {
             fail("Audio output changed before the volume adjustment; retry the control."); return;
         }
         auto argv = command(volumeKey());
-        if (argv.isEmpty()) return;
+        if (argv.isEmpty()) { emit changed(); return; }
+        m_dispatched = pending;
         if (m_active == Backend::PulseAudio) argv << m_sink << QString::number(pending.percent, 'f', 3) + "%";
         else argv << QString::number(pending.percent / 100., 'f', 3);
         executeAction(argv);
@@ -33,7 +35,7 @@ VolumeService::VolumeService(QObject *parent) : Service(parent) {
         if (!enabled() || m_phase == Phase::Idle) return;
         if (code != 0 || !processError.isEmpty()) {
             const auto error = processError.isEmpty() ? QString("Command exited %1: %2").arg(code).arg(QString::fromUtf8(output).left(512)) : processError;
-            if (m_phase == Phase::Action) { m_phase = Phase::Idle; m_pending.reset(); fail("Audio action failed: " + error); }
+            if (m_phase == Phase::Action) { m_phase = Phase::Idle; m_pending.reset(); m_dispatched.reset(); fail("Audio action failed: " + error); }
             else readFailed(error);
             return;
         }
@@ -58,7 +60,7 @@ QStringList VolumeService::command(const char *key) const {
 const char *VolumeService::volumeKey() const { return m_active == Backend::PulseAudio ? "pulse_set_volume_command" : "set_volume_command"; }
 const char *VolumeService::muteKey() const { return m_active == Backend::PulseAudio ? "pulse_mute_command" : "mute_command"; }
 void VolumeService::stop() {
-    m_phase = Phase::Idle; m_debounce.stop(); m_pending.reset(); m_runner.cancel();
+    m_phase = Phase::Idle; m_debounce.stop(); m_pending.reset(); m_dispatched.reset(); m_runner.cancel();
     m_pulseInfo.clear(); m_sink.clear(); m_attempted.clear(); m_errors.clear(); m_active = Backend::PipeWire;
 }
 void VolumeService::poll() {
@@ -78,11 +80,11 @@ void VolumeService::readFailed(const QString &error) {
     m_errors << (m_probe == Backend::PulseAudio ? "PulseAudio: " : "PipeWire: ") + error;
     const auto other = m_probe == Backend::PulseAudio ? Backend::PipeWire : Backend::PulseAudio;
     if (m_options.value("backend").toString() == "auto" && !m_attempted.contains(other)) { probe(other); return; }
-    m_phase = Phase::Idle; m_pulseInfo.clear(); m_pending.reset();
+    m_phase = Phase::Idle; m_pulseInfo.clear(); m_pending.reset(); m_dispatched.reset();
     fail("No readable audio output. " + m_errors.join("; "));
 }
 void VolumeService::publishVolume(QVariantMap snapshot) {
-    m_active = m_probe; m_phase = Phase::Idle; m_pulseInfo.clear();
+    m_active = m_probe; m_phase = Phase::Idle; m_pulseInfo.clear(); m_dispatched.reset();
     m_sink = snapshot.value("sinkIndex").toString();
     snapshot["backend"] = m_active == Backend::PulseAudio ? "pulseaudio" : "pipewire";
     snapshot["canSetVolume"] = !command(volumeKey()).isEmpty();
@@ -92,14 +94,30 @@ void VolumeService::publishVolume(QVariantMap snapshot) {
 bool VolumeService::executeAction(QStringList argv) {
     m_phase = Phase::Action; setBusy(true);
     if (m_runner.run(argv, timeout())) return true;
-    m_phase = Phase::Idle; setBusy(false); fail("Audio action command is empty or the previous process is stopping."); return false;
+    m_phase = Phase::Idle; m_pending.reset(); m_dispatched.reset(); setBusy(false); fail("Audio action command is empty or the previous process is stopping."); return false;
+}
+bool VolumeService::canQueueAction(const QString &name) const {
+    return name == "setVolume" || name == "adjustVolume";
 }
 bool VolumeService::act(const QString &name, const QVariantMap &args) {
     if (!available()) return false;
-    if (name == "setVolume") {
-        bool ok = false; const double percent = args.value("percent").toDouble(&ok);
-        if (command(volumeKey()).isEmpty() || !ok || !std::isfinite(percent) || percent < 0 || percent > m_options.value("max_percent").toDouble()) return false;
-        m_pending = PendingVolume{percent, m_active, m_sink}; m_debounce.start(m_options.value("debounce_ms").toInt()); return true;
+    if (canQueueAction(name)) {
+        bool ok = false; double percent = args.value(name == "adjustVolume" ? "delta" : "percent").toDouble(&ok);
+        const double maximum = m_options.value("max_percent").toDouble();
+        if (command(volumeKey()).isEmpty() || !ok || !std::isfinite(percent)) return false;
+        if (name == "adjustVolume") {
+            // Relative input accumulates against the newest desired value, not
+            // the older server snapshot while a write/read is in flight.
+            const auto &desired = m_pending ? m_pending : m_dispatched;
+            const double base = desired && desired->backend == m_active && desired->sink == m_sink ? desired->percent : state().value("percent").toDouble();
+            percent = std::clamp(base + percent, 0., maximum);
+        }
+        if (percent < 0 || percent > maximum) return false;
+        m_pending = PendingVolume{percent, m_active, m_sink};
+        // Rate-limit rather than restart on every mouse move: continuous input
+        // still reaches the backend, with at most one latest-value pending slot.
+        if (!m_debounce.isActive()) m_debounce.start(m_options.value("debounce_ms").toInt());
+        emit changed(); return true;
     }
     if (name != "toggleMute") return false;
     auto argv = command(muteKey()); if (argv.isEmpty()) return false;

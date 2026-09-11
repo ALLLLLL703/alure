@@ -41,9 +41,11 @@ int main(int argc, char **argv) {
     if (mode == "audio-sinks") {
         QTextStream(stdout) << R"([{"index":1,"name":"hdmi","mute":false,"volume":{"mono":{"value":65536}}},{"index":7,"name":"speakers","description":"Fixture speakers","mute":true,"volume":{"front-left":{"value":32768},"front-right":{"value":16384}}}])"; return 0;
     }
-    if (mode == "capture-args") {
+    if (mode == "capture-args" || mode == "capture-args-slow") {
         QFile file(app.arguments().value(2)); if (!file.open(QIODevice::WriteOnly | QIODevice::Append)) return 1;
-        file.write(app.arguments().mid(3).join('|').toUtf8() + '\n'); return 0;
+        file.write(app.arguments().mid(3).join('|').toUtf8() + '\n'); file.close();
+        if (mode == "capture-args-slow") { QTimer::singleShot(150, &app, &QCoreApplication::quit); return app.exec(); }
+        return 0;
     }
     if (mode == "read-file") {
         QFile file(app.arguments().value(2)); if (!file.open(QIODevice::ReadOnly)) return 1;

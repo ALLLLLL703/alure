@@ -30,6 +30,15 @@ private slots:
         QVERIFY(store.reload()); QVERIFY(!QFile::exists(store.path()));
         QCOMPARE(store.model(), model);
     }
+    void volumeScrollOptions() {
+        QVariantMap model; QString error; QVERIFY(ConfigStore::parse({}, model, error));
+        const auto options = model.value("modules").toMap().value("volume").toMap().value("behavior").toMap();
+        QCOMPARE(options.value("scroll_enabled").toBool(), true); QCOMPARE(options.value("scroll_step").toInt(), 5); QCOMPARE(options.value("scroll_inverted").toBool(), false);
+        QVERIFY(ConfigStore::parse("[modules.volume.behavior]\nscroll_enabled=false\nscroll_step=2\nscroll_inverted=true", model, error));
+        QCOMPARE(model.value("modules").toMap().value("volume").toMap().value("behavior").toMap().value("scroll_step").toInt(), 2);
+        for (const auto *source : {"scroll_step=0", "scroll_step=101", "scroll_step=1.5", "scroll_enabled=1", "scroll_inverted='true'"})
+            QVERIFY(!ConfigStore::parse(QByteArray("[modules.volume.behavior]\n") + source, model, error));
+    }
     void audioBackendOptions() {
         QVariantMap model; QString error; QVERIFY(ConfigStore::parse({}, model, error));
         QCOMPARE(model.value("modules").toMap().value("volume").toMap().value("behavior").toMap().value("backend").toString(), "auto");

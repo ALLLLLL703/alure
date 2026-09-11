@@ -58,11 +58,11 @@ Control {
         }
         InfoText {
             visible: root.moduleName !== "calendar"
-            text: !root.service ? "No provider is implemented for this module." : root.service.diagnostic || (root.service.busy ? "Refreshing…" : root.ready ? "Live system data" + (root.moduleName === "volume" && root.service.state.backend ? " · " + root.service.state.backend : "") : "Provider unavailable")
+            text: !root.service ? "No provider is implemented for this module." : root.service.diagnostic || (root.service.busy && !(root.moduleName === "volume" && root.ready) ? "Refreshing…" : root.ready ? "Live system data" + (root.moduleName === "volume" && root.service.state.backend ? " · " + root.service.state.backend : "") : "Provider unavailable")
             color: root.ready ? root.theme.palette.muted : root.theme.palette.accent
             Layout.fillWidth: true
         }
-        InfoText { visible: root.actionStatus.length > 0; text: root.actionStatus; color: root.theme.palette.muted; Layout.fillWidth: true }
+        InfoText { visible: root.moduleName !== "volume" && root.actionStatus.length > 0; text: root.actionStatus; color: root.theme.palette.muted; Layout.fillWidth: true }
         ScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -81,11 +81,19 @@ Control {
                     Layout.fillWidth: true
                     InfoText { text: root.ready ? Math.round(root.service.state.percent || 0) + "%" + (root.service.state.muted ? " · Muted" : "") : ""; font.pixelSize: root.theme.font_size * 2; Layout.fillWidth: true }
                     Slider {
+                        id: volumeSlider
                         objectName: "volume-slider"
                         Layout.fillWidth: true
                         from: 0; to: root.config.behavior.max_percent || 100; stepSize: 1
-                        value: root.ready ? root.service.state.percent || 0 : 0
-                        enabled: root.canAct && !!root.service.state.canSetVolume
+                        // Keep the grab while serialized audio jobs run, and
+                        // reconcile only after release and the final readback.
+                        Binding {
+                            target: volumeSlider; property: "value"
+                            when: root.moduleName === "volume" && !volumeSlider.pressed && (!root.service || !root.service.adjusting)
+                            value: root.ready ? root.service.state.percent || 0 : 0
+                            restoreMode: Binding.RestoreNone
+                        }
+                        enabled: root.ready && root.config.behavior.allow_actions && !!root.service.state.canSetVolume
                         Accessible.name: "Volume percent"
                         onMoved: root.act("setVolume", {percent: value})
                     }

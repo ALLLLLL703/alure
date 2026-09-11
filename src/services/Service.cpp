@@ -36,7 +36,7 @@ void Service::configure(const QVariantMap &module) {
 }
 void Service::refresh() { if (m_enabled && !m_busy) poll(); }
 bool Service::action(const QString &name, const QVariantMap &args) {
-    if (!m_enabled || m_busy || !m_options.value("allow_actions", true).toBool()) return false;
+    if (!m_enabled || (m_busy && !canQueueAction(name)) || !m_options.value("allow_actions", true).toBool()) return false;
     return act(name, args);
 }
 void Service::publish(QVariantMap state, QVariantList items) {
