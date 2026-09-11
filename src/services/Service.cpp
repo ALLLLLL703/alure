@@ -19,7 +19,7 @@ Service::Service(QObject *parent) : QObject(parent) {
 void Service::configure(const QVariantMap &module) {
     auto behavior = module.value("behavior").toMap();
     // Presentation and live DND options must not reset history or in-flight reads.
-    for (const auto &key : {"format", "popup_enabled", "toast_enabled", "menu_width", "menu_height", "show_artwork", "artwork_remote", "artwork_height", "show_artist", "show_album", "show_progress", "show_shuffle", "show_repeat", "dnd", "persist_dnd", "popup_width", "popup_height", "control_size", "control_icon_size"}) behavior.remove(key);
+    for (const auto &key : {"format", "popup_enabled", "toast_enabled", "menu_width", "menu_height", "show_artwork", "artwork_remote", "artwork_height", "show_artist", "show_album", "show_progress", "show_shuffle", "show_repeat", "dnd", "persist_dnd", "popup_width", "popup_height", "control_size", "control_icon_size", "focus_on_click", "niri_socket", "icon_max_pixels", "icon_cache_kib"}) behavior.remove(key);
     const QVariantMap executionConfig{{"enabled", module.value("enabled")}, {"behavior", behavior}};
     if (executionConfig == m_config) { m_options = module.value("behavior").toMap(); return; }
     m_config = executionConfig; ++m_generation; m_timer.stop();

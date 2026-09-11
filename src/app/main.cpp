@@ -5,6 +5,7 @@
 #include "Services.h"
 #include "ClipboardHost.h"
 #include "ClipboardImageProvider.h"
+#include "NotificationImageProvider.h"
 #include <QCommandLineParser>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -88,6 +89,7 @@ int main(int argc, char **argv) {
     if (services) {
         engine.rootContext()->setContextProperty("Services", services.get());
         engine.addImageProvider("clipboard", new Alure::ClipboardImageProvider(services->clipboard()));
+        engine.addImageProvider("notifications", new Alure::NotificationImageProvider(services->notifications()));
     }
     if (clipboard) {
         engine.rootContext()->setContextProperty("Services", QVariantMap{{"clipboard", QVariant::fromValue(clipboard.get())}});

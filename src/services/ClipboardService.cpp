@@ -108,7 +108,10 @@ void ClipboardService::poll() {
 void ClipboardService::previewItem(const QString &id) {
     if (!m_open || !contains(id)) return;
     const auto cached = m_previews.value(id).toMap();
-    if (!cached.isEmpty() && (cached.value("kind") != "image" || m_images.contains(id))) return;
+    if (!cached.isEmpty() && (cached.value("kind") != "image" || m_images.contains(id))) {
+        if (m_preview != cached) { m_preview = cached; m_image = previewImage(id); emit previewChanged(); }
+        return;
+    }
     if (busy()) { if (!m_pendingPreview.contains(id)) m_pendingPreview.append(id); return; }
     clearPreview();
     run(command("decode", id), {}, [this, id](const QByteArray &bytes) { renderPreview(id, bytes); });

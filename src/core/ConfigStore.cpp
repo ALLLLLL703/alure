@@ -137,6 +137,11 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
         range(toast, "height", 80, 1080, "ui.toast.");
         range(toast, "margin", 0, 4096, "ui.toast.");
         range(toast, "duration_ms", 100, 600000, "ui.toast.");
+        range(toast, "padding", 0, 64, "ui.toast.");
+        range(toast, "spacing", 0, 32, "ui.toast.");
+        range(toast, "font_size", 6, 72, "ui.toast.");
+        range(toast, "icon_size", 8, 128, "ui.toast.");
+        range(toast, "body_lines", 1, 8, "ui.toast.");
         choice(toast, "edge", {"top", "bottom"}, "ui.toast.");
         nonempty(toast, "output", "ui.toast.");
         auto settings = result.value("settings").toMap();
@@ -231,6 +236,10 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
                 range(behavior, "debounce_ms", 10, 2000, path);
             }
             if (it.key() == "notifications") {
+                range(behavior, "icon_max_pixels", 1024, 16777216, path);
+                range(behavior, "icon_cache_kib", 64, 65536, path);
+                const auto socket = behavior.value("niri_socket").toString();
+                if (socket.contains(QChar::Null) || (!socket.isEmpty() && !QDir::isAbsolutePath(socket))) invalid(path + "niri_socket", "expected empty or absolute socket path");
                 range(behavior, "history_limit", 1, 1000, path);
                 range(behavior, "default_expire_ms", 100, 86400000, path);
                 range(behavior, "max_expire_ms", 100, 86400000, path);

@@ -62,3 +62,48 @@ editor remains available separately.
 that editor without replacing its draft/config path. `alure --clipboard` is a
 single-instance toggle: a second invocation closes the existing layer rather
 than creating another. These modes require the session DBus for arbitration.
+
+## Notifications
+
+Banner defaults are now 320×108, with 8px padding, 4px spacing and 12px text.
+The Notifications sidebar page contains all banner fields; the existing
+`[ui.toast]` TOML location is retained so older configurations still work.
+New fields there: `padding=8` (integer 0..64), `spacing=4` (0..32),
+`font_size=12` (6..72), `show_icon=true` (boolean), `icon_size=32` (8..128),
+`body_lines=2` (1..8). Existing explicit width/height values remain respected.
+
+`[modules.notifications.behavior]` adds:
+
+```toml
+focus_on_click = true
+niri_socket = "" # empty uses NIRI_SOCKET; otherwise absolute path
+icon_max_pixels = 1048576 # integer 1024..16777216
+icon_cache_kib = 8192 # integer 64..65536
+```
+
+All apply on reload without resetting notification history. Clicking a banner
+(or Open sender in history) sends its advertised `default` action, then, when
+`focus_on_click=true`, requests Niri Windows/FocusWindow over the socket. Matching
+prefers the sender PID obtained from the session bus, falling back to exact,
+case-folded desktop-entry/app_id (appName only if desktop-entry is absent).
+Multiple matches require an already-focused matching window; otherwise Alure
+logs a diagnostic rather than selecting an unrelated window. The default action
+lets applications open the relevant conversation themselves. No shell command,
+window-title substring matching or application launching is synthesized.
+`allow_actions=false` disables these interactions.
+
+Notification icons now accept the `(iiibiiay)` image-data structure (including
+legacy image_data/icon_data), local file/image-path hints, and theme names.
+RGB/RGBA, alpha, padded row stride and a short final row are handled explicitly.
+Dimensions/data size are bounded; decoded thumbnails fit 128×128 in a capped
+memory cache. Remote image URLs are not fetched. This supports application-sent
+chat/group avatars without substituting a font glyph. App-supplied raster avatars
+and tray images are content, not replacements for Alure's SVG UI glyphs.
+
+Protocol references:
+- https://specifications.freedesktop.org/notification-spec/latest/icons-and-images.html
+- https://specifications.freedesktop.org/notification-spec/latest/hints.html
+- https://github.com/niri-wm/niri/blob/main/niri-ipc/src/lib.rs
+
+No live QQ/Niri notification assertion is made for this delivery: the requested
+verification boundary remains compilation and static QML parsing only.

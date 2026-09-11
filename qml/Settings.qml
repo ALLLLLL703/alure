@@ -54,7 +54,7 @@ ApplicationWindow {
         const parsed = Config.commandArguments(text)
         const errors = Object.assign({}, commandErrors)
         if (parsed.error) { errors[path] = parsed.error; statusText = parsed.error }
-        else { delete errors[path]; stageField(path, Ui.literal(parsed.argv)) }
+        else { delete errors[path]; stageField(path, Ui.literal(JSON.parse(JSON.stringify(parsed.argv)))) }
         commandErrors = errors
     }
     function stageModuleList(path, next) {

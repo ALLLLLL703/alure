@@ -195,7 +195,7 @@ Tray dropdowns use `modules.tray.behavior.menu_width` (integer 160..1920, defaul
 280) and `menu_height` (integer 100..2160, default 420; scrolls beyond this limit).
 Both are logical pixels, clamp to the output and apply on config reload. The
 existing popup gap/alignment/direction, theme, `popup_enabled` and `allow_actions`
-settings apply. Settings exposes the dimensions under Integrations → tray.
+settings apply. Settings exposes the dimensions on the Tray module page.
 
 ```toml
 [modules.tray.behavior]
@@ -215,8 +215,9 @@ owner loss, cancellation and the actual QML right-click route.
 Enable `modules.clipboard.enabled` and include `"clipboard"` in a panel's module
 list for an anchored history view, or run `alure --clipboard` for a standalone
 cursor-local preview without the rest of the shell. It consumes existing
-cliphist history and never starts recording. The panel module defaults off;
-standalone invocation explicitly opts in for that window only.
+cliphist history and never starts recording. The module is enabled and placed in
+the default bar; existing explicit lists are preserved. Drag Clipboard into a slot
+to add it to an existing layout. Standalone invocation is a single-instance toggle.
 
 Configuration, limits, deletion/copy semantics and the Wayland cursor fallback
 are documented in [clipboard.md](clipboard.md), with a complete

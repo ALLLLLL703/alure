@@ -97,7 +97,10 @@ separate text/image watchers using `wl-paste --type text --watch cliphist store`
 and `wl-paste --type image --watch cliphist store`. Configure capture deliberately,
 with the same DB path and appropriate privacy policy; Alure never launches them.
 
-## Evidence and references
+## Earlier baseline evidence and references
+
+The checks below preceded the inline-preview/single-instance changes. This UI
+revision was compiled and statically parsed only, per the requested scope.
 
 - Automated tests: lazy reads, missing DB/executable/entry, bounded output and
   deadlines, image-pixel limits, literal text, byte-exact binary copy, permission

@@ -164,6 +164,14 @@ Control {
                             id: detail
                             anchors { left: parent.left; right: parent.right; top: parent.top; margins: root.theme.padding }
                             spacing: root.theme.spacing / 2
+                            Image {
+                                visible: root.moduleName === "notifications" && Config.model.ui.toast.show_icon
+                                Layout.preferredWidth: Config.model.ui.toast.icon_size
+                                Layout.preferredHeight: Layout.preferredWidth
+                                source: visible ? card.modelData.iconUrl || "image://icons/builtin/notifications" : ""
+                                fillMode: Image.PreserveAspectFit
+                                cache: false
+                            }
                             InfoText {
                                 Layout.fillWidth: true
                                 font.bold: true
@@ -210,6 +218,7 @@ Control {
                                     }
                                 }
                                 ShellButton { visible: root.moduleName === "bluetooth"; text: card.modelData.Connected ? "Disconnect" : "Connect"; enabled: root.canAct && !!card.modelData.Paired; onClicked: root.act(card.modelData.Connected ? "disconnect" : "connect", {path: card.modelData.path}) }
+                                ShellButton { visible: root.moduleName === "notifications"; text: "Open sender"; enabled: root.canAct; onClicked: root.act("activate", {id: card.modelData.id}) }
                                 ShellButton { visible: root.moduleName === "notifications" && !!card.modelData.active; text: "Dismiss"; enabled: root.canAct; onClicked: root.act("dismiss", {id: card.modelData.id}) }
                                 Repeater {
                                     model: root.moduleName === "notifications" && card.modelData.active ? card.modelData.actions || [] : []

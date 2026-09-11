@@ -6,12 +6,12 @@ spacers, six themes (including One Dark, Catppuccin Mocha and Tokyo Night), orig
 icons, real system modules and a separate settings application with forms and a
 full TOML editor. Workspace/media/tray/sound/updates/network/Bluetooth/notification/
 calendar/battery details expose supported controls and honest provider diagnostics.
-An opt-in [cliphist module](docs/clipboard.md) adds text/image history previews,
+A lazy [cliphist module](docs/clipboard.md) adds text/image history previews,
 search, copy and deletion; `alure --clipboard` opens a standalone view at the cursor.
 No wallpaper, compositor replacement or simulated system state is supplied.
 
 See [architecture](docs/architecture.md), [configuration](docs/configuration.md),
-[interface/configuration coverage](docs/interface.md), and
+[interface/configuration coverage](docs/interface.md), [current UI changes](docs/ui-refinement.md), and
 [service API/readiness/limits](docs/services.md). Historical foundation handoff:
 [foundation.md](docs/foundation.md).
 

@@ -28,7 +28,7 @@ public:
     Service *updates() { return &m_updates; }
     Service *wifi() { return &m_wifi; }
     Service *bluetooth() { return &m_bluetooth; }
-    Service *notifications() { return &m_notifications; }
+    NotificationService *notifications() { return &m_notifications; }
     Service *battery() { return &m_battery; }
     ClipboardService *clipboard() { return &m_clipboard; }
 private:

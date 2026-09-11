@@ -100,22 +100,25 @@ replaces the previous banner; there is no animated queue or duplicate per-panel
 banner. It hides on configured display duration, provider expiry/dismissal, or ×.
 Hiding a banner does not dismiss notification history. Actions/full bodies live in
 history. DND prevents new banners; changing DND does not retroactively mark an
-existing notification suppressed. No sound, markup, arbitrary icon URLs or images
-are loaded. `expiresAt=0` can remain active in history after the bounded banner
+existing notification suppressed. No sound, markup or remote icon URLs are loaded.
+Raw notification image hints, local image files and themed icons are supported;
+clicking invokes the default action and can focus the sender through Niri IPC.
+See [current UI refinements](ui-refinement.md) for limits and configuration. `expiresAt=0` can remain active in history after the bounded banner
 hides. No panel is needed for receipt, but place the notifications module on a
 panel to reach history. An unmatched toast output produces no banner.
 
 ## Settings: one draft, no silent rewrites
 
 Sidebar sections: Appearance (Theme & typography, Layout & popups, Settings window),
-Panels (add/remove/order and fields), Modules (enabled/style), Integrations
-(behavior), Configuration (advanced complete TOML). Theme controls retain their
+Panels (drag-and-drop slots and fields), Configuration (advanced complete TOML),
+and a MODULES divider followed by a page for each module. Each module page combines
+style, feature controls and integration. Notifications also contains banner settings. Theme controls retain their
 priority order; remaining fields sort lexically by full TOML path, keeping nested
 fields such as panel margins together under a single heading. This is presentation
 only: browsing does not reorder or rewrite the TOML source.
 Common values use real controls:
 
-- Midnight/dawn/forest preview cards use the built-in TOML palettes; Preview applies
+- A theme dropdown lists the built-in TOML palettes; Preview applies
   the staged theme to this window only. Existing explicit palette overrides remain.
 - Sliders plus exact numeric editors cover opacity, font/icon size, spacing/radius,
   panel dimensions/margins and other numeric settings. C++ validation is authoritative;
@@ -124,13 +127,14 @@ Common values use real controls:
   Selected switches and slider fills use the theme accent for visibility.
 - Switches edit booleans; ComboBoxes edit enum choices and installed font families.
   Font families can also be typed. Normal strings need **no TOML quotes**; escaping
-  is internal. Integration commands retain a clearly labeled advanced TOML argv editor.
+  is internal. Command fields accept ordinary quoted command text and convert it
+  to argv internally; unfinished quotes block Save. Labels and controls share a row.
 - Colors have swatches, validated hex/Qt color text and Qt's nonnative Quick color
   picker (system QuickDialogs2). Cancel does not change the draft. Accept stages the
   selected color. Empty module colors inherit; empty global palette colors are invalid.
   Controls/popups use the configured theme palette, including disabled text roles.
-- Per-panel module switches include/remove a module on that panel; up/down changes
-  its order, preserving custom module names. Global module enable lives in Modules.
+- Drag module blocks into panel slots to place/enable them, beside blocks to order,
+  or back into the palette to remove. Each module's own page also has its global enable switch.
 
 Apply fields/Enter flushes staged edits into the raw draft without writing disk.
 Section/category/module/panel navigation, Preview and Save also flush focused input;
@@ -204,8 +208,9 @@ but no longer render anything.
 | `ui.show_settings`, `settings_icon` | true / `settings`; launcher visibility and validated icon name |
 | `ui.toast.enabled` | true; independent banner switch (notification serving remains opt-in) |
 | `ui.toast.output`, `edge` | `primary`, `top`; exact QScreen name or primary, edge top/bottom only |
-| `ui.toast.width`, `height`, `margin` | 380 / 150 / 64; integers 240..1920 / 80..1080 / 0..4096 |
+| `ui.toast.width`, `height`, `margin` | 320 / 108 / 56; integers 240..1920 / 80..1080 / 0..4096 |
 | `ui.toast.duration_ms` | 5000, integer 100..600000; display lifetime, independent of protocol expiry |
+| `modules.*.style.opacity` | 1.0, number 0..1; independent module content/dropdown opacity |
 | `modules.*.style.icon` | matching original module icon name; name characters letters/digits/underscore/dot/hyphen, no paths |
 | `modules.*.style.icon_size` | 18, integer 8..128; per-module size |
 | `modules.*.style.min_width`, `max_width` | 30 / 140 (240 for media/calendar/workspaces/tray); integers 16..1024 / 16..2048, min<=max; max also bounds vertical workspace/tray strip length |
