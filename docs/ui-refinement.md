@@ -70,10 +70,10 @@ one dropdown. Form labels sit on the left, controls in the right-hand 56%.
 
 Panels have a block palette and one slot per active zone (one for linear mode).
 Drag into a slot to place/enable, beside a block to order, or back to the palette
-to remove. Placed modules use compact square SVG-icon blocks rather than shortened
-names; they follow the module's configured `style.icon` and the theme icon size.
-The palette keeps full names, and placed blocks retain their accessible names.
-Spacers keep their text labels and remain repeatable. All operations edit the TOML draft; the
+to remove. Both the palette and placed modules use compact square SVG-icon blocks
+rather than shortened names; they follow the module's configured `style.icon` and
+the theme icon size. Full names remain available as accessible names. Fixed and
+flexible spacers have distinct SVG icons and remain repeatable. All operations edit the TOML draft; the
 bottom **Save & apply** remains the publication point.
 
 Command fields accept ordinary command text such as

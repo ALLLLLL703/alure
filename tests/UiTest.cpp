@@ -148,13 +148,20 @@ private slots:
         window->setProperty("section", 1); QTest::qWait(60);
         const auto find = [&](const QString &name) { return itemNamed(window->contentItem(), name); };
         auto *tile = find("panels.0.modules_left-module-media-0"); QVERIFY(tile);
-        QVERIFY(tile->property("iconOnly").toBool()); QCOMPARE(tile->width(), tile->height());
-        QVERIFY(!itemNamed(tile, "module-tile-label")->isVisible());
+        QCOMPARE(tile->width(), tile->height());
+        QVERIFY(!itemNamed(tile, "module-tile-label"));
         auto *icon = itemNamed(tile, "module-tile-icon"); QVERIFY(icon); QVERIFY(icon->isVisible());
         QCOMPARE(icon->property("source").toUrl(), QUrl("image://icons/builtin/calendar"));
         QTRY_COMPARE(icon->property("status").toInt(), 1);
         auto *palette = find("palette-module-media--1"); QVERIFY(palette);
-        QVERIFY(!palette->property("iconOnly").toBool()); QVERIFY(itemNamed(palette, "module-tile-label")->isVisible());
+        QCOMPARE(palette->width(), palette->height()); QVERIFY(!itemNamed(palette, "module-tile-label"));
+        QCOMPARE(itemNamed(palette, "module-tile-icon")->property("source").toUrl(), QUrl("image://icons/builtin/calendar"));
+        for (const auto &token : {"@spacer", "@stretch", "@settings"}) {
+            auto *special = find(QString("palette-module-%1--1").arg(token)); QVERIFY(special);
+            QCOMPARE(special->width(), special->height()); QVERIFY(!itemNamed(special, "module-tile-label"));
+            auto *specialIcon = itemNamed(special, "module-tile-icon"); QVERIFY(specialIcon);
+            QTRY_COMPARE(specialIcon->property("status").toInt(), 1);
+        }
         for (const auto &name : config.model().value("modules").toMap().keys()) {
             window->setProperty("moduleName", name); window->setProperty("section", 2); QTest::qWait(20);
             QCOMPARE(find("setting-field-modules." + name + ".behavior.preferred_player") != nullptr, name == "media");

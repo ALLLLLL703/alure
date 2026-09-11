@@ -58,6 +58,8 @@ set(ALURE_UI_FILES
   assets/icons/check.svg
   assets/icons/circle.svg
   assets/icons/minus.svg
+  assets/icons/spacer.svg
+  assets/icons/stretch.svg
 )
 qt_add_resources(alure ui PREFIX / FILES ${ALURE_UI_FILES})
 install(TARGETS alure RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
