@@ -15,6 +15,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QImage>
 using namespace Alure;
 namespace {
@@ -27,6 +28,14 @@ QVariantMap module(const QString &name, QVariantMap overrides = {}) {
 }
 QVariantList command(const QString &mode) { return {QString(SERVICE_FIXTURE), mode}; }
 void put(const QString &path, const QByteArray &text) { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); QCOMPARE(file.write(text), text.size()); }
+QByteArray contents(const QString &path) { QFile file(path); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray{}; }
+QVariantMap audioModule(QVariantMap overrides = {}) {
+    QVariantMap options{{"backend", "auto"}, {"interval_ms", 60000}, {"timeout_ms", 500}, {"debounce_ms", 30},
+        {"command", command("audio-fail")}, {"pulse_info_command", command("audio-info")}, {"pulse_sinks_command", command("audio-sinks")},
+        {"set_volume_command", QVariantList{}}, {"mute_command", QVariantList{}}, {"pulse_set_volume_command", QVariantList{}}, {"pulse_mute_command", QVariantList{}}};
+    for (auto it = overrides.begin(); it != overrides.end(); ++it) options[it.key()] = it.value();
+    return module("volume", options);
+}
 }
 class SnapshotFixture : public Service {
 public:
@@ -123,6 +132,80 @@ public slots:
 class ServicesTest : public QObject {
     Q_OBJECT
 private slots:
+    void pulseVolumeParser() {
+        const QByteArray info = R"({"default_sink_name":"speakers","server_name":"pulseaudio"})";
+        const QByteArray sinks = R"([{"name":"hdmi"},{"index":7,"name":"speakers","mute":true,"volume":{"left":{"value":32768},"right":{"value":16384}}}])";
+        QVariantMap snapshot; QString error;
+        QVERIFY2(VolumeService::parsePulse(info, sinks, snapshot, error), qPrintable(error));
+        QCOMPARE(snapshot.value("percent").toDouble(), 37.5); QVERIFY(snapshot.value("muted").toBool());
+        QCOMPARE(snapshot.value("sinkIndex").toString(), "7");
+        QVERIFY(!VolumeService::parsePulse("{}", sinks, snapshot, error));
+        QVERIFY(!VolumeService::parsePulse(info, "[]", snapshot, error));
+        QVERIFY(!VolumeService::parsePulse(info, "invalid", snapshot, error));
+        for (const auto &replacement : {QByteArray("\"yes\""), QByteArray("null")}) {
+            auto bad = sinks; bad.replace("true", replacement); QVERIFY(!VolumeService::parsePulse(info, bad, snapshot, error));
+        }
+        for (const auto &replacement : {QByteArray("-1"), QByteArray("1.5"), QByteArray("\"32768\""), QByteArray("2147483648")}) {
+            auto bad = sinks; bad.replace("32768", replacement); QVERIFY(!VolumeService::parsePulse(info, bad, snapshot, error));
+        }
+    }
+    void audioFallbackAndActions() {
+        QTemporaryDir dir; const auto log = dir.filePath("reads"), capture = dir.filePath("actions");
+        const auto logged = [&](const QString &mode) { return QVariantList{QString(SERVICE_FIXTURE), mode, log}; };
+        VolumeService service;
+        service.configure(audioModule({{"command", logged("audio-fail")}, {"pulse_info_command", logged("audio-info")}, {"pulse_sinks_command", logged("audio-sinks")},
+            {"pulse_set_volume_command", QVariantList{QString(SERVICE_FIXTURE), "capture-args", capture}},
+            {"pulse_mute_command", QVariantList{QString(SERVICE_FIXTURE), "capture-args", capture}}}));
+        QTRY_VERIFY(service.available() && !service.busy());
+        QCOMPARE(service.state().value("backend").toString(), "pulseaudio"); QCOMPARE(service.state().value("percent").toDouble(), 37.5);
+        service.refresh(); QTRY_VERIFY(!service.busy()); QCOMPARE(contents(log).count("audio-fail"), 1); // sticky working backend
+        QVERIFY(service.action("setVolume", {{"percent", 20}})); QVERIFY(service.action("setVolume", {{"percent", 65}}));
+        QVERIFY(!service.action("setVolume", {{"percent", 151}}));
+        QTRY_VERIFY(contents(capture).contains("7|65.000%\n")); QTRY_VERIFY(!service.busy());
+        QCOMPARE(contents(capture).count('%'), 1);
+        QVERIFY(service.action("toggleMute")); QTRY_VERIFY(contents(capture).contains("7|toggle\n")); QTRY_VERIFY(!service.busy());
+        service.configure(audioModule({{"backend", "pulseaudio"}})); QTRY_VERIFY(service.available() && !service.busy());
+        QVERIFY(!service.state().value("canSetVolume").toBool()); QVERIFY(!service.action("setVolume", {{"percent", 50}})); QVERIFY(!service.action("toggleMute"));
+        service.configure(audioModule({{"backend", "pipewire"}, {"command", logged("audio-pipewire")},
+            {"set_volume_command", QVariantList{QString(SERVICE_FIXTURE), "capture-args", capture}}}));
+        QTRY_VERIFY(service.available() && !service.busy()); QCOMPARE(service.state().value("backend").toString(), "pipewire");
+        QVERIFY(service.action("setVolume", {{"percent", 25}})); QTRY_VERIFY(contents(capture).contains("0.250\n")); QTRY_VERIFY(!service.busy());
+    }
+    void audioFailuresAndCancellation() {
+        VolumeService service;
+        service.configure(audioModule({{"command", command("sleep")}, {"timeout_ms", 100}}));
+        QTRY_VERIFY(service.available() && !service.busy()); QCOMPARE(service.state().value("backend").toString(), "pulseaudio");
+        service.configure(audioModule({{"command", QVariantList{"/nonexistent/alure-wpctl"}}, {"pulse_info_command", command("audio-fail")}}));
+        QTRY_VERIFY(!service.busy()); QVERIFY(!service.available()); QVERIFY(service.diagnostic().contains("PulseAudio")); QVERIFY(service.diagnostic().contains("PipeWire"));
+        service.configure(audioModule({{"backend", "pulseaudio"}, {"pulse_mute_command", command("audio-fail")}}));
+        QTRY_VERIFY(service.available() && !service.busy()); QVERIFY(service.action("toggleMute"));
+        QTRY_VERIFY(!service.busy()); QVERIFY(service.diagnostic().startsWith("Audio action failed")); QVERIFY(!service.available()); // no write fallback
+        QTemporaryDir dir; const auto capture = dir.filePath("actions");
+        auto config = audioModule({{"backend", "pulseaudio"}, {"debounce_ms", 100}, {"pulse_set_volume_command", QVariantList{QString(SERVICE_FIXTURE), "capture-args", capture}}});
+        service.configure(config); QTRY_VERIFY(service.available() && !service.busy()); QVERIFY(service.action("setVolume", {{"percent", 50}}));
+        config["enabled"] = false; service.configure(config); QTest::qWait(150); QVERIFY(!QFile::exists(capture));
+        config["enabled"] = true; auto options = config.value("behavior").toMap(); options["allow_actions"] = false; config["behavior"] = options;
+        service.configure(config); QTRY_VERIFY(service.available() && !service.busy()); QVERIFY(!service.action("setVolume", {{"percent", 50}})); QVERIFY(!service.action("toggleMute"));
+    }
+    void audioDefaultSinkChangedDuringDrag() {
+        QTemporaryDir dir; const auto sinks = dir.filePath("sinks"), capture = dir.filePath("actions");
+        const QByteArray data = R"([{"index":7,"name":"speakers","mute":false,"volume":{"mono":{"value":32768}}}])";
+        put(sinks, data);
+        VolumeService service;
+        service.configure(audioModule({{"backend", "pulseaudio"}, {"debounce_ms", 300},
+            {"pulse_sinks_command", QVariantList{QString(SERVICE_FIXTURE), "read-file", sinks}},
+            {"pulse_set_volume_command", QVariantList{QString(SERVICE_FIXTURE), "capture-args", capture}}}));
+        QTRY_VERIFY(service.available() && !service.busy()); QVERIFY(service.action("setVolume", {{"percent", 60}}));
+        auto changed = data; changed.replace("\"index\":7", "\"index\":8"); put(sinks, changed);
+        service.refresh(); QTRY_COMPARE(service.state().value("sinkIndex").toString(), "8");
+        QTRY_VERIFY(service.diagnostic().contains("Audio output changed")); QVERIFY(!QFile::exists(capture));
+    }
+    void audioReadOnlyLive() {
+        if (!qEnvironmentVariableIsSet("ALURE_TEST_LIVE_VOLUME_READ")) QSKIP("Explicit read-only live probe is opt-in.");
+        VolumeService service; service.configure(module("volume", {{"allow_actions", false}}));
+        QTRY_VERIFY_WITH_TIMEOUT(service.available() && !service.busy(), 10000);
+        qInfo() << "Read-only audio probe:" << service.state().value("backend").toString() << service.state().value("percent").toDouble() << service.state().value("muted").toBool();
+    }
     void trayMenuProtocol() {
         auto bus = QDBusConnection::sessionBus();
         QVERIFY(bus.registerService("org.alure.MenuFixture"));

@@ -30,6 +30,15 @@ private slots:
         QVERIFY(store.reload()); QVERIFY(!QFile::exists(store.path()));
         QCOMPARE(store.model(), model);
     }
+    void audioBackendOptions() {
+        QVariantMap model; QString error; QVERIFY(ConfigStore::parse({}, model, error));
+        QCOMPARE(model.value("modules").toMap().value("volume").toMap().value("behavior").toMap().value("backend").toString(), "auto");
+        for (const auto *backend : {"auto", "pipewire", "pulseaudio"})
+            QVERIFY(ConfigStore::parse(QString("[modules.volume.behavior]\nbackend='%1'").arg(backend).toUtf8(), model, error));
+        QVERIFY(ConfigStore::parse("[modules.volume.behavior]\npulse_set_volume_command=[]\npulse_mute_command=[]", model, error));
+        for (const auto *source : {"[modules.volume.behavior]\nbackend='alsa'", "[modules.volume.behavior]\nbackend=1", "[modules.volume.behavior]\npulse_info_command='pactl info'", "[modules.volume.behavior]\npulse_mute_command=[1]"})
+            QVERIFY(!ConfigStore::parse(source, model, error));
+    }
     void moduleTooltipOptions() {
         QVariantMap model; QString error;
         QVERIFY(ConfigStore::parse({}, model, error));

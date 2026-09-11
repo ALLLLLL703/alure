@@ -137,6 +137,22 @@ void replaceText(QQuickWindow *window, QQuickItem *item, const QString &text) {
 class UiTest : public QObject {
     Q_OBJECT
 private slots:
+    void volumeBackendCapabilities() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        FixtureService service; FixtureShell shell;
+        service.state = {{"backend", "pulseaudio"}, {"percent", 40}, {"muted", false}, {"canSetVolume", true}, {"canMute", false}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Shell", &shell);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"volume", QVariant::fromValue(&service)}});
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(440, 560);
+        view.setInitialProperties({{"moduleName", "volume"}}); view.setSource(QUrl("qrc:/qml/Popup.qml")); QCOMPARE(view.status(), QQuickView::Ready);
+        view.show(); QTest::qWait(30);
+        auto *slider = itemNamed(view.rootObject(), "volume-slider"), *mute = itemNamed(view.rootObject(), "volume-mute"); QVERIFY(slider); QVERIFY(mute);
+        QVERIFY(slider->isEnabled()); QVERIFY(!mute->isEnabled());
+        service.state["canSetVolume"] = false; service.state["canMute"] = true; emit service.changed();
+        QVERIFY(!slider->isEnabled()); QVERIFY(mute->isEnabled());
+        clickItem(&view, mute); QCOMPARE(service.lastAction, "toggleMute");
+    }
     void moduleIconTooltips() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
         QVERIFY(config.saveText("[settings]\nmodule_tooltip_delay_ms=10"));

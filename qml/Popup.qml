@@ -58,7 +58,7 @@ Control {
         }
         InfoText {
             visible: root.moduleName !== "calendar"
-            text: !root.service ? "No provider is implemented for this module." : root.service.diagnostic || (root.service.busy ? "Refreshing…" : root.ready ? "Live system data" : "Provider unavailable")
+            text: !root.service ? "No provider is implemented for this module." : root.service.diagnostic || (root.service.busy ? "Refreshing…" : root.ready ? "Live system data" + (root.moduleName === "volume" && root.service.state.backend ? " · " + root.service.state.backend : "") : "Provider unavailable")
             color: root.ready ? root.theme.palette.muted : root.theme.palette.accent
             Layout.fillWidth: true
         }
@@ -81,14 +81,15 @@ Control {
                     Layout.fillWidth: true
                     InfoText { text: root.ready ? Math.round(root.service.state.percent || 0) + "%" + (root.service.state.muted ? " · Muted" : "") : ""; font.pixelSize: root.theme.font_size * 2; Layout.fillWidth: true }
                     Slider {
+                        objectName: "volume-slider"
                         Layout.fillWidth: true
                         from: 0; to: root.config.behavior.max_percent || 100; stepSize: 1
                         value: root.ready ? root.service.state.percent || 0 : 0
-                        enabled: root.canAct && (root.config.behavior.set_volume_command || []).length > 0
+                        enabled: root.canAct && !!root.service.state.canSetVolume
                         Accessible.name: "Volume percent"
                         onMoved: root.act("setVolume", {percent: value})
                     }
-                    ShellButton { text: root.ready && root.service.state.muted ? "Unmute" : "Mute"; enabled: root.canAct && (root.config.behavior.mute_command || []).length > 0; onClicked: root.act("toggleMute") }
+                    ShellButton { objectName: "volume-mute"; text: root.ready && root.service.state.muted ? "Unmute" : "Mute"; enabled: root.canAct && !!root.service.state.canMute; onClicked: root.act("toggleMute") }
                 }
                 ColumnLayout {
                     visible: root.moduleName === "wifi" && root.ready

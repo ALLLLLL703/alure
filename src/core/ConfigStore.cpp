@@ -238,6 +238,7 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
                     invalid(path + "preferred_player", "expected empty or a full MPRIS service name/prefix");
             }
             if (it.key() == "volume") {
+                choice(behavior, "backend", {"auto", "pipewire", "pulseaudio"}, path);
                 range(behavior, "max_percent", 1, 150, path);
                 range(behavior, "debounce_ms", 10, 2000, path);
             }

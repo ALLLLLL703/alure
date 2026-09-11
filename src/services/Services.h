@@ -1,5 +1,6 @@
 #pragma once
 #include "CommandServices.h"
+#include "VolumeService.h"
 #include "NiriService.h"
 #include "DBusServices.h"
 #include "TrayService.h"
@@ -34,7 +35,8 @@ public:
 private:
     void apply(const QVariantMap &model);
     NiriService m_workspaces;
-    CommandService m_volume{CommandService::Volume}, m_updates{CommandService::Updates}, m_wifi{CommandService::Wifi};
+    VolumeService m_volume;
+    CommandService m_updates{CommandService::Updates}, m_wifi{CommandService::Wifi};
     MediaService m_media;
     TrayService m_tray;
     BluetoothService m_bluetooth;

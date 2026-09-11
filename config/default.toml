@@ -213,6 +213,11 @@ background = "" # empty uses transparent
 show_icon = true
 show_label = true
 [modules.volume.behavior]
+backend = "auto" # auto, pipewire (wpctl), pulseaudio (pactl)
+pulse_info_command = ["pactl", "--format=json", "info"]
+pulse_sinks_command = ["pactl", "--format=json", "list", "sinks"]
+pulse_set_volume_command = ["pactl", "set-sink-volume"] # Alure appends observed sink index and percent
+pulse_mute_command = ["pactl", "set-sink-mute"] # Alure appends observed sink index and toggle
 popup_enabled = true
 allow_actions = true
 set_volume_command = ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@"]
