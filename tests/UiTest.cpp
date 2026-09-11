@@ -137,6 +137,30 @@ void replaceText(QQuickWindow *window, QQuickItem *item, const QString &text) {
 class UiTest : public QObject {
     Q_OBJECT
 private slots:
+    void moduleSlotIconsAndPlayerFields() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QVERIFY(config.saveText("[modules.media.style]\nicon='calendar'\n[modules.wifi.behavior]\npreferred_player='legacy'\n[[panels]]\nlayout='three-zone'\nmodules_left=['media','@settings']\nmodules_center=['calendar']\nmodules_right=['clipboard','@spacer']"));
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        engine.load(QUrl("qrc:/qml/Settings.qml")); QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window);
+        window->setProperty("section", 1); QTest::qWait(60);
+        const auto find = [&](const QString &name) { return itemNamed(window->contentItem(), name); };
+        auto *tile = find("panels.0.modules_left-module-media-0"); QVERIFY(tile);
+        QVERIFY(tile->property("iconOnly").toBool()); QCOMPARE(tile->width(), tile->height());
+        QVERIFY(!itemNamed(tile, "module-tile-label")->isVisible());
+        auto *icon = itemNamed(tile, "module-tile-icon"); QVERIFY(icon); QVERIFY(icon->isVisible());
+        QCOMPARE(icon->property("source").toUrl(), QUrl("image://icons/builtin/calendar"));
+        QTRY_COMPARE(icon->property("status").toInt(), 1);
+        auto *palette = find("palette-module-media--1"); QVERIFY(palette);
+        QVERIFY(!palette->property("iconOnly").toBool()); QVERIFY(itemNamed(palette, "module-tile-label")->isVisible());
+        for (const auto &name : config.model().value("modules").toMap().keys()) {
+            window->setProperty("moduleName", name); window->setProperty("section", 2); QTest::qWait(20);
+            QCOMPARE(find("setting-field-modules." + name + ".behavior.preferred_player") != nullptr, name == "media");
+        }
+        QVERIFY(warnings.isEmpty()); QVERIFY(window->close());
+    }
     void settingsLayoutSettles_data() {
         QTest::addColumn<QSize>("extent");
         QTest::newRow("default") << QSize(900, 680);

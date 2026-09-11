@@ -30,6 +30,23 @@ private slots:
         QVERIFY(store.reload()); QVERIFY(!QFile::exists(store.path()));
         QCOMPARE(store.model(), model);
     }
+    void moduleBehaviorDefaultsAreIsolated() {
+        QVariantMap model; QString error;
+        QVERIFY2(ConfigStore::parse("[modules.custom]\nenabled=false", model, error), qPrintable(error));
+        const auto modules = model.value("modules").toMap();
+        for (auto it = modules.begin(); it != modules.end(); ++it) {
+            const auto behavior = it.value().toMap().value("behavior").toMap();
+            QVERIFY(behavior.contains("interval_ms")); QVERIFY(behavior.contains("popup_enabled"));
+            for (const auto *key : {"preferred_player", "control_size", "control_icon_size", "show_artwork", "artwork_remote", "artwork_height", "show_artist", "show_album", "show_progress", "show_shuffle", "show_repeat"})
+                QCOMPARE(behavior.contains(key), it.key() == "media");
+        }
+        QVERIFY(modules.value("clipboard").toMap().value("behavior").toMap().contains("popup_width"));
+        QVERIFY2(ConfigStore::parse("[modules.media.behavior]\npreferred_player='org.mpris.MediaPlayer2.musicfox'\n[modules.wifi.behavior]\npreferred_player='legacy-key'", model, error), qPrintable(error));
+        QCOMPARE(model.value("modules").toMap().value("media").toMap().value("behavior").toMap().value("preferred_player").toString(), "org.mpris.MediaPlayer2.musicfox");
+        // Unknown source keys remain round-trippable; the settings UI hides this foreign option.
+        QCOMPARE(model.value("modules").toMap().value("wifi").toMap().value("behavior").toMap().value("preferred_player").toString(), "legacy-key");
+        QVERIFY(!ConfigStore::parse("[modules.media.behavior]\npreferred_player=1", model, error));
+    }
     void overridesAndExtensions() {
         QVariantMap model; QString error;
         const QByteArray source = R"(

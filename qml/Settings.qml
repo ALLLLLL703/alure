@@ -32,7 +32,9 @@ ApplicationWindow {
         if (section === 2 && draft.modules && draft.modules[moduleName]) {
             const prefix = "modules." + moduleName
             const style = Fields.fields(draft.modules[moduleName].style, prefix + ".style")
-            const behavior = Fields.fields(draft.modules[moduleName].behavior, prefix + ".behavior").filter(f => !f.path.endsWith(".command") || ["volume", "wifi", "updates"].indexOf(moduleName) >= 0)
+            const behavior = Fields.fields(draft.modules[moduleName].behavior, prefix + ".behavior").filter(f =>
+                (moduleName === "media" || !f.path.endsWith(".preferred_player")) &&
+                (!f.path.endsWith(".command") || ["volume", "wifi", "updates"].indexOf(moduleName) >= 0))
             if (style.length) { style[0].group = "Appearance"; style[0].showGroup = true }
             if (behavior.length) { behavior[0].group = Ui.title(moduleName) + " · behavior & integration"; behavior[0].showGroup = true }
             return [Fields.describe(prefix + ".enabled", draft.modules[moduleName].enabled)].concat(style, behavior, moduleName === "notifications" ? Fields.fields(draft.ui.toast, "ui.toast") : [])

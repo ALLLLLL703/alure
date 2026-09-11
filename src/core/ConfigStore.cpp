@@ -161,7 +161,12 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
         if (!iconName.match(ui.value("settings_icon").toString()).hasMatch()) invalid("ui.settings_icon", "expected icon name");
         auto modules = result.value("modules").toMap();
         auto moduleDefaults = defaults.value("modules").toMap().value("media").toMap();
-        auto behaviorDefaults = moduleDefaults.value("behavior").toMap();
+        const auto mediaBehavior = moduleDefaults.value("behavior").toMap();
+        // Only shared service keys belong in the generic module template.
+        // Built-ins already carry their own defaults from config/default.toml.
+        QVariantMap behaviorDefaults;
+        for (const auto *key : {"popup_enabled", "allow_actions", "interval_ms", "timeout_ms", "command"})
+            behaviorDefaults[key] = mediaBehavior.value(key);
         behaviorDefaults["format"] = QString();
         moduleDefaults["behavior"] = behaviorDefaults;
         for (auto it = modules.begin(); it != modules.end(); ++it) {

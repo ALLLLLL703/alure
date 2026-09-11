@@ -122,6 +122,10 @@ enabled modules, now rendered with actionable detail surfaces.** Their stable ou
 
 New named module tables are accepted, merged with the same common defaults
 (enabled, both labels/icons, interval 1000, timeout 3000, empty argv and format).
+Only shared service options are inherited: media-only fields such as
+`preferred_player`, artwork and playback controls are not added to other modules.
+Explicit unknown TOML keys remain preserved, but a legacy `preferred_player` on
+a non-media module is not exposed by its settings page.
 This is an extension seam, **not a plugin loader**. Downstream implementations
 must add their supported keys' defaults, validation, examples, tests and docs
 before exposing new behavior. Enabled volume/updates/WiFi services execute their
