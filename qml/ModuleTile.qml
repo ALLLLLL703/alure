@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import "Ui.js" as Ui
 
 Item {
@@ -12,12 +13,17 @@ Item {
     readonly property string iconName: token === "@spacer" ? "spacer" : token === "@stretch" ? "stretch" : token === "@settings" ? host.draft.ui.settings_icon : (host.draft.modules[token] || {}).style?.icon || "fallback"
     objectName: (sourcePath || "palette") + "-module-" + token + "-" + sourceIndex
     Accessible.name: title
+    Accessible.description: Ui.moduleDescription(token)
     implicitWidth: implicitHeight
     implicitHeight: Config.model.ui.module_height + 6
     width: implicitWidth
     height: implicitHeight
     Rectangle {
         id: block
+        objectName: "module-tile-block"
+        ToolTip.text: tile.title + "\n" + Ui.moduleDescription(tile.token)
+        ToolTip.delay: Config.model.settings.module_tooltip_delay_ms
+        ToolTip.visible: Config.model.settings.module_tooltips && tile.visible && tile.enabled && mouse.containsMouse && !mouse.pressed && !tile.held
         width: tile.width; height: tile.height
         radius: Config.model.theme.radius / 2
         color: Config.model.theme.palette.surface
@@ -40,6 +46,7 @@ Item {
         MouseArea {
             id: mouse
             anchors.fill: parent
+            hoverEnabled: true
             drag.target: block
             onPositionChanged: { if (drag.active) tile.held = true }
             onReleased: { if (tile.held) block.Drag.drop(); tile.held = false; block.x = 0; block.y = 0 }

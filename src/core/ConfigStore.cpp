@@ -149,6 +149,7 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
         range(settings, "width", 400, 7680, "settings.");
         range(settings, "height", 300, 4320, "settings.");
         range(settings, "editor_font_size", 6, 72, "settings.");
+        range(settings, "module_tooltip_delay_ms", 0, 5000, "settings.");
         nonempty(settings, "editor_font", "settings.");
         const auto shortcut = settings.value("close_shortcut").toString();
         const auto sequence = QKeySequence::fromString(shortcut, QKeySequence::PortableText);

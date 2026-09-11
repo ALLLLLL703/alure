@@ -137,6 +137,37 @@ void replaceText(QQuickWindow *window, QQuickItem *item, const QString &text) {
 class UiTest : public QObject {
     Q_OBJECT
 private slots:
+    void moduleIconTooltips() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QVERIFY(config.saveText("[settings]\nmodule_tooltip_delay_ms=10"));
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        engine.load(QUrl("qrc:/qml/Settings.qml")); QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window);
+        window->resize(1000, 800); window->setProperty("section", 1); QTest::qWait(40);
+        QObject *tooltip = nullptr;
+        for (const auto *name : {"palette-module-media--1", "panels.0.modules-module-media-1"}) {
+            auto *tile = itemNamed(window->contentItem(), name); QVERIFY(tile); revealItem(tile);
+            auto *block = itemNamed(tile, "module-tile-block"); QVERIFY(block);
+            tooltip = QQmlProperty::read(block, "ToolTip.toolTip", qmlContext(block)).value<QObject *>(); QVERIFY(tooltip);
+            const auto point = tile->mapToScene(QPointF(tile->width()/2, tile->height()/2)).toPoint();
+            QTest::mouseMove(window, point);
+            QTRY_VERIFY(tooltip->property("visible").toBool());
+            QVERIFY(tooltip->property("text").toString().contains("Now playing"));
+            QVERIFY(tooltip->property("text").toString().contains("playback"));
+            QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, point);
+            QTRY_VERIFY(!tooltip->property("visible").toBool());
+            QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, point);
+            QTest::mouseMove(window, QPoint(5, 5));
+            QTRY_VERIFY(!tooltip->property("visible").toBool());
+        }
+        QVERIFY(config.previewText("[settings]\nmodule_tooltips=false\nmodule_tooltip_delay_ms=0"));
+        auto *tile = itemNamed(window->contentItem(), "palette-module-media--1"); QVERIFY(tile); revealItem(tile);
+        QTest::mouseMove(window, tile->mapToScene(QPointF(tile->width()/2, tile->height()/2)).toPoint());
+        QTest::qWait(50); QVERIFY(!tooltip->property("visible").toBool());
+        QVERIFY(warnings.isEmpty()); QVERIFY(window->close());
+    }
     void moduleSlotIconsAndPlayerFields() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
         QVERIFY(config.saveText("[modules.media.style]\nicon='calendar'\n[modules.wifi.behavior]\npreferred_player='legacy'\n[[panels]]\nlayout='three-zone'\nmodules_left=['media','@settings']\nmodules_center=['calendar']\nmodules_right=['clipboard','@spacer']"));

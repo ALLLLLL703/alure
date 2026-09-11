@@ -3,6 +3,25 @@ function title(name) {
     const names = {clipboard: "Clipboard", workspaces: "Workspaces", media: "Now playing", tray: "System tray", volume: "Sound", updates: "Updates", wifi: "Wi-Fi", bluetooth: "Bluetooth", notifications: "Notifications", calendar: "Calendar", battery: "Battery"}
     return names[name] || name
 }
+function moduleDescription(name) {
+    const descriptions = {
+        workspaces: "View and switch Niri workspaces.",
+        media: "View the current track and control playback.",
+        clipboard: "Search clipboard history, preview images, copy or delete entries.",
+        tray: "Access application tray icons and menus.",
+        volume: "Adjust audio output volume and mute.",
+        updates: "Check updates and run the configured update command.",
+        wifi: "View Wi-Fi networks and connect saved profiles.",
+        bluetooth: "Manage Bluetooth power and paired-device connections.",
+        notifications: "Read notification history and control do not disturb.",
+        calendar: "Show the date, time and monthly calendar.",
+        battery: "View battery level and charging status.",
+        "@settings": "Open Alure settings.",
+        "@spacer": "Reserve a fixed amount of space in this zone.",
+        "@stretch": "Share the remaining space with other flexible spacers."
+    }
+    return descriptions[name] || "Custom module; its functionality depends on its provider."
+}
 function format(pattern, data) {
     return pattern.replace(/\{([A-Za-z_]+)\}/g, function(match, key) {
         const value = data[key]

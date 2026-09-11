@@ -30,6 +30,16 @@ private slots:
         QVERIFY(store.reload()); QVERIFY(!QFile::exists(store.path()));
         QCOMPARE(store.model(), model);
     }
+    void moduleTooltipOptions() {
+        QVariantMap model; QString error;
+        QVERIFY(ConfigStore::parse({}, model, error));
+        QVERIFY(model.value("settings").toMap().value("module_tooltips").toBool());
+        QCOMPARE(model.value("settings").toMap().value("module_tooltip_delay_ms").toInt(), 400);
+        QVERIFY(ConfigStore::parse("[settings]\nmodule_tooltips=false\nmodule_tooltip_delay_ms=0", model, error));
+        QVERIFY(!model.value("settings").toMap().value("module_tooltips").toBool());
+        for (const auto *source : {"[settings]\nmodule_tooltips='true'", "[settings]\nmodule_tooltip_delay_ms=-1", "[settings]\nmodule_tooltip_delay_ms=5001", "[settings]\nmodule_tooltip_delay_ms=0.5"})
+            QVERIFY(!ConfigStore::parse(source, model, error));
+    }
     void moduleBehaviorDefaultsAreIsolated() {
         QVariantMap model; QString error;
         QVERIFY2(ConfigStore::parse("[modules.custom]\nenabled=false", model, error), qPrintable(error));

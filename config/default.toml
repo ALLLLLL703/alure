@@ -18,6 +18,8 @@ icon_size = 18
 icon_theme = "" # empty respects the desktop / qt6ct default
 # Optional overrides: [theme.palette] background, surface, foreground, muted, accent, border
 [settings]
+module_tooltips = true # names and descriptions on palette/zone icons
+module_tooltip_delay_ms = 400
 close_shortcut = "Ctrl+W" # Qt portable shortcut; empty disables
 controls_style = "Basic" # Basic or Fusion; restart settings/panels to change
 width = 900

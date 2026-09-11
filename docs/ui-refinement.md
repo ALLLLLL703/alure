@@ -73,8 +73,20 @@ Drag into a slot to place/enable, beside a block to order, or back to the palett
 to remove. Both the palette and placed modules use compact square SVG-icon blocks
 rather than shortened names; they follow the module's configured `style.icon` and
 the theme icon size. Full names remain available as accessible names. Fixed and
-flexible spacers have distinct SVG icons and remain repeatable. All operations edit the TOML draft; the
-bottom **Save & apply** remains the publication point.
+flexible spacers have distinct SVG icons and remain repeatable. Hovering an icon
+in either area shows its full name and a short description of its purpose. The
+shared tooltip hides on press/drag and on pointer exit; this does not add popup
+tooltips to the live bar or change its focus behavior. Configure these settings
+under Appearance → Settings window (apply on preview/reload):
+
+```toml
+[settings]
+module_tooltips = true # boolean; false disables these hover descriptions
+module_tooltip_delay_ms = 400 # integer 0..5000 milliseconds
+```
+
+All operations edit the TOML draft; the bottom **Save & apply** remains the
+publication point.
 
 Command fields accept ordinary command text such as
 `kitty sh -c 'sudo pacman -Syu'`, with single/double quotes and backslash escapes.
