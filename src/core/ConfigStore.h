@@ -23,6 +23,8 @@ public:
     static QByteArray defaultSource();
     static bool parse(const QByteArray &text, QVariantMap &model, QString &error);
     Q_INVOKABLE bool validColor(const QString &color) const;
+    Q_INVOKABLE QString commandText(const QVariantList &argv) const;
+    Q_INVOKABLE QVariantMap commandArguments(const QString &text) const;
     Q_INVOKABLE bool reload();
     Q_INVOKABLE bool saveText(const QString &text);
     Q_INVOKABLE QVariantMap inspectText(const QString &text) const;

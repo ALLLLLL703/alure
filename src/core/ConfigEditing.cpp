@@ -8,6 +8,32 @@
 #include <algorithm>
 
 namespace Alure {
+QString ConfigStore::commandText(const QVariantList &argv) const {
+    QStringList words;
+    for (const auto &argument : argv) {
+        auto word = argument.toString();
+        if (word.isEmpty() || word.contains(QRegularExpression("[^A-Za-z0-9_./:@%+=,-]"))) {
+            word.replace("'", "'\\''"); word = "'" + word + "'";
+        }
+        words << word;
+    }
+    return words.join(' ');
+}
+QVariantMap ConfigStore::commandArguments(const QString &text) const {
+    QVariantList words; QString word; QChar quote; bool escaped = false, started = false;
+    for (const QChar c : text) {
+        if (c.isNull() || c == '\n' || c == '\r') return {{"error", "Enter a single-line command without NUL."}};
+        if (escaped) { word += c; escaped = false; started = true; continue; }
+        if (c == '\\' && quote != '\'') { escaped = true; started = true; continue; }
+        if (!quote.isNull()) { if (c == quote) quote = {}; else word += c; started = true; continue; }
+        if (c == '\'' || c == '"') { quote = c; started = true; continue; }
+        if (c.isSpace()) { if (started) { words << word; word.clear(); started = false; } }
+        else { word += c; started = true; }
+    }
+    if (escaped || !quote.isNull()) return {{"error", "Finish the quoted argument or trailing escape."}};
+    if (started) words << word;
+    return {{"argv", words}};
+}
 namespace {
 // toml++ columns count Unicode codepoints, not UTF-8 bytes or UTF-16 units.
 qsizetype offset(const QString &text, toml::source_position position) {

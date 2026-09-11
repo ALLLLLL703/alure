@@ -12,13 +12,15 @@ find_package(tomlplusplus 3.4 REQUIRED)
 add_subdirectory(src/core)
 add_subdirectory(src/platform)
 add_subdirectory(src/services)
-qt_add_executable(alure src/app/main.cpp)
+qt_add_executable(alure src/app/main.cpp src/app/SingleInstance.h)
 target_link_libraries(alure PRIVATE alure_core alure_platform alure_services Qt6::QuickControls2 Qt6::QuickDialogs2)
 set(ALURE_UI_FILES
   qml/Panel.qml
   qml/PanelGroup.qml
   qml/Settings.qml
   qml/SettingField.qml
+  qml/ModuleSlots.qml
+  qml/ModuleTile.qml
   qml/SettingsFields.js
   qml/Ui.js
   qml/ModuleStrip.qml

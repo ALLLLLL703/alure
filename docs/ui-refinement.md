@@ -39,3 +39,26 @@ Implementation references: Qt Quick Image PreserveAspectFit, Drag/DropArea,
 https://doc.qt.io/qt-6/qml-qtquick-drag.html .
 
 Delivery validation: compilation only, as requested; no CTest or live UI run.
+
+## Settings and invocation
+
+The sidebar now has a MODULES divider and a separate page for every module.
+Each page combines appearance, feature controls and its integration settings;
+notification banner fields live on the Notifications page. Theme selection is
+one dropdown. Form labels sit on the left, controls in the right-hand 56%.
+
+Panels have a block palette and one slot per active zone (one for linear mode).
+Drag into a slot to place/enable, beside a block to order, or back to the palette
+to remove. Spacers remain repeatable. All operations edit the TOML draft; the
+bottom **Save & apply** remains the publication point.
+
+Command fields accept ordinary command text such as
+`kitty sh -c 'sudo pacman -Syu'`, with single/double quotes and backslash escapes.
+The editor converts this to TOML argv internally. Unfinished quoting blocks
+Save; no shell expansion, pipes or substitutions run implicitly. The raw TOML
+editor remains available separately.
+
+`alure --settings` has one instance per session bus. Further invocations raise
+that editor without replacing its draft/config path. `alure --clipboard` is a
+single-instance toggle: a second invocation closes the existing layer rather
+than creating another. These modes require the session DBus for arbitration.

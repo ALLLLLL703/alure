@@ -12,7 +12,9 @@ ApplicationWindow {
     property var inspection: Config.inspectText(Config.source)
     readonly property var draft: inspection.model
     property var pendingFields: ({})
-    readonly property bool dirty: editor.text !== savedText || Object.keys(pendingFields).length > 0
+    property var commandErrors: ({})
+    readonly property Item dragLayer: Overlay.overlay
+    readonly property bool dirty: editor.text !== savedText || Object.keys(pendingFields).length > 0 || Object.keys(commandErrors).length > 0
     property string statusText: "Forms edit the same TOML draft. Preview changes this window only; Save & apply publishes to watching panels."
     property int section: 0
     property int appearanceGroup: 0
@@ -21,14 +23,20 @@ ApplicationWindow {
     property string pendingAction: ""
     property string panelOperation: ""
     property bool closingApproved: false
-    readonly property var sectionNames: ["Appearance", "Panels", "Modules", "Integrations", "Configuration"]
+    readonly property var sectionNames: ["Appearance", "Panels", "", "", "Configuration"]
     readonly property string panelLayout: pendingFields["panels." + panelIndex + ".layout"] !== undefined ? JSON.parse(pendingFields["panels." + panelIndex + ".layout"]) : (draft.panels && draft.panels[panelIndex] ? draft.panels[panelIndex].layout : "linear")
     readonly property var formFields: {
         if (inspection.error) return []
-        if (section === 0) return appearanceGroup === 0 ? Fields.fields(draft.theme, "theme") : appearanceGroup === 1 ? Fields.fields(draft.ui, "ui") : Fields.fields(draft.settings, "settings")
-        if (section === 1) return (draft.panels && draft.panels[panelIndex]) ? Fields.fields(draft.panels[panelIndex], "panels." + panelIndex).filter(f => !/\.modules(_left|_center|_right)?$/.test(f.path) || (panelLayout === "linear" ? f.path.endsWith(".modules") : !f.path.endsWith(".modules"))) : []
-        if (section === 2 && draft.modules && draft.modules[moduleName]) return [Fields.describe("modules." + moduleName + ".enabled", draft.modules[moduleName].enabled)].concat(Fields.fields(draft.modules[moduleName].style, "modules." + moduleName + ".style"))
-        if (section === 3 && draft.modules && draft.modules[moduleName]) return Fields.fields(draft.modules[moduleName].behavior, "modules." + moduleName + ".behavior")
+        if (section === 0) return appearanceGroup === 0 ? Fields.fields(draft.theme, "theme") : appearanceGroup === 1 ? Fields.fields(draft.ui, "ui").filter(f => !f.path.startsWith("ui.toast.")) : Fields.fields(draft.settings, "settings")
+        if (section === 1) return (draft.panels && draft.panels[panelIndex]) ? Fields.fields(draft.panels[panelIndex], "panels." + panelIndex).filter(f => !/\.modules(_left|_center|_right)?$/.test(f.path)) : []
+        if (section === 2 && draft.modules && draft.modules[moduleName]) {
+            const prefix = "modules." + moduleName
+            const style = Fields.fields(draft.modules[moduleName].style, prefix + ".style")
+            const behavior = Fields.fields(draft.modules[moduleName].behavior, prefix + ".behavior").filter(f => !f.path.endsWith(".command") || ["volume", "wifi", "updates"].indexOf(moduleName) >= 0)
+            if (style.length) { style[0].group = "Appearance"; style[0].showGroup = true }
+            if (behavior.length) { behavior[0].group = Ui.title(moduleName) + " · behavior & integration"; behavior[0].showGroup = true }
+            return [Fields.describe(prefix + ".enabled", draft.modules[moduleName].enabled)].concat(style, behavior, moduleName === "notifications" ? Fields.fields(draft.ui.toast, "ui.toast") : [])
+        }
         return []
     }
     function resetFormScroll() {
@@ -41,6 +49,13 @@ ApplicationWindow {
     function inspect() { parseDelay.stop(); inspection = Config.inspectText(editor.text) }
     function stageField(path, literal) {
         const values = Object.assign({}, pendingFields); values[path] = literal; pendingFields = values
+    }
+    function stageCommand(path, text) {
+        const parsed = Config.commandArguments(text)
+        const errors = Object.assign({}, commandErrors)
+        if (parsed.error) { errors[path] = parsed.error; statusText = parsed.error }
+        else { delete errors[path]; stageField(path, Ui.literal(parsed.argv)) }
+        commandErrors = errors
     }
     function stageModuleList(path, next) {
         if (path.endsWith(".modules")) { stageField(path, Ui.literal(next)); return }
@@ -63,6 +78,8 @@ ApplicationWindow {
         colorPicker.open()
     }
     function flushFields() {
+        const errors = Object.keys(commandErrors)
+        if (errors.length) { statusText = errors[0] + ": " + commandErrors[errors[0]]; return false }
         let text = editor.text
         const paths = Object.keys(pendingFields)
         // Work on a local draft: clear all affected zones before restoring their
@@ -90,7 +107,7 @@ ApplicationWindow {
         return true
     }
     function reload() {
-        pendingFields = ({})
+        pendingFields = ({}); commandErrors = ({})
         const valid = Config.reload(); editor.text = Config.source; savedText = Config.source; inspect()
         statusText = valid ? "Reloaded disk configuration." : "Invalid disk text loaded for repair; runtime retains last valid model."
     }
@@ -156,61 +173,76 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: window.theme.spacing
-            ColumnLayout {
-                Layout.alignment: Qt.AlignTop
+            ScrollView {
                 Layout.preferredWidth: Math.min(window.width * 0.22, window.theme.font_size * 12)
-                Repeater {
-                    model: window.sectionNames
-                    ShellButton {
-                        required property int index
-                        required property string modelData
-                        text: modelData
-                        objectName: "settings-section-" + index
-                        accent: window.section === index
-                        Layout.fillWidth: true
-                        onClicked: { if (window.flushFields()) { window.inspect(); window.section = index } }
+                Layout.fillHeight: true
+                contentWidth: availableWidth
+                clip: true
+                ColumnLayout {
+                    width: parent.width
+                    Repeater {
+                        model: [0, 1, 4]
+                        ShellButton {
+                            required property int modelData
+                            text: window.sectionNames[modelData]
+                            objectName: "settings-section-" + modelData
+                            accent: window.section === modelData
+                            Layout.fillWidth: true
+                            onClicked: { if (window.flushFields()) { window.inspect(); window.section = modelData } }
+                        }
+                    }
+                    InfoText { text: "MODULES"; color: window.theme.palette.muted; font.bold: true; Layout.fillWidth: true; Layout.topMargin: window.theme.spacing }
+                    Repeater {
+                        model: Object.keys(window.draft.modules || {})
+                        ShellButton {
+                            required property string modelData
+                            text: Ui.title(modelData)
+                            iconName: modelData
+                            objectName: "settings-module-" + modelData
+                            accent: window.section === 2 && window.moduleName === modelData
+                            Layout.fillWidth: true
+                            onClicked: { if (window.flushFields()) { window.inspect(); window.moduleName = modelData; window.section = 2 } }
+                        }
                     }
                 }
-                Item { Layout.fillHeight: true }
-                InfoText { text: "v0.1 · TOML first\nNo services run in settings."; color: window.theme.palette.muted; Layout.fillWidth: true }
             }
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                InfoText { text: window.sectionNames[window.section]; font.bold: true; font.pixelSize: window.theme.font_size * 1.3 }
+                InfoText { text: window.section === 2 ? Ui.title(window.moduleName) : window.sectionNames[window.section]; font.bold: true; font.pixelSize: window.theme.font_size * 1.3 }
                 InfoText {
                     visible: window.section !== 4
-                    text: window.section === 0 ? "Choose a theme, colors and dimensions. Changes stay in your draft until Save; Preview applies them to this window only." : window.section === 1 ? "Choose a linear strip or left / center / right layout (top / center / bottom on vertical panels). Order modules within each group; add fixed or flexible space. Selecting a module in a new group moves it there." : window.section === 2 ? "Enable modules and adjust icon, text, widths and color overrides. Vertical bars use compact icons; workspace labels remain visible." : "Commands are argv arrays, never shell text. Enabling a provider may run reads on Save. Device and update actions remain explicit. Notification server is opt-in and never replaces another daemon."
+                    text: window.section === 0 ? "Theme, typography and shared interactions. Save & apply publishes your draft." : window.section === 1 ? "Drag blocks into the panel slots. Placing a module also enables it. Save & apply publishes the layout." : "Appearance, module-specific behavior and system integration in one place."
                     color: window.theme.palette.muted
                     Layout.fillWidth: true
                 }
-                ComboBox {
+                RowLayout {
                     visible: window.section === 0
-                    objectName: "appearance-group"
-                    model: ["Theme & typography", "Layout & popups", "Settings window"]
-                    currentIndex: window.appearanceGroup
-                    onActivated: { if (window.flushFields()) window.appearanceGroup = currentIndex; else currentIndex = window.appearanceGroup }
                     Layout.fillWidth: true
-                    Accessible.name: "Appearance category"
-                }
-                ComboBox {
-                    visible: window.section === 2 || window.section === 3
-                    model: Object.keys(window.draft.modules || {})
-                    currentIndex: Math.max(0, model.indexOf(window.moduleName))
-                    onActivated: { if (window.flushFields()) window.moduleName = currentText; else currentIndex = model.indexOf(window.moduleName) }
-                    Layout.fillWidth: true
-                    Accessible.name: "Module"
+                    InfoText { text: "Category"; Layout.fillWidth: true }
+                    ComboBox {
+                        objectName: "appearance-group"
+                        model: ["Theme & typography", "Layout & popups", "Settings window"]
+                        currentIndex: window.appearanceGroup
+                        onActivated: { if (window.flushFields()) window.appearanceGroup = currentIndex; else currentIndex = window.appearanceGroup }
+                        Layout.preferredWidth: parent.width * 0.56
+                        Accessible.name: "Appearance category"
+                    }
                 }
                 Flow {
                     visible: window.section === 1
                     Layout.fillWidth: true
                     spacing: window.theme.spacing / 2
-                    ComboBox {
-                        model: (window.draft.panels || []).map(p => p.id + " · " + p.edge + " · " + p.output)
-                        currentIndex: window.panelIndex
-                        width: Math.min(parent.width, window.theme.font_size * 20)
-                        onActivated: { if (window.flushFields()) window.panelIndex = currentIndex; else currentIndex = window.panelIndex }
-                        Accessible.name: "Panel"
+                    RowLayout {
+                        width: parent.width
+                        InfoText { text: "Panel"; Layout.fillWidth: true }
+                        ComboBox {
+                            model: (window.draft.panels || []).map(p => p.id + " · " + p.edge + " · " + p.output)
+                            currentIndex: window.panelIndex
+                            Layout.preferredWidth: parent.width * 0.56
+                            onActivated: { if (window.flushFields()) window.panelIndex = currentIndex; else currentIndex = window.panelIndex }
+                            Accessible.name: "Panel"
+                        }
                     }
                     Repeater {
                         model: ["add", "remove", "up", "down"]
@@ -232,6 +264,11 @@ ApplicationWindow {
                     ColumnLayout {
                         width: parent.width
                         spacing: window.theme.spacing
+                        Loader {
+                            active: window.section === 1 && !window.inspection.error && !!window.draft.panels[window.panelIndex]
+                            Layout.fillWidth: true
+                            sourceComponent: ModuleSlots { host: window }
+                        }
                         Repeater {
                             model: window.formFields
                             delegate: SettingField {

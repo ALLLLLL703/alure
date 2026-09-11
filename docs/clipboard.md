@@ -7,14 +7,14 @@ as system packages. Neither is downloaded or required for building Alure.
 
 ## Two entry points
 
-- Panel: enable `modules.clipboard.enabled` and add `"clipboard"` to the chosen
+- Panel (enabled and placed by default; explicit old lists are retained): enable `modules.clipboard.enabled` and add `"clipboard"` to the chosen
   panel's ordered module list. Open by clicking its icon; Esc or the same icon
   closes it. See [clipboard-example.toml](../config/clipboard-example.toml).
 - Standalone: `alure --clipboard` opens at the cursor without constructing any
   panel, notification/tray server or other system service. This explicit request
-  works even when the panel module is disabled (the default). `--config PATH`
+  works even when the panel module is disabled (if explicitly configured). `--config PATH`
   selects the same TOML model; `--settings` cannot be combined with this mode.
-  `--preview` uses ordinary windows for testing, not Wayland positioning.
+  A second invocation closes the existing standalone layer. `--preview` uses ordinary windows for testing, not Wayland positioning.
 
 Example Niri binding, to add yourself inside your existing `binds` block:
 
@@ -45,7 +45,7 @@ and hidden-pointer compositor combinations have not been visually verified.
 ## Viewing and management
 
 Search filters the list's cliphist previews (not the full decoded contents).
-Selecting a row decodes it lazily: plain selectable text, or a PNG/JPEG/GIF/BMP/
+Visible rows decode lazily, showing previews inline: plain selectable text, or a PNG/JPEG/GIF/BMP/
 TIFF/WebP image preview when a Qt image reader supports it. Animated images show
 one frame. Actual bytes, not cliphist's spoofable binary-description label,
 determine preview type. SVG/HTML are not executed; unsupported binary content
@@ -121,3 +121,5 @@ with the same DB path and appropriate privacy policy; Alure never launches them.
 
 Upstream code was studied for contracts, not copied. No Plasma library dependency
 or cliphist code is bundled.
+
+Current layout/settings changes: [UI refinements](ui-refinement.md).

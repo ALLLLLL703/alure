@@ -1,4 +1,5 @@
 #include "ConfigStore.h"
+#include "SingleInstance.h"
 #include "IconProvider.h"
 #include "PanelHost.h"
 #include "Services.h"
@@ -48,6 +49,12 @@ int main(int argc, char **argv) {
         bool ok; quitAfter = parser.value("quit-after-ms").toInt(&ok);
         if (!ok || quitAfter < 1 || quitAfter > 600000) { QTextStream(stderr) << "--quit-after-ms must be 1..600000\n"; return 2; }
     }
+    std::unique_ptr<Alure::SingleInstance> instance;
+    if (!parser.isSet("validate-config") && (parser.isSet("settings") || parser.isSet("clipboard"))) {
+        instance = std::make_unique<Alure::SingleInstance>(parser.isSet("settings") ? "org.alure.Settings" : "org.alure.Clipboard");
+        const int state = instance->acquire();
+        if (state != 0) return state > 0 ? 0 : 1;
+    }
     Alure::ConfigStore config(parser.value("config"));
     const bool valid = config.reload();
     if (!valid) QTextStream(stderr) << config.path() << ": " << config.diagnostic() << '\n';
@@ -94,9 +101,15 @@ int main(int argc, char **argv) {
     if (clipboard) {
         clipboardHost = std::make_unique<Alure::ClipboardHost>(config, engine, parser.isSet("preview"));
         QObject::connect(clipboardHost.get(), &Alure::ClipboardHost::finished, app.get(), &QCoreApplication::quit);
+        QObject::connect(instance.get(), &Alure::SingleInstance::activated, clipboardHost.get(), &Alure::ClipboardHost::closePopup);
     } else if (parser.isSet("settings")) {
         engine.load(QUrl("qrc:/qml/Settings.qml"));
         if (engine.rootObjects().isEmpty()) return 1;
+        QObject::connect(instance.get(), &Alure::SingleInstance::activated, &engine, [&engine] {
+            if (auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().value(0))) {
+                window->showNormal(); window->raise(); window->requestActivate();
+            }
+        });
     } else {
         host = std::make_unique<Alure::PanelHost>(config, engine, parser.isSet("preview"));
         QObject::connect(services->notifications(), &Alure::Service::changed, host.get(), [&] { host->syncNotifications(services->notifications()->items()); });
