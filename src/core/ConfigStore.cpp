@@ -190,6 +190,28 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
                 range(behavior, "menu_width", 160, 1920, path);
                 range(behavior, "menu_height", 100, 2160, path);
             }
+            if (it.key() == "clipboard") {
+                range(behavior, "popup_width", 280, 1920, path);
+                range(behavior, "popup_height", 320, 2160, path);
+                range(behavior, "max_items", 1, 1000, path);
+                range(behavior, "max_bytes", 1024, 67108864, path);
+                range(behavior, "max_image_pixels", 1024, 67108864, path);
+                range(behavior, "preview_image_size", 64, 1024, path);
+                range(behavior, "preview_text_chars", 128, 65536, path);
+                range(behavior, "cursor_timeout_ms", 50, 3000, path);
+                range(behavior, "cursor_gap", 0, 128, path);
+                choice(behavior, "cursor_fallback", {"center", "cancel"}, path);
+                for (const auto &key : {"copy_shortcut", "next_shortcut", "previous_shortcut"}) {
+                    const auto shortcut = behavior.value(key).toString();
+                    const auto sequence = QKeySequence::fromString(shortcut, QKeySequence::PortableText);
+                    if (!shortcut.isEmpty() && (sequence.isEmpty() || sequence.toString(QKeySequence::PortableText) != shortcut)) invalid(path + key, "expected canonical Qt shortcut or empty");
+                }
+                const auto database = behavior.value("database_path").toString();
+                if (database.contains(QChar::Null) || (!database.isEmpty() && !QDir::isAbsolutePath(database))) invalid(path + "database_path", "expected empty or absolute path without NUL");
+                if (behavior.value("output").toString().isEmpty() || behavior.value("output").toString().contains(QChar::Null)) invalid(path + "output", "expected primary or an output name");
+                for (const auto &key : {"cliphist_command", "copy_command"})
+                    if (behavior.value(key).toList().isEmpty() || behavior.value(key).toList().first().toString().isEmpty()) invalid(path + key, "expected a nonempty executable argv");
+            }
             if (it.key() == "media") {
                 range(behavior, "popup_width", 240, 1920, path);
                 range(behavior, "popup_height", 240, 2160, path);

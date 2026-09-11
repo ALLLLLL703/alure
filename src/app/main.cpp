@@ -2,6 +2,8 @@
 #include "IconProvider.h"
 #include "PanelHost.h"
 #include "Services.h"
+#include "ClipboardHost.h"
+#include "ClipboardImageProvider.h"
 #include <QCommandLineParser>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -34,10 +36,12 @@ int main(int argc, char **argv) {
     parser.addOption({"config", "Use this TOML file", "path", QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/alure/config.toml"});
     parser.addOption({"validate-config", "Validate configuration without a display; missing file uses defaults"});
     parser.addOption({"settings", "Open a standalone settings editor, without layer-shell"});
+    parser.addOption({"clipboard", "Open standalone cliphist history at the cursor (no panels or other services)"});
     parser.addOption({"preview", "Use normal windows instead of layer-shell"});
     parser.addOption({"quit-after-ms", "Exit after a bounded interval (testing only, 1..600000)", "ms"});
     parser.process(*app);
     if (!parser.positionalArguments().isEmpty()) { QTextStream(stderr) << "Unexpected positional arguments; use --config PATH\n"; return 2; }
+    if (parser.isSet("settings") && parser.isSet("clipboard")) { QTextStream(stderr) << "--settings and --clipboard are mutually exclusive\n"; return 2; }
     if (parser.isSet("settings") && parser.isSet("preview")) { QTextStream(stderr) << "--settings and --preview are mutually exclusive\n"; return 2; }
     int quitAfter = 0;
     if (parser.isSet("quit-after-ms")) {
@@ -60,20 +64,37 @@ int main(int argc, char **argv) {
     QQuickWindow::setDefaultAlphaBuffer(true);
     // LayerShellQt::Window::get selects layer-shell per panel/toast. Keep the
     // default xdg-shell integration for native transient module popups.
-    QGuiApplication::setQuitOnLastWindowClosed(parser.isSet("settings") || parser.isSet("preview"));
+    QGuiApplication::setQuitOnLastWindowClosed(!parser.isSet("clipboard") && (parser.isSet("settings") || parser.isSet("preview")));
     // Settings and validation never acquire names or start service processes.
     std::unique_ptr<Alure::Services> services;
-    if (!parser.isSet("settings")) services = std::make_unique<Alure::Services>(config);
+    std::unique_ptr<Alure::ClipboardService> clipboard;
+    if (parser.isSet("clipboard")) {
+        clipboard = std::make_unique<Alure::ClipboardService>();
+        auto module = config.model().value("modules").toMap().value("clipboard").toMap();
+        module["enabled"] = true; // explicit standalone request is independent of panel-module enablement
+        clipboard->configure(module);
+    } else if (!parser.isSet("settings")) services = std::make_unique<Alure::Services>(config);
     QQmlApplicationEngine engine;
     QObject::connect(&engine, &QQmlEngine::warnings, &engine, [](const QList<QQmlError> &errors) { for (const auto &error : errors) QTextStream(stderr) << error.toString() << '\n'; });
     engine.addImageProvider("icons", new Alure::IconProvider); // ownership transferred to engine
     engine.rootContext()->setContextProperty("Config", &config);
-    if (services) engine.rootContext()->setContextProperty("Services", services.get());
+    if (services) {
+        engine.rootContext()->setContextProperty("Services", services.get());
+        engine.addImageProvider("clipboard", new Alure::ClipboardImageProvider(services->clipboard()));
+    }
+    if (clipboard) {
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"clipboard", QVariant::fromValue(clipboard.get())}});
+        engine.addImageProvider("clipboard", new Alure::ClipboardImageProvider(clipboard.get()));
+    }
     QObject::connect(&config, &Alure::ConfigStore::diagnosticChanged, &engine, [&config] {
         if (!config.diagnostic().isEmpty()) qWarning().noquote() << config.diagnostic();
     });
     std::unique_ptr<Alure::PanelHost> host;
-    if (parser.isSet("settings")) {
+    std::unique_ptr<Alure::ClipboardHost> clipboardHost;
+    if (clipboard) {
+        clipboardHost = std::make_unique<Alure::ClipboardHost>(config, engine, parser.isSet("preview"));
+        QObject::connect(clipboardHost.get(), &Alure::ClipboardHost::finished, app.get(), &QCoreApplication::quit);
+    } else if (parser.isSet("settings")) {
         engine.load(QUrl("qrc:/qml/Settings.qml"));
         if (engine.rootObjects().isEmpty()) return 1;
     } else {

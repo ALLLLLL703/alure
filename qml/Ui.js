@@ -1,6 +1,6 @@
 .pragma library
 function title(name) {
-    const names = {workspaces: "Workspaces", media: "Now playing", tray: "System tray", volume: "Sound", updates: "Updates", wifi: "Wi-Fi", bluetooth: "Bluetooth", notifications: "Notifications", calendar: "Calendar", battery: "Battery"}
+    const names = {clipboard: "Clipboard", workspaces: "Workspaces", media: "Now playing", tray: "System tray", volume: "Sound", updates: "Updates", wifi: "Wi-Fi", bluetooth: "Bluetooth", notifications: "Notifications", calendar: "Calendar", battery: "Battery"}
     return names[name] || name
 }
 function format(pattern, data) {

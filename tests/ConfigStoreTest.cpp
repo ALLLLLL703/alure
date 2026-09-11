@@ -23,7 +23,8 @@ private slots:
         QCOMPARE(model.value("ui").toMap().value("popup_alignment").toString(), "center");
         QCOMPARE(model.value("ui").toMap().value("popup_direction").toString(), "inward");
         QCOMPARE(model.value("panels").toList().size(), 1);
-        QCOMPARE(model.value("modules").toMap().size(), 10);
+        QCOMPARE(model.value("modules").toMap().size(), 11);
+        QVERIFY(!model.value("modules").toMap().value("clipboard").toMap().value("enabled").toBool());
         QCOMPARE(model.value("theme").toMap().value("palette").toMap().value("background").toString(), "#151923");
         QTemporaryDir dir; ConfigStore store(dir.filePath("missing.toml"));
         QVERIFY(store.reload()); QVERIFY(!QFile::exists(store.path()));
@@ -101,6 +102,12 @@ edge = "bottom"
     void invalid_data() {
         QTest::addColumn<QByteArray>("source");
         for (const auto &[name, text] : std::initializer_list<std::pair<const char *, const char *>>{
+            {"clipboard-shortcut", "[modules.clipboard.behavior]\ncopy_shortcut='NotAKey'"},
+            {"clipboard-path", "[modules.clipboard.behavior]\ndatabase_path='relative/db'"},
+            {"clipboard-limit", "[modules.clipboard.behavior]\nmax_bytes=0"},
+            {"clipboard-command", "[modules.clipboard.behavior]\ncliphist_command=[]"},
+            {"clipboard-fallback", "[modules.clipboard.behavior]\ncursor_fallback='guess'"},
+            {"clipboard-flag", "[modules.clipboard.behavior]\nallow_delete='true'"},
             {"media-width", "[modules.media.behavior]\npopup_width=100"},
             {"media-icon", "[modules.media.behavior]\ncontrol_icon_size=100"},
             {"toggle-type", "[ui]\ntoggle_on_click='yes'"},

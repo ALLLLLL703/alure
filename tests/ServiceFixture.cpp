@@ -5,6 +5,32 @@
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     const auto mode = app.arguments().value(1);
+    if (mode == "clipboard" || mode == "clipboard-copy") {
+        const auto root = app.arguments().value(2);
+        QFile log(root + "/calls"); if (!log.open(QIODevice::WriteOnly | QIODevice::Append)) return 1;
+        log.write(app.arguments().mid(3).join('|').toUtf8() + '\n');
+        if (mode == "clipboard-copy") {
+            QFile input; if (!input.open(stdin, QIODevice::ReadOnly)) return 1;
+            QFile copy(root + "/copied"); if (!copy.open(QIODevice::WriteOnly)) return 1;
+            copy.write(input.readAll()); return 0;
+        }
+        const auto operation = app.arguments().value(5);
+        if (app.arguments().value(3) != "-db-path") return 2;
+        if (operation == "decode") {
+            QFile entry(root + "/" + app.arguments().value(6)); if (!entry.open(QIODevice::ReadOnly)) return 3;
+            QFile output; if (!output.open(stdout, QIODevice::WriteOnly)) return 1; output.write(entry.readAll()); return 0;
+        }
+        QFile listing(root + "/list"); if (!listing.open(QIODevice::ReadOnly)) return 4;
+        auto rows = listing.readAll().split('\n'); listing.close();
+        if (operation == "list") { QFile output; if (!output.open(stdout, QIODevice::WriteOnly)) return 1; output.write(rows.join('\n')); return 0; }
+        if (operation == "wipe") rows.clear();
+        else if (operation == "delete") {
+            QFile input; if (!input.open(stdin, QIODevice::ReadOnly)) return 1; const auto id = input.readAll().trimmed();
+            rows.removeIf([&id](const QByteArray &line) { return line.startsWith(id + '\t'); });
+        } else return 5;
+        if (!listing.open(QIODevice::WriteOnly | QIODevice::Truncate)) return 6;
+        listing.write(rows.join('\n')); return 0;
+    }
     if (mode == "sleep") { QTimer::singleShot(10000, &app, &QCoreApplication::quit); return app.exec(); }
     if (mode == "flood") { QTextStream(stdout) << QString(1024 * 1024 + 100, 'x'); return 0; }
     if (mode == "emptyUpdates") return 2;

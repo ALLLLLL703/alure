@@ -1,0 +1,30 @@
+# Existing cliphist history only; Alure does not start a recorder.
+[modules.clipboard]
+enabled = true
+[modules.clipboard.behavior]
+database_path = "" # CLIPHIST_DB_PATH or $XDG_CACHE_HOME/cliphist/db
+cliphist_command = ["cliphist"]
+copy_command = ["wl-copy"]
+popup_width = 480
+popup_height = 560
+allow_actions = true
+allow_delete = true
+confirm_delete = true
+close_on_copy = true
+close_on_outside_click = true
+copy_shortcut = "Return"
+next_shortcut = "Down"
+previous_shortcut = "Up"
+max_items = 200
+max_bytes = 5242880
+max_image_pixels = 16777216
+preview_image_size = 512
+preview_text_chars = 8192
+interval_ms = 3000
+timeout_ms = 3000
+cursor_timeout_ms = 300
+cursor_gap = 8
+cursor_fallback = "center"
+output = "primary"
+[[panels]]
+modules = ["workspaces", "clipboard", "media", "calendar", "notifications"]

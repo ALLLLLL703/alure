@@ -26,6 +26,8 @@ set(ALURE_UI_FILES
   qml/ModulePopup.qml
   qml/MediaPopup.qml
   qml/MediaButton.qml
+  qml/ClipboardPopup.qml
+  qml/ClipboardOverlay.qml
   qml/TrayMenu.qml
   qml/Popup.qml
   qml/CalendarView.qml
@@ -34,6 +36,7 @@ set(ALURE_UI_FILES
   assets/icons/settings.svg
   assets/icons/battery.svg
   assets/icons/media.svg
+  assets/icons/clipboard.svg
   assets/icons/fallback.svg
   assets/icons/wifi.svg
   assets/icons/volume.svg
@@ -47,7 +50,7 @@ set(ALURE_UI_FILES
 )
 qt_add_resources(alure ui PREFIX / FILES ${ALURE_UI_FILES})
 install(TARGETS alure RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES config/default.toml config/multi-panel.toml config/services-example.toml config/four-edge.toml config/layouts.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/alure)
+install(FILES config/default.toml config/multi-panel.toml config/services-example.toml config/clipboard-example.toml config/four-edge.toml config/layouts.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/alure)
 # systemd performs its own quoting, environment and specifier expansion.
 set(ALURE_SYSTEMD_EXECUTABLE "${CMAKE_INSTALL_FULL_BINDIR}/alure")
 if(ALURE_SYSTEMD_EXECUTABLE MATCHES "[\n\r]")

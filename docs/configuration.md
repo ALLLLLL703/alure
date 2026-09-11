@@ -210,6 +210,18 @@ dropdown appeared beneath its tray icon; submenu navigation and action dismissal
 worked. Automated tests cover protocol updates/errors, disabled/hidden entries,
 owner loss, cancellation and the actual QML right-click route.
 
+## Clipboard history
+
+Enable `modules.clipboard.enabled` and include `"clipboard"` in a panel's module
+list for an anchored history view, or run `alure --clipboard` for a standalone
+cursor-local preview without the rest of the shell. It consumes existing
+cliphist history and never starts recording. The panel module defaults off;
+standalone invocation explicitly opts in for that window only.
+
+Configuration, limits, deletion/copy semantics and the Wayland cursor fallback
+are documented in [clipboard.md](clipboard.md), with a complete
+[clipboard-example.toml](../config/clipboard-example.toml).
+
 ## Notification DND and banners
 
 ```toml

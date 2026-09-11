@@ -194,7 +194,7 @@ void PanelHost::createPopup(const QString &name, const QVariantMap &panel, QQuic
         options["popup_width"] = behavior.value("menu_width");
         options["popup_height"] = behavior.value("menu_height");
     }
-    if (name == "media") {
+    if (name == "media" || name == "clipboard") {
         const auto behavior = m_config.model().value("modules").toMap().value(name).toMap().value("behavior").toMap();
         options["popup_width"] = behavior.value("popup_width");
         options["popup_height"] = behavior.value("popup_height");

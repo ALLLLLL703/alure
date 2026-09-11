@@ -26,9 +26,18 @@ private slots:
         QCOMPARE(run({"--validate-config", "--config", path}), 0); QVERIFY(!QFile::exists(path));
         QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("[broken"); file.close();
         QCOMPARE(run({"--validate-config", "--config", path}), 1); QVERIFY(output.contains("config.toml"));
-        QCOMPARE(run({"--help"}), 0); QVERIFY(output.contains("--preview"));
+        QCOMPARE(run({"--help"}), 0); QVERIFY(output.contains("--preview")); QVERIFY(output.contains("--clipboard"));
         QCOMPARE(run({"--validate-config", "unexpected.toml"}), 2);
         QCOMPARE(run({"--validate-config", "--quit-after-ms", "-1", "--config", path}), 2);
+    }
+    void standaloneClipboard() {
+        QTemporaryDir dir; const auto path = dir.filePath("config.toml"), marker = dir.filePath("unwanted-service");
+        QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(QString("[runtime]\ntrace_windows=true\n[modules.clipboard.behavior]\ndatabase_path='%1/missing-db'\n[modules.volume.behavior]\ncommand=['%2','capture','%3','unwanted']\n").arg(dir.path(), SERVICE_FIXTURE, marker).toUtf8()); file.close();
+        QCOMPARE(run({"--clipboard", "--preview", "--config", path, "--quit-after-ms", "600"}, true), 0);
+        QVERIFY2(!output.contains("qrc:"), output.constData());
+        QVERIFY(!output.contains("rebuilding panels")); QVERIFY(!QFile::exists(marker)); QVERIFY(!QFile::exists(dir.filePath("missing-db")));
+        QCOMPARE(run({"--clipboard", "--settings", "--config", path}, true), 2);
     }
     void previewRebuildsOnReload() {
         QTemporaryDir dir; const auto path = dir.filePath("config.toml");

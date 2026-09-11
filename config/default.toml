@@ -126,6 +126,44 @@ interval_ms = 1000
 timeout_ms = 3000
 command = []
 format = "{artist} — {title}"
+[modules.clipboard]
+enabled = false # opt-in panel module; --clipboard explicitly opens a standalone view
+[modules.clipboard.style]
+icon = "clipboard"
+icon_size = 18
+max_width = 140
+min_width = 30
+foreground = ""
+background = ""
+show_icon = true
+show_label = false
+[modules.clipboard.behavior]
+popup_enabled = true
+popup_width = 480
+popup_height = 560
+allow_actions = true
+allow_delete = true
+confirm_delete = true
+close_on_copy = true
+close_on_outside_click = true
+copy_shortcut = "Return"
+next_shortcut = "Down"
+previous_shortcut = "Up"
+cliphist_command = ["cliphist"]
+copy_command = ["wl-copy"]
+database_path = "" # CLIPHIST_DB_PATH or $XDG_CACHE_HOME/cliphist/db
+interval_ms = 3000 # only polls while the history view is open
+timeout_ms = 3000
+max_items = 200
+max_bytes = 5242880
+max_image_pixels = 16777216
+preview_image_size = 512
+preview_text_chars = 8192
+cursor_timeout_ms = 300
+cursor_gap = 8
+cursor_fallback = "center" # center on configured output, or cancel
+output = "primary"
+format = "{count}"
 [modules.tray]
 enabled = true
 [modules.tray.style]

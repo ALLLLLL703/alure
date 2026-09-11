@@ -2,11 +2,13 @@
 #include "PanelHost.h"
 #include "PopupPlacement.h"
 #include "NotificationService.h"
+#include "ClipboardHost.h"
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDBusMessage>
 #include <QScreen>
 #include <QCloseEvent>
+#include <QEnterEvent>
 #include "IconProvider.h"
 #include <QGuiApplication>
 #include <QBuffer>
@@ -65,6 +67,25 @@ public:
     Q_INVOKABLE void refresh() {}
 signals:
     void changed();
+};
+class FixtureClipboard : public FixtureService {
+    Q_OBJECT
+    Q_PROPERTY(QVariantMap preview MEMBER preview NOTIFY previewChanged)
+public:
+    QVariantMap preview;
+    QString imageUrl;
+    int opened = 0, closed = 0;
+    Q_INVOKABLE void openView() { ++opened; emit changed(); }
+    Q_INVOKABLE void closeView() { ++closed; preview.clear(); emit previewChanged(); }
+    Q_INVOKABLE void previewItem(const QString &id) {
+        if (preview.value("id") == id) return;
+        busy = true; emit changed();
+        preview = {{"id", id}, {"kind", id == "2" ? "image" : "text"}, {"text", "<b>literal text</b>"}, {"bytes", 40}, {"width", 20}, {"height", 10}, {"imageUrl", imageUrl}};
+        emit previewChanged(); busy = false; emit changed();
+    }
+signals:
+    void previewChanged();
+    void copied();
 };
 class FixtureShell : public QObject {
     Q_OBJECT
@@ -225,6 +246,52 @@ private slots:
             QTRY_VERIFY(entry = findItem(view.rootObject(), moduleName + "-entry-20"));
             QCOMPARE(entry->property("iconSource").toString(), "image://icons/theme/battery");
         }
+        QCOMPARE(warnings.size(), 0);
+    }
+    void clipboardCursorHost() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        FixtureClipboard service;
+        QQmlEngine engine; engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"clipboard", QVariant::fromValue(&service)}});
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        Alure::ClipboardHost host(config, engine, true); QSignalSpy finished(&host, &Alure::ClipboardHost::finished);
+        QQuickView *view = nullptr;
+        for (auto *window : QGuiApplication::topLevelWindows()) if (window->title() == "Alure clipboard") view = qobject_cast<QQuickView *>(window);
+        QVERIFY(view);
+        QEnterEvent enter(QPointF(321, 210), QPointF(321, 210), QPointF(9999, 9999)); QCoreApplication::sendEvent(view, &enter);
+        QTRY_VERIFY(view->rootObject()->property("cardVisible").toBool());
+        QCOMPARE(view->rootObject()->property("anchorPosition").toPointF(), QPointF(321, 210));
+        QTest::keyClick(view, Qt::Key_Escape); QCOMPARE(finished.size(), 1); QVERIFY(!view->isVisible());
+        QCOMPARE(warnings.size(), 0);
+    }
+    void clipboardView() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        FixtureClipboard service; FixtureShell shell;
+        QImage image(20, 10, QImage::Format_RGB32); image.fill(Qt::green); QVERIFY(image.save(dir.filePath("image.png")));
+        service.imageUrl = QUrl::fromLocalFile(dir.filePath("image.png")).toString();
+        service.items = {QVariantMap{{"id", "1"}, {"label", "Text fixture"}}, QVariantMap{{"id", "2"}, {"label", "Image fixture"}}};
+        QQmlEngine engine; engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Shell", &shell);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"clipboard", QVariant::fromValue(&service)}});
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(800, 600);
+        view.setInitialProperties({{"cardVisible", true}, {"anchorPosition", QPointF(760, 580)}});
+        view.setSource(QUrl("qrc:/qml/ClipboardOverlay.qml")); QVERIFY(view.status() == QQuickView::Ready); view.show(); QTest::qWait(30);
+        const auto find = [&](const QString &name) { return itemNamed(view.rootObject(), name); };
+        auto *card = find("clipboard-card"); QVERIFY(card);
+        QVERIFY(card->x() >= 0 && card->x() + card->width() <= view.width());
+        QVERIFY(card->y() >= 0 && card->y() + card->height() <= view.height());
+        QCOMPARE(service.opened, 1); QCOMPARE(find("clipboard-text")->property("text").toString(), "<b>literal text</b>");
+        replaceText(&view, find("clipboard-search"), "Image"); QTRY_COMPARE(find("clipboard-history")->property("count").toInt(), 1);
+        QTRY_COMPARE(find("clipboard-image")->property("status").toInt(), 1); QVERIFY(find("clipboard-image")->isVisible());
+        clickItem(&view, find("clipboard-copy")); QCOMPARE(service.lastAction, "copy"); QCOMPARE(service.lastArguments.value("id").toString(), "2");
+        view.requestActivate(); QTest::qWait(10); service.lastAction.clear();
+        QTest::keyClick(&view, Qt::Key_Return); QCOMPARE(service.lastAction, "copy");
+        const int before = service.actionCount; clickItem(&view, find("clipboard-delete")); QCOMPARE(service.actionCount, before);
+        replaceText(&view, find("clipboard-search"), "Text"); QTRY_COMPARE(service.preview.value("id").toString(), "1");
+        QVERIFY(!find("clipboard-confirm")->isVisible());
+        clickItem(&view, find("clipboard-delete"));
+        QTest::qWait(20); clickItem(&view, find("clipboard-confirm")); QCOMPARE(service.lastAction, "delete"); QVERIFY(service.lastArguments.value("confirmed").toBool());
+        view.hide(); QCOMPARE(service.closed, 1); QVERIFY(service.preview.isEmpty());
         QCOMPARE(warnings.size(), 0);
     }
     void notificationDndToToast() {

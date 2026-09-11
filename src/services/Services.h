@@ -5,6 +5,7 @@
 #include "TrayService.h"
 #include "NotificationService.h"
 #include "ConfigStore.h"
+#include "ClipboardService.h"
 namespace Alure {
 class Services : public QObject {
     Q_OBJECT
@@ -17,6 +18,7 @@ class Services : public QObject {
     Q_PROPERTY(Alure::Service* bluetooth READ bluetooth CONSTANT)
     Q_PROPERTY(Alure::Service* notifications READ notifications CONSTANT)
     Q_PROPERTY(Alure::Service* battery READ battery CONSTANT)
+    Q_PROPERTY(Alure::ClipboardService* clipboard READ clipboard CONSTANT)
 public:
     explicit Services(ConfigStore &config, QObject *parent = nullptr);
     Service *workspaces() { return &m_workspaces; }
@@ -28,6 +30,7 @@ public:
     Service *bluetooth() { return &m_bluetooth; }
     Service *notifications() { return &m_notifications; }
     Service *battery() { return &m_battery; }
+    ClipboardService *clipboard() { return &m_clipboard; }
 private:
     void apply(const QVariantMap &model);
     NiriService m_workspaces;
@@ -37,5 +40,6 @@ private:
     BluetoothService m_bluetooth;
     NotificationService m_notifications;
     BatteryService m_battery;
+    ClipboardService m_clipboard;
 };
 }

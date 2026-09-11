@@ -6,6 +6,8 @@ spacers, six themes (including One Dark, Catppuccin Mocha and Tokyo Night), orig
 icons, real system modules and a separate settings application with forms and a
 full TOML editor. Workspace/media/tray/sound/updates/network/Bluetooth/notification/
 calendar/battery details expose supported controls and honest provider diagnostics.
+An opt-in [cliphist module](docs/clipboard.md) adds text/image history previews,
+search, copy and deletion; `alure --clipboard` opens a standalone view at the cursor.
 No wallpaper, compositor replacement or simulated system state is supplied.
 
 See [architecture](docs/architecture.md), [configuration](docs/configuration.md),
@@ -21,7 +23,7 @@ LayerShellQt >=6.6 (Interface target with `setExclusiveEdge`, `setScreen`,
 `setDesiredSize`; tested with Qt 6.11.2 / LayerShellQt 6.7.5), and toml++ >=3.4. On Arch these correspond to `base-devel cmake
 ninja qt6-base qt6-declarative qt6-svg qt6-wayland layer-shell-qt tomlplusplus`.
 Qt Test and `dbus-run-session` are only required with BUILD_TESTING=ON. No packages are installed by Alure. Runtime integrations use optional `wpctl`,
-`checkupdates`, `nmcli`, Niri IPC, session DBus, BlueZ and sysfs; absent providers
+`checkupdates`, `nmcli`, `cliphist`/`wl-copy` (clipboard module), Niri IPC, session DBus, BlueZ and sysfs; absent providers
 produce diagnostics, not simulated data. Module popups rely on Qt Wayland 6.9+
 explicit xdg-positioner overrides and LayerShellQt transient popup attachment;
 see [native popup compatibility](docs/interface.md#native-popup-implementation-and-verification).
@@ -33,6 +35,7 @@ ctest --test-dir build --output-on-failure
 ./build/alure --validate-config --config config/default.toml
 ./build/alure --preview --config config/multi-panel.toml
 ./build/alure --settings --config /tmp/alure-demo.toml
+./build/alure --clipboard # existing cliphist history; no panels/other services
 ```
 
 Without `--config`, the path is `$XDG_CONFIG_HOME/alure/config.toml` (normally
@@ -78,7 +81,7 @@ by default, separate from the development build. For manual installation:
 cmake --install build
 ```
 
-Installs `bin/alure`, `share/alure/{default,multi-panel,services-example,four-edge}.toml`, and
+Installs `bin/alure`, `share/alure/{default,multi-panel,services-example,clipboard-example,four-edge,layouts}.toml`, and
 `${CMAKE_INSTALL_LIBDIR}/systemd/user/alure.service` under the configured prefix.
 QML, original icons, defaults and themes are embedded, so moving the executable
 works. The service's absolute ExecStart uses the **configure-time** prefix;
