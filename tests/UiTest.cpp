@@ -139,6 +139,88 @@ void replaceText(QQuickWindow *window, QQuickItem *item, const QString &text) {
 class UiTest : public QObject {
     Q_OBJECT
 private slots:
+    void taskbarStripScopesAndActions() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QVERIFY(config.previewText("[modules.workspaces]\nenabled=false\n[modules.taskbar.style]\nshow_label=true\ntask_width=140\nlabel_size=18\n[modules.taskbar.behavior]\nworkspace_scope='active'\noutput_scope='panel'"));
+        FixtureService service; FixtureShell shell;
+        service.items = {QVariantMap{{"id", "9007199254740993"}, {"title", "Observed title"}, {"app_id", "org.test.App"}, {"output", "A"}, {"workspace_active", true}, {"workspace_focused", true}, {"output_focused", true}, {"is_focused", true}},
+                         QVariantMap{{"id", "2"}, {"title", "Other output"}, {"output", "B"}, {"workspace_active", true}},
+                         QVariantMap{{"id", "3"}, {"title", "Hidden workspace"}, {"output", "A"}, {"workspace_active", false}}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"taskbar", QVariant::fromValue(&service)}});
+        engine.rootContext()->setContextProperty("Shell", &shell);
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView);
+        view.setInitialProperties({{"moduleName", "taskbar"}, {"vertical", false}, {"crossSize", 36}, {"outputName", "A"}});
+        view.setSource(QUrl("qrc:/qml/ModuleStrip.qml")); QVERIFY(view.status() == QQuickView::Ready); view.resize(220, 36); view.show(); QTest::qWait(30);
+        auto *entry = itemNamed(view.rootObject(), "taskbar-entry-9007199254740993"); QVERIFY(entry);
+        QCOMPARE(entry->width(), 140.); QCOMPARE(entry->property("text").toString(), "Observed title"); QVERIFY(entry->property("accent").toBool());
+        QVERIFY(!itemNamed(view.rootObject(), "taskbar-entry-2")); QVERIFY(!itemNamed(view.rootObject(), "taskbar-entry-3"));
+        clickItem(&view, entry); QCOMPARE(service.lastAction, "activate"); QCOMPARE(service.lastArguments.value("id").toString(), "9007199254740993");
+        QVERIFY(config.previewText("[modules.workspaces]\nenabled=false\n[modules.taskbar.behavior]\noutput_scope='all'\nfocus_on_click=false")); QTest::qWait(30);
+        entry = itemNamed(view.rootObject(), "taskbar-entry-9007199254740993"); QVERIFY(entry); QVERIFY(!entry->isEnabled()); QCOMPARE(entry->property("text").toString(), "");
+        QVERIFY(itemNamed(view.rootObject(), "taskbar-entry-2")); QVERIFY(itemNamed(view.rootObject(), "taskbar-entry-3"));
+        view.rootObject()->setProperty("vertical", true); view.resize(40, 180); QTest::qWait(20);
+        QCOMPARE(entry->width(), 40.); QVERIFY(entry->height() > 0);
+        QVERIFY(config.previewText("[modules.taskbar.behavior]\noutput_scope='focused'\nworkspace_scope='focused'")); QTest::qWait(20);
+        QVERIFY(!itemNamed(view.rootObject(), "taskbar-entry-2")); QVERIFY(!itemNamed(view.rootObject(), "taskbar-entry-3"));
+        service.items.clear(); emit service.changed(); QTest::qWait(20);
+        QVERIFY(!itemNamed(view.rootObject(), "taskbar-entry-9007199254740993"));
+        QVERIFY(view.rootObject()->property("listMode").toBool()); // Empty live taskbar is not an unavailable/launcher button.
+        service.available = false; emit service.changed(); QTest::qWait(20);
+        QVERIFY(itemNamed(view.rootObject(), "taskbar-button")->isVisible());
+        QQmlComponent metadata(&engine); metadata.setData(R"(import QtQml
+import "qrc:/qml/SettingsFields.js" as Fields
+import "qrc:/qml/Ui.js" as Ui
+QtObject { property var order: Fields.describe("modules.taskbar.behavior.ordering", "id"); property var scope: Fields.describe("modules.taskbar.behavior.output_scope", "panel"); property var size: Fields.describe("modules.taskbar.style.task_width", 160); property string title: Ui.title("taskbar") })", QUrl());
+        QScopedPointer<QObject> fields(metadata.create()); QVERIFY2(fields, qPrintable(metadata.errorString()));
+        QCOMPARE(fields->property("order").value<QJSValue>().toVariant().toMap().value("options").toStringList(), (QStringList{"id", "app-id", "title"}));
+        QCOMPARE(fields->property("scope").value<QJSValue>().toVariant().toMap().value("kind").toString(), "enum");
+        QCOMPARE(fields->property("size").value<QJSValue>().toVariant().toMap().value("high").toInt(), 512);
+        QCOMPARE(fields->property("title").toString(), "Task Manager");
+    }
+    void rightSidePopupActions() {
+        for (const auto &name : {QString("notifications"), QString("workspaces"), QString("taskbar")}) for (int width : {240, 480}) {
+            QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+            FixtureService service; FixtureShell shell;
+            service.state = {{"dnd", false}};
+            service.items = {QVariantMap{{"id", "7"}, {"summary", "Long notification text wraps without covering actions"}, {"body", "Body with additional details"}, {"appName", "Fixture"}, {"createdAt", 1700000000000LL}, {"active", true}, {"name", "Development workspace"}, {"idx", 1}, {"output", "A"}, {"is_active", false}}};
+            QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+            engine.rootContext()->setContextProperty("Config", &config);
+            engine.rootContext()->setContextProperty("Services", QVariantMap{{name, QVariant::fromValue(&service)}});
+            engine.rootContext()->setContextProperty("Shell", &shell);
+            QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView);
+            view.setInitialProperties({{"moduleName", name}, {"outputName", "A"}}); view.setSource(QUrl("qrc:/qml/Popup.qml"));
+            QVERIFY(view.status() == QQuickView::Ready); view.resize(width, 720); view.show(); QTest::qWait(40);
+            auto *text = itemNamed(view.rootObject(), name + "-text-7"); auto *activate = itemNamed(view.rootObject(), name + "-activate-7");
+            QVERIFY(text); QVERIFY(activate); QVERIFY(text->width() > 0);
+            QVERIFY(activate->mapToScene(QPointF()).x() >= text->mapToScene(QPointF(text->width(), 0)).x());
+            QVERIFY(activate->mapToScene(QPointF(activate->width(), 0)).x() <= width);
+            QCOMPARE(activate->property("text").toString(), ""); QCOMPARE(activate->property("iconSource").toString(), "image://icons/builtin/next");
+            QCOMPARE(QQmlProperty(activate, "Accessible.name", qmlContext(activate)).read().toString(), name == "notifications" ? "Open sender" : name == "taskbar" ? "Focus window" : "Switch here");
+            revealItem(activate); clickItem(&view, activate); QCOMPARE(service.lastAction, "activate"); QCOMPARE(service.lastArguments.value("id").toString(), "7");
+            if (name == "notifications") {
+                auto *dismiss = itemNamed(view.rootObject(), "notifications-dismiss-7"); QVERIFY(dismiss);
+                QVERIFY(dismiss->mapToScene(QPointF(dismiss->width(), 0)).x() <= width);
+                QCOMPARE(QQmlProperty(dismiss, "Accessible.name", qmlContext(dismiss)).read().toString(), "Dismiss");
+                clickItem(&view, dismiss); QCOMPARE(service.lastAction, "dismiss");
+            }
+            QVERIFY(config.previewText("[modules." + name + ".behavior]\nallow_actions=false")); QTest::qWait(20); QVERIFY(!activate->isEnabled());
+        }
+    }
+    void taskbarDesktopIcons() {
+        QTemporaryDir data; const auto old = qgetenv("XDG_DATA_HOME"); qputenv("XDG_DATA_HOME", data.path().toUtf8());
+        QDir().mkpath(data.filePath("applications"));
+        QImage image(24, 24, QImage::Format_ARGB32); image.fill(Qt::red); QVERIFY(image.save(data.filePath("app.png")));
+        QFile desktop(data.filePath("applications/org.alure.IconFixture.desktop")); QVERIFY(desktop.open(QIODevice::WriteOnly));
+        desktop.write(("[Desktop Entry]\nType=Application\nName=Fixture\nIcon=" + data.filePath("app.png") + "\nExec=never-run\n").toUtf8()); desktop.close();
+        Alure::IconProvider provider; QSize size;
+        const auto icon = provider.requestPixmap("app/org.alure.IconFixture/taskbar", &size, QSize(24,24));
+        QCOMPARE(icon.toImage().pixelColor(12,12), QColor(Qt::red));
+        const auto fallback = provider.requestPixmap("app/org.alure.DoesNotExist/taskbar", &size, QSize(24,24)); QVERIFY(!fallback.isNull()); QVERIFY(fallback.toImage() != icon.toImage());
+        const auto unsafe = provider.requestPixmap("app/..%2Foutside/taskbar", &size, QSize(24,24)); QCOMPARE(unsafe.toImage(), fallback.toImage());
+        if (old.isNull()) qunsetenv("XDG_DATA_HOME"); else qputenv("XDG_DATA_HOME", old);
+    }
     void brightnessPopupContinuousDrag() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
         FixtureService service; FixtureShell shell;

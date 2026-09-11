@@ -236,7 +236,7 @@ void PanelHost::createPopup(const QString &name, const QVariantMap &panel, QQuic
         view->setPosition(pos);
     }
     view->setInitialProperties(trayMenu ? QVariantMap{{"trayItem", trayItem}, {"popupPadding", p.padding}, {"bottomAligned", p.gravity.testFlag(Qt::TopEdge)}}
-                                       : QVariantMap{{"moduleName", name}, {"popupPadding", p.padding}});
+                                       : QVariantMap{{"moduleName", name}, {"outputName", parent->screen()->name()}, {"popupPadding", p.padding}});
     view->setSource(QUrl(trayMenu ? "qrc:/qml/TrayMenu.qml" : "qrc:/qml/ModulePopup.qml"));
     if (view->status() == QQuickView::Error) { qWarning() << view->errors(); releasePopupKeyboard(); return; }
     connect(view.get(), &QWindow::visibleChanged, this, [this, popup = view.get()](bool visible) {

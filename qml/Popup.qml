@@ -5,12 +5,14 @@ import "Ui.js" as Ui
 
 Control {
     id: root
+    property string outputName: ""
     required property string moduleName
     readonly property var theme: Config.model.theme
     readonly property var config: Config.model.modules[moduleName]
     opacity: config.style.opacity
     readonly property var service: moduleName === "calendar" ? null : Services[moduleName] || null
     readonly property bool ready: !!service && service.available
+    readonly property var rows: !ready ? [] : moduleName === "taskbar" ? Ui.taskItems(service.items, config.behavior, outputName) : service.items
     readonly property bool canAct: ready && config.behavior.allow_actions && !service.busy
     property string actionStatus: ""
     property bool updateConfirmation: false
@@ -58,7 +60,7 @@ Control {
         }
         InfoText {
             visible: root.moduleName !== "calendar"
-            text: !root.service ? "No provider is implemented for this module." : root.service.diagnostic || (root.service.busy && !(root.moduleName === "volume" && root.ready) ? "Refreshing…" : root.ready ? "Live system data" + (root.moduleName === "volume" && root.service.state.backend ? " · " + root.service.state.backend : "") : "Provider unavailable")
+            text: !root.service ? "No provider is implemented for this module." : root.service.diagnostic || (root.moduleName === "taskbar" ? root.service.state.actionError || "" : "") || (root.service.busy && !(root.moduleName === "volume" && root.ready) ? "Refreshing…" : root.ready ? "Live system data" + (root.moduleName === "volume" && root.service.state.backend ? " · " + root.service.state.backend : "") : "Provider unavailable")
             color: root.ready ? root.theme.palette.muted : root.theme.palette.accent
             Layout.fillWidth: true
         }
@@ -145,11 +147,12 @@ Control {
                     }
                     InfoText { text: "Paired-device controls · pairing and discovery require your Bluetooth manager."; Layout.fillWidth: true; color: root.theme.palette.muted }
                 }
-                RowLayout {
+                Flow {
+                    spacing: root.theme.spacing / 2
                     visible: root.moduleName === "notifications" && root.ready
                     Layout.fillWidth: true
-                    ShellButton { objectName: "notification-dnd"; text: root.ready && root.service.state.dnd ? "Turn off do not disturb" : "Turn on do not disturb"; accent: root.ready && !!root.service.state.dnd; enabled: root.canAct; onClicked: root.toggleDnd() }
-                    ShellButton { text: "Clear history"; enabled: root.canAct; onClicked: root.act("clearHistory") }
+                    ShellButton { objectName: "notification-dnd"; width: Math.min(implicitWidth, parent.width); text: root.ready && root.service.state.dnd ? "Turn off do not disturb" : "Turn on do not disturb"; accent: root.ready && !!root.service.state.dnd; enabled: root.canAct; onClicked: root.toggleDnd() }
+                    ShellButton { width: Math.min(implicitWidth, parent.width); text: "Clear history"; enabled: root.canAct; onClicked: root.act("clearHistory") }
                 }
                 InfoText {
                     visible: root.moduleName === "notifications" && root.ready
@@ -171,7 +174,7 @@ Control {
                     InfoText { text: "No automatic installation. Set update_command to a terminal argv if desired. The module timeout also applies to this command."; Layout.fillWidth: true; color: root.theme.palette.muted }
                 }
                 Repeater {
-                    model: root.ready && root.moduleName !== "volume" ? (root.moduleName === "notifications" ? root.service.items.slice().reverse() : root.service.items) : []
+                    model: root.ready && root.moduleName !== "volume" ? (root.moduleName === "notifications" ? root.rows.slice().reverse() : root.rows) : []
                     delegate: Rectangle {
                         id: card
                         required property var modelData
@@ -179,79 +182,111 @@ Control {
                         implicitHeight: detail.implicitHeight + root.theme.padding * 2
                         radius: root.theme.radius
                         color: root.theme.palette.surface
-                        ColumnLayout {
+                        RowLayout {
                             id: detail
                             anchors { left: parent.left; right: parent.right; top: parent.top; margins: root.theme.padding }
                             spacing: root.theme.spacing / 2
-                            Image {
-                                visible: root.moduleName === "notifications" && Config.model.ui.toast.show_icon
-                                Layout.preferredWidth: Config.model.ui.toast.icon_size
-                                Layout.preferredHeight: Layout.preferredWidth
-                                source: visible ? card.modelData.iconUrl || "image://icons/builtin/notifications" : ""
-                                fillMode: Image.PreserveAspectFit
-                                cache: false
-                            }
-                            InfoText {
+                            ColumnLayout {
+                                id: cardText
+                                objectName: root.moduleName + "-text-" + card.modelData.id
                                 Layout.fillWidth: true
-                                font.bold: true
-                                text: {
-                                    const d = card.modelData
-                                    switch (root.moduleName) {
-                                    case "workspaces": return (d.name || "Workspace " + d.idx) + " · " + d.output
-                                    case "tray": return d.Title || d.id
-                                    case "updates": return d.name
-                                    case "wifi": return (d.ssid || "Hidden SSID") + " · " + d.signal + "%" + (d.active ? " · Connected" : "")
-                                    case "bluetooth": return d.Alias || d.Name || d.Address
-                                    case "notifications": return d.summary || d.appName
-                                    case "battery": return d.name + " · " + d.percent + "%"
-                                    default: return ""
-                                    }
-                                }
-                            }
-                            InfoText {
-                                Layout.fillWidth: true
-                                visible: text.length > 0
-                                text: {
-                                    const d = card.modelData
-                                    switch (root.moduleName) {
-                                    case "updates": return d.current + " → " + d.next
-                                    case "bluetooth": return (d.Connected ? "Connected" : "Disconnected") + (d.Paired ? " · Paired" : " · Not paired")
-                                    case "notifications": return d.appName + " · " + Qt.formatDateTime(new Date(Number(d.createdAt)), "HH:mm") + (d.suppressed ? " · Suppressed" : "") + "\n" + d.body
-                                    case "battery": return d.status
-                                    case "tray": return "Primary / secondary activation. Right-click the tray icon in the panel to open its menu."
-                                    default: return ""
-                                    }
-                                }
-                                color: root.theme.palette.muted
-                            }
-                            Flow {
-                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 spacing: root.theme.spacing / 2
-                                ShellButton { visible: root.moduleName === "workspaces"; text: card.modelData.is_active ? "Active" : "Switch here"; enabled: root.canAct; onClicked: root.act("activate", {id: card.modelData.id}) }
-                                Repeater {
-                                    model: root.moduleName === "tray" ? ["activate", "secondaryActivate"] : []
-                                    ShellButton {
-                                        required property string modelData
-                                        text: modelData; enabled: root.canAct
-                                        onClicked: { const p = mapToGlobal(width / 2, height / 2); root.act(modelData, {id: card.modelData.id, x: Math.round(p.x), y: Math.round(p.y)}) }
+                                Image {
+                                    visible: root.moduleName === "notifications" && Config.model.ui.toast.show_icon
+                                    Layout.preferredWidth: Config.model.ui.toast.icon_size
+                                    Layout.preferredHeight: Layout.preferredWidth
+                                    source: visible ? card.modelData.iconUrl || "image://icons/builtin/notifications" : ""
+                                    fillMode: Image.PreserveAspectFit
+                                    cache: false
+                                }
+                                InfoText {
+                                    Layout.fillWidth: true
+                                    font.bold: true
+                                    text: {
+                                        const d = card.modelData
+                                        switch (root.moduleName) {
+                                        case "workspaces": return (d.name || "Workspace " + d.idx) + " · " + d.output
+                                        case "taskbar": return d.title || d.app_id || "Window " + d.id
+                                        case "tray": return d.Title || d.id
+                                        case "updates": return d.name
+                                        case "wifi": return (d.ssid || "Hidden SSID") + " · " + d.signal + "%" + (d.active ? " · Connected" : "")
+                                        case "bluetooth": return d.Alias || d.Name || d.Address
+                                        case "notifications": return d.summary || d.appName
+                                        case "battery": return d.name + " · " + d.percent + "%"
+                                        default: return ""
+                                        }
                                     }
                                 }
-                                ShellButton { visible: root.moduleName === "bluetooth"; text: card.modelData.Connected ? "Disconnect" : "Connect"; enabled: root.canAct && !!card.modelData.Paired; onClicked: root.act(card.modelData.Connected ? "disconnect" : "connect", {path: card.modelData.path}) }
-                                ShellButton { visible: root.moduleName === "notifications"; text: "Open sender"; enabled: root.canAct; onClicked: root.act("activate", {id: card.modelData.id}) }
-                                ShellButton { visible: root.moduleName === "notifications" && !!card.modelData.active; text: "Dismiss"; enabled: root.canAct; onClicked: root.act("dismiss", {id: card.modelData.id}) }
-                                Repeater {
-                                    model: root.moduleName === "notifications" && card.modelData.active ? card.modelData.actions || [] : []
-                                    ShellButton {
-                                        required property var modelData
-                                        text: modelData.label; enabled: root.canAct
-                                        onClicked: root.act("invoke", {id: card.modelData.id, key: modelData.key})
+                                InfoText {
+                                    Layout.fillWidth: true
+                                    visible: text.length > 0
+                                    text: {
+                                        const d = card.modelData
+                                        switch (root.moduleName) {
+                                        case "taskbar": return (d.app_id || "Unknown application") + " · " + d.output
+                                        case "updates": return d.current + " → " + d.next
+                                        case "bluetooth": return (d.Connected ? "Connected" : "Disconnected") + (d.Paired ? " · Paired" : " · Not paired")
+                                        case "notifications": return d.appName + " · " + Qt.formatDateTime(new Date(Number(d.createdAt)), "HH:mm") + (d.suppressed ? " · Suppressed" : "") + "\n" + d.body
+                                        case "battery": return d.status
+                                        case "tray": return "Primary / secondary activation. Right-click the tray icon in the panel to open its menu."
+                                        default: return ""
+                                        }
                                     }
+                                    color: root.theme.palette.muted
+                                }
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: root.theme.spacing / 2
+                                    Repeater {
+                                        model: root.moduleName === "tray" ? ["activate", "secondaryActivate"] : []
+                                        ShellButton {
+                                            required property string modelData
+                                            text: modelData; enabled: root.canAct
+                                            onClicked: { const p = mapToGlobal(width / 2, height / 2); root.act(modelData, {id: card.modelData.id, x: Math.round(p.x), y: Math.round(p.y)}) }
+                                        }
+                                    }
+                                    ShellButton { visible: root.moduleName === "bluetooth"; text: card.modelData.Connected ? "Disconnect" : "Connect"; enabled: root.canAct && !!card.modelData.Paired; onClicked: root.act(card.modelData.Connected ? "disconnect" : "connect", {path: card.modelData.path}) }
+                                    Repeater {
+                                        model: root.moduleName === "notifications" && card.modelData.active ? card.modelData.actions || [] : []
+                                        ShellButton {
+                                            required property var modelData
+                                            width: Math.min(implicitWidth, parent.width)
+                                            text: modelData.label; enabled: root.canAct
+                                            onClicked: root.act("invoke", {id: card.modelData.id, key: modelData.key})
+                                        }
+                                    }
+                                }
+                            }
+                            RowLayout {
+                                Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                                spacing: root.theme.spacing / 2
+                                visible: root.moduleName === "workspaces" || root.moduleName === "notifications" || root.moduleName === "taskbar"
+                                ShellButton {
+                                    objectName: root.moduleName + "-activate-" + card.modelData.id
+                                    iconName: "next"
+                                    iconSource: "image://icons/builtin/next"
+                                    Accessible.name: root.moduleName === "notifications" ? "Open sender" : root.moduleName === "taskbar" ? "Focus window" : "Switch here"
+                                    accessibleDescription: Accessible.name
+                                    accent: root.moduleName === "workspaces" ? !!card.modelData.is_active : root.moduleName === "taskbar" && !!card.modelData.is_focused
+                                    enabled: root.canAct && (root.moduleName !== "taskbar" || root.config.behavior.focus_on_click)
+                                    onClicked: root.act("activate", {id: card.modelData.id})
+                                }
+                                ShellButton {
+                                    objectName: "notifications-dismiss-" + card.modelData.id
+                                    visible: root.moduleName === "notifications" && !!card.modelData.active
+                                    iconName: "close"
+                                    iconSource: "image://icons/builtin/close"
+                                    Accessible.name: "Dismiss"
+                                    accessibleDescription: Accessible.name
+                                    enabled: root.canAct
+                                    onClicked: root.act("dismiss", {id: card.modelData.id})
                                 }
                             }
                         }
                     }
                 }
-                InfoText { visible: root.ready && root.moduleName !== "volume" && root.moduleName !== "brightness" && root.service.items.length === 0; text: "No items reported."; color: root.theme.palette.muted; Layout.fillWidth: true }
+                InfoText { visible: root.ready && root.moduleName !== "volume" && root.moduleName !== "brightness" && root.rows.length === 0; text: "No items reported."; color: root.theme.palette.muted; Layout.fillWidth: true }
             }
         }
     }

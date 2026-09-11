@@ -101,8 +101,8 @@ layer = "top" # background, bottom, top, overlay
 margins = { top = 8, right = 8, bottom = 8, left = 8 }
 layout = "linear" # linear or three-zone; vertical panels use top/center/bottom
 spacer_size = 24 # logical pixels for each @spacer; @stretch shares remaining space
-modules = ["workspaces", "media", "tray", "volume", "brightness", "updates", "wifi", "bluetooth", "notifications", "clipboard", "calendar", "battery"]
-modules_left = ["workspaces", "media"]
+modules = ["workspaces", "taskbar", "media", "tray", "volume", "brightness", "updates", "wifi", "bluetooth", "notifications", "clipboard", "calendar", "battery"]
+modules_left = ["workspaces", "taskbar", "media"]
 modules_center = ["calendar"]
 modules_right = ["tray", "volume", "brightness", "updates", "wifi", "bluetooth", "notifications", "clipboard", "battery"]
 # Lists accept @spacer, @stretch and @settings. Settings is appended if not placed.
@@ -430,3 +430,33 @@ device = "" # only names ending :kbd_backlight; excludes caps/mute LEDs
 min_level = 0
 max_level = -1 # -1 = hardware maximum; otherwise capped to hardware
 step = 1 # discrete native levels, e.g. 0, 1, 2 (not percent)
+
+# Real open Niri windows; no launchers, grouping, pinning or minimize emulation.
+[modules.taskbar]
+enabled = true
+[modules.taskbar.style]
+opacity = 1.0
+active_indicator = "underline" # underline or pill, globally focused window
+icon = "taskbar" # bundled fallback; desktop application icons take precedence
+icon_size = 20 # 8..128 logical pixels
+label_size = 13 # 6..72 logical pixels
+# Each task's length when labels are enabled; icons-only uses icon + panel padding.
+task_width = 160 # 16..512 logical pixels
+max_width = 480 # scroll within this total module length, 16..2048
+min_width = 30 # empty/unavailable button minimum, 16..1024
+foreground = ""
+background = ""
+show_icon = true
+show_label = false # Icons-only Task Manager; true shows title/app label
+[modules.taskbar.behavior]
+popup_enabled = true
+allow_actions = true
+focus_on_click = true # exact observed ID; never minimize on a second click
+socket_path = "" # independent event stream; empty uses NIRI_SOCKET
+workspace_scope = "all" # all, active (on each output), focused (single workspace)
+output_scope = "panel" # all, panel (this panel output), focused (keyboard-focus output)
+ordering = "id" # numeric stable ID, app-id, title; lexical sorts tie-break by ID
+interval_ms = 1000 # reconnect retry, not snapshot polling
+timeout_ms = 3000 # initial snapshot and action deadline
+command = [] # native JSON event stream; no subprocess
+format = "{title}" # per-task placeholders: title, app_id, id, output, workspace_id

@@ -9,7 +9,7 @@ Services::Services(ConfigStore &config, QObject *parent) : QObject(parent) {
 void Services::apply(const QVariantMap &model) {
     m_osd.configure(model.value("ui").toMap().value("osd").toMap());
     const auto modules = model.value("modules").toMap();
-    const QMap<QString, Service *> services{{"workspaces", &m_workspaces}, {"media", &m_media}, {"tray", &m_tray}, {"volume", &m_volume},
+    const QMap<QString, Service *> services{{"taskbar", &m_taskbar}, {"workspaces", &m_workspaces}, {"media", &m_media}, {"tray", &m_tray}, {"volume", &m_volume},
         {"brightness", &m_brightness}, {"updates", &m_updates}, {"wifi", &m_wifi}, {"bluetooth", &m_bluetooth}, {"notifications", &m_notifications}, {"battery", &m_battery}, {"clipboard", &m_clipboard}};
     for (auto it = services.begin(); it != services.end(); ++it) {
         auto module = modules.value(it.key()).toMap();

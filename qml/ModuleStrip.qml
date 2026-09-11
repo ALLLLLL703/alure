@@ -4,6 +4,7 @@ import "Ui.js" as Ui
 
 Item {
     id: root
+    property string outputName: ""
     required property string moduleName
     required property bool vertical
     required property real crossSize
@@ -17,7 +18,8 @@ Item {
     readonly property var brightnessDevice: moduleName === "brightness" && service ? service.state[brightnessKind] || ({}) : ({})
     property real keyboardWheelRemainder: 0
     onBrightnessKindChanged: keyboardWheelRemainder = 0
-    readonly property bool listMode: (moduleName === "workspaces" || moduleName === "tray") && service && service.available && service.items.length > 0
+    readonly property var taskItems: moduleName !== "taskbar" || !service || !service.available ? [] : Ui.taskItems(service.items, config.behavior, outputName)
+    readonly property bool listMode: moduleName === "taskbar" ? !!service && service.available : (moduleName === "workspaces" || moduleName === "tray") && service && service.available && service.items.length > 0
     readonly property bool sharedIcon: listMode && moduleName === "workspaces" && style.show_icon
     readonly property real iconExtent: sharedIcon ? style.icon_size + 2 * Config.model.ui.panel_padding : 0
     readonly property real iconOffset: sharedIcon ? iconExtent + Config.model.theme.spacing / 2 : 0
@@ -95,20 +97,23 @@ Item {
             columns: root.vertical ? 1 : -1
             spacing: Config.model.theme.spacing / 2
             Repeater {
-                model: root.listMode ? root.service.items : []
+                model: root.listMode ? (root.moduleName === "taskbar" ? root.taskItems : root.service.items) : []
                 delegate: ShellButton {
                     id: entry
                     required property var modelData
                     objectName: root.moduleName + "-entry-" + modelData.id
-                    width: root.vertical ? root.width : Math.min(root.style.max_width, Math.max(root.style.min_width, implicitWidth))
-                    height: root.vertical ? Config.model.ui.module_height : root.crossSize
-                    text: root.style.show_label && root.moduleName === "workspaces" ? Ui.format(root.config.behavior.format, Object.assign({}, modelData, {name: modelData.name || String(modelData.idx)})) : root.style.show_label ? Ui.format(root.config.behavior.format, {title: modelData.Title || "Tray"}) : ""
+                    readonly property bool task: root.moduleName === "taskbar"
+                    readonly property real taskLength: !task ? 0 : root.style.show_label ? root.style.task_width : root.style.icon_size + 2 * padding
+                    width: root.vertical ? root.width : task ? taskLength : Math.min(root.style.max_width, Math.max(root.style.min_width, implicitWidth))
+                    height: root.vertical ? (task && !root.style.show_label ? taskLength : Config.model.ui.module_height) : root.crossSize
+                    font.pixelSize: task ? root.style.label_size : Config.model.theme.font_size
+                    text: task ? (root.style.show_label ? Ui.format(root.config.behavior.format, Object.assign({}, modelData, {title: modelData.title || modelData.app_id || "Window " + modelData.id})) : "") : root.style.show_label && root.moduleName === "workspaces" ? Ui.format(root.config.behavior.format, Object.assign({}, modelData, {name: modelData.name || String(modelData.idx)})) : root.style.show_label ? Ui.format(root.config.behavior.format, {title: modelData.Title || "Tray"}) : ""
                     iconName: root.moduleName !== "workspaces" && root.style.show_icon ? root.style.icon : ""
-                    iconSource: root.moduleName !== "tray" ? "" : modelData.iconUrl || "image://icons/theme/" + (modelData.Status === "NeedsAttention" ? modelData.AttentionIconName || modelData.IconName || root.style.icon : modelData.IconName || root.style.icon)
+                    iconSource: task ? "image://icons/app/" + encodeURIComponent(modelData.app_id || "") + "/" + root.style.icon : root.moduleName !== "tray" ? "" : modelData.iconUrl || "image://icons/theme/" + (modelData.Status === "NeedsAttention" ? modelData.AttentionIconName || modelData.IconName || root.style.icon : modelData.IconName || root.style.icon)
                     iconSize: root.style.icon_size
-                    accent: root.moduleName === "workspaces" && !!modelData.is_active
+                    accent: task ? !!modelData.is_focused : root.moduleName === "workspaces" && !!modelData.is_active
                     horizontalAlignment: root.moduleName === "workspaces" ? Text.AlignHCenter : Text.AlignLeft
-                    highlightBackground: root.moduleName !== "workspaces" || root.style.active_indicator === "pill"
+                    highlightBackground: (root.moduleName !== "workspaces" && !task) || root.style.active_indicator === "pill"
                     Rectangle {
                         visible: entry.accent && root.style.active_indicator === "underline"
                         x: root.vertical ? 0 : entry.padding
@@ -119,7 +124,8 @@ Item {
                     }
                     foreground: root.style.foreground || Config.model.theme.palette.foreground
                     baseColor: root.style.background || "transparent"
-                    Accessible.name: root.moduleName === "workspaces" ? "Workspace " + (modelData.name || modelData.idx) + " · " + modelData.output : modelData.Title || modelData.id
+                    Accessible.name: task ? (modelData.title || modelData.app_id || "Window " + modelData.id) + " · " + modelData.output : root.moduleName === "workspaces" ? "Workspace " + (modelData.name || modelData.idx) + " · " + modelData.output : modelData.Title || modelData.id
+                    enabled: !task || (root.config.behavior.allow_actions && root.config.behavior.focus_on_click && !root.service.busy)
                     onClicked: {
                         if (!root.config.behavior.allow_actions) { root.requested(entry); return }
                         if (root.moduleName === "tray" && modelData.ItemIsMenu) { root.menuRequested(modelData.id, entry); return }

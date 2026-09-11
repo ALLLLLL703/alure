@@ -1,0 +1,27 @@
+# Merge over defaults. Changes apply on save/reload; no compositor restart.
+[modules.workspaces]
+enabled = false # Task Manager maintains its own workspace/window subscription.
+[modules.taskbar]
+enabled = true
+[modules.taskbar.style]
+show_icon = true
+show_label = true # false = icons-only
+icon = "taskbar" # fallback for missing desktop application icons
+icon_size = 24
+label_size = 14
+task_width = 180
+max_width = 720
+active_indicator = "pill"
+[modules.taskbar.behavior]
+workspace_scope = "active" # active workspace on each output, not only focused output
+output_scope = "panel"
+ordering = "app-id"
+allow_actions = true
+focus_on_click = true
+socket_path = "" # NIRI_SOCKET
+format = "{title}"
+[[panels]]
+id = "tasks"
+output = "*"
+edge = "bottom"
+modules = ["taskbar", "@stretch", "calendar", "@settings"]

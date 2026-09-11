@@ -1,11 +1,12 @@
 .pragma library
 function title(name) {
-    const names = {clipboard: "Clipboard", workspaces: "Workspaces", media: "Now playing", tray: "System tray", volume: "Sound", brightness: "Brightness", updates: "Updates", wifi: "Wi-Fi", bluetooth: "Bluetooth", notifications: "Notifications", calendar: "Calendar", battery: "Battery"}
+    const names = {taskbar: "Task Manager", clipboard: "Clipboard", workspaces: "Workspaces", media: "Now playing", tray: "System tray", volume: "Sound", brightness: "Brightness", updates: "Updates", wifi: "Wi-Fi", bluetooth: "Bluetooth", notifications: "Notifications", calendar: "Calendar", battery: "Battery"}
     return names[name] || name
 }
 function moduleDescription(name) {
     const descriptions = {
         workspaces: "View and switch Niri workspaces.",
+        taskbar: "Focus open Niri windows by ID; application icons or labeled tasks.",
         media: "View the current track and control playback.",
         clipboard: "Search clipboard history, preview images, copy or delete entries.",
         tray: "Access application tray icons and menus.",
@@ -59,3 +60,9 @@ function monthCells(year, month, firstDay) {
     return cells
 }
 function sameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate() }
+
+function taskItems(items, behavior, outputName) {
+    return items.filter(row =>
+        (behavior.workspace_scope === "all" || (behavior.workspace_scope === "active" ? row.workspace_active : row.workspace_focused))
+        && (behavior.output_scope === "all" || (behavior.output_scope === "panel" ? outputName.length > 0 && row.output === outputName : row.output_focused)))
+}

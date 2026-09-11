@@ -195,7 +195,11 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
             auto module = merge(moduleDefaults, table(it.value(), "modules." + it.key()), "modules." + it.key() + '.');
             const auto style = module.value("style").toMap();
             const QString stylePath = "modules." + it.key() + ".style.";
-            if (it.key() == "workspaces") choice(style, "active_indicator", {"underline", "pill"}, stylePath);
+            if (it.key() == "workspaces" || it.key() == "taskbar") choice(style, "active_indicator", {"underline", "pill"}, stylePath);
+            if (it.key() == "taskbar") {
+                range(style, "label_size", 6, 72, stylePath);
+                range(style, "task_width", 16, 512, stylePath);
+            }
             range(style, "opacity", 0, 1, stylePath);
             range(style, "icon_size", 8, 128, stylePath);
             range(style, "min_width", 16, 1024, stylePath);
@@ -302,8 +306,13 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model, QString &err
                 range(behavior, "max_expire_ms", 100, 86400000, path);
                 if (behavior.value("default_expire_ms").toInt() > behavior.value("max_expire_ms").toInt()) invalid(path + "default_expire_ms", "exceeds max_expire_ms");
             }
-            if (it.key() == "workspaces") {
-                choice(behavior, "ordering", {"output-index", "provider"}, path);
+            if (it.key() == "taskbar") {
+                choice(behavior, "ordering", {"id", "app-id", "title"}, path);
+                choice(behavior, "workspace_scope", {"all", "active", "focused"}, path);
+                choice(behavior, "output_scope", {"all", "panel", "focused"}, path);
+            }
+            if (it.key() == "workspaces" || it.key() == "taskbar") {
+                if (it.key() == "workspaces") choice(behavior, "ordering", {"output-index", "provider"}, path);
                 const auto socket = behavior.value("socket_path").toString();
                 if (socket.contains(QChar::Null) || (!socket.isEmpty() && !QDir::isAbsolutePath(socket))) invalid(path + "socket_path", "expected empty or absolute socket path without NUL");
             }

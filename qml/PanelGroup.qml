@@ -3,6 +3,7 @@ import QtQuick
 Item {
     id: group
     required property var tokens
+    property string outputName: ""
     required property var panel
     required property bool vertical
     required property real crossSize
@@ -53,6 +54,7 @@ Item {
                 active: slot.moduleEntry
                 sourceComponent: ModuleStrip {
                     moduleName: slot.modelData
+                    outputName: group.outputName
                     vertical: group.vertical
                     crossSize: group.crossSize
                     onRequested: anchor => group.requested(moduleName, anchor)

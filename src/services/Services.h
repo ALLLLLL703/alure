@@ -4,6 +4,7 @@
 #include "BrightnessService.h"
 #include "OsdController.h"
 #include "NiriService.h"
+#include "TaskbarService.h"
 #include "DBusServices.h"
 #include "TrayService.h"
 #include "NotificationService.h"
@@ -12,6 +13,7 @@
 namespace Alure {
 class Services : public QObject {
     Q_OBJECT
+    Q_PROPERTY(Alure::Service* taskbar READ taskbar CONSTANT)
     Q_PROPERTY(Alure::Service* workspaces READ workspaces CONSTANT)
     Q_PROPERTY(Alure::Service* media READ media CONSTANT)
     Q_PROPERTY(Alure::Service* tray READ tray CONSTANT)
@@ -25,6 +27,7 @@ class Services : public QObject {
     Q_PROPERTY(Alure::ClipboardService* clipboard READ clipboard CONSTANT)
 public:
     explicit Services(ConfigStore &config, QObject *parent = nullptr);
+    Service *taskbar() { return &m_taskbar; }
     Service *workspaces() { return &m_workspaces; }
     Service *media() { return &m_media; }
     Service *tray() { return &m_tray; }
@@ -40,6 +43,7 @@ public:
 private:
     void apply(const QVariantMap &model);
     NiriService m_workspaces;
+    TaskbarService m_taskbar;
     VolumeService m_volume;
     BrightnessService m_brightness;
     OsdController m_osd;

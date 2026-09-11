@@ -56,3 +56,8 @@ target_compile_definitions(brightness_tests PRIVATE SERVICE_FIXTURE="$<TARGET_FI
 add_dependencies(brightness_tests service_fixture)
 add_test(NAME BrightnessOsd COMMAND brightness_tests)
 set_tests_properties(BrightnessOsd PROPERTIES TIMEOUT 30)
+
+qt_add_executable(taskbar_tests TaskbarTest.cpp)
+target_link_libraries(taskbar_tests PRIVATE alure_services Qt6::Test)
+add_test(NAME Taskbar COMMAND taskbar_tests)
+set_tests_properties(Taskbar PROPERTIES TIMEOUT 30)

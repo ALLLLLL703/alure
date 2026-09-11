@@ -18,10 +18,15 @@ function describe(path, value) {
     if (key === "layer") options = ["background", "bottom", "top", "overlay"]
     if (key === "layout") options = ["linear", "three-zone"]
     if (key === "ordering") options = ["output-index", "provider"]
+    if (path === "modules.taskbar.behavior.ordering") options = ["id", "app-id", "title"]
+    if (path === "modules.taskbar.behavior.workspace_scope") options = ["all", "active", "focused"]
+    if (path === "modules.taskbar.behavior.output_scope") options = ["all", "panel", "focused"]
     if (key === "cursor_fallback") options = ["center", "cancel"]
     if (key === "active_indicator") options = ["underline", "pill"]
     const ranges = {module_tooltip_delay_ms: [0,5000], window_gap: [-256,256], control_size: [24,96], control_icon_size: [16,64], font_size: [6,72], editor_font_size: [6,72], spacing: [0,128], padding: [0,128], radius: [0,128], border_width: [0,16], opacity: [0,1,0.01], icon_size: [8,128], panel_padding: [0,128], module_height: [16,256], popup_width: [240,1920], popup_height: [240,2160], popup_gap: [0,256], animation_ms: [0,2000], thickness: [16,512], length: [0,32768], exclusive_zone: [-1,32768], min_width: [16,1024], max_width: [16,2048], interval_ms: [100,86400000], timeout_ms: [100,600000], first_day_of_week: [0,1], max_percent: [1,150], debounce_ms: [10,2000], scroll_step: [1,100], history_limit: [1,1000], default_expire_ms: [100,86400000], max_expire_ms: [100,86400000], reload_delay_ms: [50,10000]}
     let range = ranges[key]
+    if (path === "modules.taskbar.style.label_size") range = [6,72]
+    if (path === "modules.taskbar.style.task_width") range = [16,512]
     if (path.indexOf(".margins.") >= 0 || path === "ui.toast.margin") range = [0,4096]
     if (path === "modules.clipboard.behavior.popup_width") range = [280,1920]
     if (path === "modules.clipboard.behavior.popup_height") range = [320,2160]
@@ -62,8 +67,18 @@ function describe(path, value) {
         help.debounce_ms = "Rate-limit one brightness command and one latest pending target across both kinds; continuous input is not postponed indefinitely."
         help.sysfs_path = "Absolute sysfs class directory. Alternative paths are for fixtures; the writer command must also target your fixture, not real hardware."
     }
+    if (path.startsWith("modules.taskbar.")) {
+        help.focus_on_click = "Focus the exact observed window ID. Off disables task activation; no minimize or launcher action."
+        help.ordering = "ID: stable numeric order. App-id/title: case-insensitive lexical order, with numeric ID ties."
+        help.workspace_scope = "All workspaces, active workspace on each output, or the single keyboard-focused workspace."
+        help.output_scope = "All outputs, this panel's output, or the keyboard-focused output. Combined with workspace scope."
+        help.active_indicator = "Indicates the globally focused window, from Niri events only."
+        help.interval_ms = "Reconnect retry interval; live windows update through an independent Niri event stream."
+        help.task_width = "Per-task length with labels; icons-only derives length from icon size and panel padding."
+        help.format = "Task placeholders: title (falls back to app ID), app_id, id, output, workspace_id."
+    }
     const group = path.startsWith("modules.brightness.behavior.screen.") ? "Display backlight" : path.startsWith("modules.brightness.behavior.keyboard.") ? "Keyboard backlight" : path.indexOf("theme.palette.") === 0 ? "Theme colors" : path.indexOf("ui.osd.") === 0 ? "Volume / brightness OSD" : path.indexOf("ui.toast.") === 0 ? "Notification banners" : path.indexOf(".margins.") >= 0 ? "Panel margins" : ""
-    return {path: path, value: value, group: group, showGroup: false, label: path.startsWith("modules.brightness.") && key === "sysfs_path" ? "Backlight class directory" : label(key), kind: kind, options: options, low: range ? range[0] : 0, high: range ? range[1] : 1000000, step: range && range[2] ? range[2] : 1, help: color ? "Choose a color or enter #RRGGBB / #AARRGGBB; empty module colors inherit." : kind === "argv" ? "Enter a command, with quotes for arguments containing spaces. No TOML syntax; pipes require explicit sh -c." : help[key] || (kind === "number" ? (key.endsWith("_ms") ? "Milliseconds" : key.indexOf("size") >= 0 || key.indexOf("width") >= 0 || key.indexOf("height") >= 0 || ["spacing", "padding", "radius", "thickness"].indexOf(key) >= 0 || path.indexOf(".margins.") >= 0 ? "Logical pixels" : "") : "")}
+    return {path: path, value: value, group: group, showGroup: false, label: path === "modules.taskbar.behavior.ordering" ? "Task order" : path.startsWith("modules.brightness.") && key === "sysfs_path" ? "Backlight class directory" : label(key), kind: kind, options: options, low: range ? range[0] : 0, high: range ? range[1] : 1000000, step: range && range[2] ? range[2] : 1, help: color ? "Choose a color or enter #RRGGBB / #AARRGGBB; empty module colors inherit." : kind === "argv" ? "Enter a command, with quotes for arguments containing spaces. No TOML syntax; pipes require explicit sh -c." : help[key] || (kind === "number" ? (key.endsWith("_ms") ? "Milliseconds" : key.indexOf("size") >= 0 || key.indexOf("width") >= 0 || key.indexOf("height") >= 0 || ["spacing", "padding", "radius", "thickness"].indexOf(key) >= 0 || path.indexOf(".margins.") >= 0 ? "Logical pixels" : "") : "")}
 }
 function fields(map, prefix) {
     // QVariantList sequences are not JavaScript Arrays; normalize this read-only view.

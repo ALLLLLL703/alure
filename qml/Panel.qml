@@ -42,6 +42,7 @@ Item {
             objectName: "panel-zone-left"
             tokens: root.lists[0]
             panel: root.panel
+            outputName: root.outputName
             vertical: root.vertical
             crossSize: modules.crossSize
             availableLength: root.zoned ? (modules.totalLength - center.mainLength) / 2 - modules.zoneGap : modules.totalLength
@@ -53,6 +54,7 @@ Item {
             objectName: "panel-zone-center"
             tokens: root.lists[1]
             panel: root.panel
+            outputName: root.outputName
             vertical: root.vertical
             crossSize: modules.crossSize
             availableLength: Math.min(modules.totalLength, center.naturalLength)
@@ -66,6 +68,7 @@ Item {
             objectName: "panel-zone-right"
             tokens: root.lists[2]
             panel: root.panel
+            outputName: root.outputName
             vertical: root.vertical
             crossSize: modules.crossSize
             availableLength: (modules.totalLength - center.mainLength) / 2 - modules.zoneGap
