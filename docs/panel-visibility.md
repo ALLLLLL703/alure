@@ -170,3 +170,12 @@ mode may stay visible when no observed window intersects it. Existing configured
 show/hide delays remain unchanged, and hidden bodies retain empty effective input
 and blur regions. Active explicit module popups intentionally keep their parent
 visible until dismissed.
+
+The parent subsequently verified the corrected handoff in isolated Niri 26.04
+with an explicit private DBus session, zero margins and the original 350ms hide
+delay: stationary edge hover remained revealed for over 2200ms; moving away hid
+it; a second reveal stayed visible; a real task popup opened, and pointer-away
+Escape dismissed it and hid the panel. One click during input ownership handoff
+missed before a second succeeded. This is not proof that stationary-over-body
+Escape or every first-click timing is resolved. Evidence: parent-owned
+`/tmp/alure-improve-session/handoff2-live.log` and computer-use screenshots.
