@@ -260,6 +260,12 @@ ApplicationWindow {
                             Accessible.name: "Panel"
                         }
                     }
+                    InfoText {
+                        objectName: "panel-gap-help"
+                        text: Fields.panelGapHelp((window.draft.panels || [])[window.panelIndex])
+                        Layout.fillWidth: true
+                        color: window.theme.palette.muted
+                    }
                     Flow {
                         Layout.fillWidth: true
                         spacing: window.theme.spacing / 2

@@ -37,6 +37,27 @@ private slots:
         QVERIFY(intersects(false)); QVERIFY(!intersects(false, false));
         QVERIFY(!Alure::panelIntersectsWindows(bar, "A", {}, true, true));
     }
+    void panelWindowGapCompensation() {
+        QVariantMap model; QString error; QVERIFY(Alure::ConfigStore::parse({}, model, error));
+        auto panel = model.value("panels").toList().first().toMap();
+        panel["thickness"] = 40;
+        panel["margins"] = QVariantMap{{"top", 0}, {"bottom", 0}, {"left", 0}, {"right", 0}};
+        for (const auto *edge : {"top", "bottom", "left", "right"}) {
+            panel["edge"] = edge; panel["exclusive_zone"] = -1;
+            panel["visibility"] = QVariantMap{{"mode", "always"}};
+            panel["window_gap"] = 0; QCOMPARE(Alure::panelPlacement(panel, {1920, 1080}).exclusiveZone, 40);
+            panel["window_gap"] = -16; QCOMPARE(Alure::panelPlacement(panel, {1920, 1080}).exclusiveZone, 24);
+            panel["window_gap"] = 12; QCOMPARE(Alure::panelPlacement(panel, {1920, 1080}).exclusiveZone, 52);
+            panel["window_gap"] = -40; QCOMPARE(Alure::panelPlacement(panel, {1920, 1080}).exclusiveZone, 0);
+            panel["window_gap"] = -256; QCOMPARE(Alure::panelPlacement(panel, {1920, 1080}).exclusiveZone, 0);
+            panel["exclusive_zone"] = 0; panel["window_gap"] = 16;
+            QCOMPARE(Alure::panelPlacement(panel, {1920, 1080}).exclusiveZone, 0);
+            for (const auto *mode : {"auto-hide", "dodge-windows"}) {
+                panel["visibility"] = QVariantMap{{"mode", mode}}; panel["window_gap"] = -256;
+                QCOMPARE(Alure::panelPlacement(panel, {1920, 1080}).exclusiveZone, -1);
+            }
+        }
+    }
     void dynamicPlacementNeverReserves() {
         QVariantMap model; QString error; QVERIFY(Alure::ConfigStore::parse({}, model, error));
         auto panel = model.value("panels").toList().first().toMap(); panel["length"] = 500;

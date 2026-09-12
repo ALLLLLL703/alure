@@ -95,7 +95,8 @@ output = "primary" # primary, * (all outputs), or exact QScreen name
 edge = "top" # top, bottom, left, right
 thickness = 44
 length = 0 # 0 = fill output; otherwise logical pixels, clamped to output
-window_gap = 0 # signed extra reservation; negative compensates compositor gaps
+window_gap = 0 # THIS always-visible panel only: extra reservation, not final gap; -16 can compensate Niri gaps=16
+# Ignored for auto-hide/dodge and exclusive_zone=0. Other panels are unaffected.
 exclusive_zone = -1 # -1 = clamped thickness on wire; compositor adds edge margin
 # 0 = no reservation; >0 = explicit protocol zone (also excludes edge margin)
 layer = "top" # background, bottom, top, overlay

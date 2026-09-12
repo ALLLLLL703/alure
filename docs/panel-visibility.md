@@ -141,3 +141,22 @@ Niri configuration, shell and hardware values were not changed.
 No complete CTest run is claimed. Physical multi-output hotplug, fullscreen
 stacking variants, and native visibility input under fractional scaling remain
 unverified combinations (OSD scaling was validated separately).
+
+## Pointer reconciliation (refresh audit)
+
+Reveal shrinks the trigger input region to its margin bridge. Alure now checks
+its last surface-local pointer position against that new mask, rather than
+keeping a stale edge Enter indefinitely. Local move/press/release events outside
+the body and ungrab/leave events also clear hover. Popup dismissal releases its
+pin **and** invalidates old parent hover; fresh local pointer events can keep it
+revealed. No global Wayland cursor coordinates or continuous polling are used.
+
+Regression tests deliberately omit Leave after an edge mask shrink and during a
+popup grab, and send an out-of-body move while an implicit grab is held. All four
+edges and margins 0/4/24 are covered. These protect concrete stale-state paths;
+they do not establish that every native compositor delivers identical events.
+The parent owns native testing. `always` mode deliberately does not hide; dodge
+mode may stay visible when no observed window intersects it. Existing configured
+show/hide delays remain unchanged, and hidden bodies retain empty effective input
+and blur regions. Active explicit module popups intentionally keep their parent
+visible until dismissed.

@@ -23,8 +23,8 @@ private slots:
         QCOMPARE(model.value("ui").toMap().value("popup_alignment").toString(), "center");
         QCOMPARE(model.value("ui").toMap().value("popup_direction").toString(), "inward");
         QCOMPARE(model.value("panels").toList().size(), 1);
-        QCOMPARE(model.value("modules").toMap().size(), 11);
-        QVERIFY(!model.value("modules").toMap().value("clipboard").toMap().value("enabled").toBool());
+        QCOMPARE(model.value("modules").toMap().keys(), (QStringList{"battery", "bluetooth", "brightness", "calendar", "clipboard", "media", "notifications", "taskbar", "tray", "updates", "volume", "wifi", "workspaces"}));
+        QVERIFY(model.value("modules").toMap().value("clipboard").toMap().value("enabled").toBool()); // Lazy until opened.
         QCOMPARE(model.value("theme").toMap().value("palette").toMap().value("background").toString(), "#151923");
         QTemporaryDir dir; ConfigStore store(dir.filePath("missing.toml"));
         QVERIFY(store.reload()); QVERIFY(!QFile::exists(store.path()));
@@ -42,6 +42,22 @@ private slots:
         for (const auto *invalid : {"1", "0.5", "'true'", "[]", "{}"}) {
             QVERIFY(!ConfigStore::parse(QByteArray("[theme]\nblur_enabled=") + invalid, model, error));
             QVERIFY2(error.contains("theme.blur_enabled"), qPrintable(error));
+        }
+    }
+    void panelWindowGapOptions() {
+        QVariantMap model; QString error;
+        QVERIFY(ConfigStore::parse({}, model, error));
+        QCOMPARE(model.value("panels").toList().first().toMap().value("window_gap").toInt(), 0);
+        for (const auto *edge : {"top", "bottom", "left", "right"}) {
+            for (int gap : {-256, -16, 0, 256}) {
+                const auto source = QString("[[panels]]\nedge='%1'\nthickness=40\nwindow_gap=%2").arg(edge).arg(gap).toUtf8();
+                QVERIFY2(ConfigStore::parse(source, model, error), qPrintable(error));
+                QCOMPARE(model.value("panels").toList().first().toMap().value("window_gap").toInt(), gap);
+            }
+        }
+        for (const auto *value : {"-257", "257", "1.5", "true", "'16'", "[]"}) {
+            QVERIFY(!ConfigStore::parse(QByteArray("[[panels]]\nwindow_gap=") + value, model, error));
+            QVERIFY2(error.contains("window_gap"), qPrintable(error));
         }
     }
     void panelVisibilityOptions() {

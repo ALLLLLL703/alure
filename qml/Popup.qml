@@ -18,7 +18,12 @@ Control {
     property string actionStatus: ""
     property bool updateConfirmation: false
     property var queuedAction: null
+    readonly property bool viewActive: visible && !!Window.window && Window.window.visible
+    onViewActiveChanged: { if (!viewActive) queuedAction = null }
+    Connections { target: Config; function onModelChanged() { root.queuedAction = null } }
+    onServiceChanged: queuedAction = null
     function act(name, args) {
+        if (!viewActive) return
         if (canAct && service.busy && !(moduleName === "volume" && (name === "setVolume" || name === "adjustVolume"))) {
             queuedAction = {name: name, args: args || {}}
             actionStatus = "Waiting for provider before sending request."
@@ -50,7 +55,7 @@ Control {
         if (!queuedAction || !service || service.busy) return
         const request = queuedAction
         queuedAction = null
-        if (canAct) act(request.name, request.args)
+        if (viewActive && canAct) act(request.name, request.args)
     }
     focus: true
     padding: theme.padding

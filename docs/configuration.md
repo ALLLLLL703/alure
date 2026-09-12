@@ -414,3 +414,39 @@ spacer_size = 32
 Geometry tests cover both axes, narrow strips and equal elastic spacing; settings
 pointer tests cover cross-zone moves. A nested Wayland computer-use check showed
 left settings, a centered clock and right tray, with the clock popup still anchored.
+
+## Understanding panel-to-window gaps
+
+`panels[].window_gap` is a signed **additional reservation on that panel**,
+not a desired final gap. Its existing default is 0, integer range -256..256,
+validated along with `exclusive_zone` and edge margins. Missing values keep that
+default; invalid types/ranges reject the draft/reload. Save & apply affects
+watching panels; `runtime.watch=false` requires restart. Settings' Panels page
+now identifies the selected panel and whether this adjustment is effective.
+
+For an always-visible 40-pixel top bar with zero margins, automatic
+`exclusive_zone=-1` sends 40 pixels. With Niri `layout { gaps 16; }`, the visible
+gap includes another 16 pixels. Setting **that top panel's** `window_gap=-16`
+sends 24 pixels and compensates the 16-pixel compositor gap. Do not put this on
+an unrelated bottom taskbar: auto-hide/dodge always send -1 (no reservation), so
+their `window_gap`/`exclusive_zone` values do not control window separation.
+
+```toml
+# Edit the existing target [[panels]] entry; do not append a duplicate panel ID.
+[[panels]]
+id = "main"
+edge = "top"
+thickness = 40
+margins = { top = 0, bottom = 0, left = 0, right = 0 }
+exclusive_zone = -1
+window_gap = -16 # example compensation only; default stays 0
+```
+
+Positive zones use `max(0, base_zone + window_gap)`, where base is the clamped
+thickness for automatic mode or the explicit positive zone. Zero reserves
+nothing and ignores `window_gap`; it is not the same protocol value as -1.
+At zero, the positive-zone edge-margin rule no longer applies, so negative
+compensation beyond the available reservation cannot promise a desired gap.
+Screen-edge margins position the panel; Niri gaps/struts, borders, scale, other
+panels and compositor policy remain separate. Alure neither guesses those
+settings nor edits Niri configuration. See [Niri layout](https://niri-wm.github.io/niri/Configuration%3A-Layout.html).

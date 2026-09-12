@@ -23,7 +23,8 @@ The context properties are `workspaces`, `media`, `tray`, `volume`, `updates`,
   stable during ordinary polls. Popup controls retain focus/pressed state rather
   than disabling on every poll; one latest requested action can wait for busy to
   clear, dispatched on the next event turn after the provider callback returns.
-  Availability loss cancels that waiting request. Volume setters keep their
+  Availability loss, popup dismissal, configuration reload and (for media) a
+  selected target-player change cancel that waiting request. Volume setters keep their
   existing service-side coalescing. The backend still validates target IDs and
   permissions, and the action result remains asynchronous.
 - `action(name, arguments)` returns whether a request was accepted, **not whether

@@ -221,6 +221,13 @@ private slots:
         QCOMPARE(service.actionCount, 0);
         service.setBusy(false); QCOMPARE(service.actionCount, 0); // callback has not returned yet
         QTRY_COMPARE(service.actionCount, 1); QCOMPARE(service.lastArguments.value("id").toString(), "0");
+        service.setBusy(true);
+        QVERIFY(QMetaObject::invokeMethod(view.rootObject(), "act", Q_ARG(QVariant, "fixtureAction"), Q_ARG(QVariant, QVariantMap{})));
+        view.hide(); service.setBusy(false); QTest::qWait(10); QCOMPARE(service.actionCount, 1);
+        view.show(); service.setBusy(true);
+        QVERIFY(QMetaObject::invokeMethod(view.rootObject(), "act", Q_ARG(QVariant, "fixtureAction"), Q_ARG(QVariant, QVariantMap{})));
+        QVERIFY(config.previewText("[theme]\nopacity=0.7"));
+        service.setBusy(false); QTest::qWait(10); QCOMPARE(service.actionCount, 1);
         service.fail("Fixture unavailable"); QTRY_VERIFY(!row);
         QVERIFY2(warnings.isEmpty(), "No QML warnings during refresh");
     }
@@ -390,6 +397,26 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(form.get(), "save"));
         QVERIFY(config.reload()); QVERIFY(!config.model().value("theme").toMap().value("blur_enabled").toBool());
     }
+    void panelGapSettings() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        QQmlComponent component(&engine);
+        component.setData("import QtQml\nimport \"qrc:/qml/SettingsFields.js\" as Fields\nQtObject { property var spec: Fields.describe('panels.0.window_gap', -16); property string main: Fields.panelGapHelp({id:'top-main',edge:'top',output:'primary',exclusive_zone:-1,window_gap:-16,visibility:{mode:'always'}}); property string hidden: Fields.panelGapHelp({id:'bottom-taskbar',edge:'bottom',output:'primary',visibility:{mode:'auto-hide'}}) }", QUrl());
+        std::unique_ptr<QObject> fields(component.create()); QVERIFY2(fields, qPrintable(component.errorString()));
+        const auto spec = fields->property("spec").value<QJSValue>();
+        QCOMPARE(spec.property("low").toInt(), -256); QCOMPARE(spec.property("high").toInt(), 256);
+        QVERIFY(spec.property("help").toString().contains("THIS panel"));
+        QVERIFY(fields->property("main").toString().contains("top-main"));
+        QVERIFY(fields->property("main").toString().contains("-16 px"));
+        QVERIFY(fields->property("hidden").toString().contains("reserves no space"));
+        QQmlComponent settings(&engine, QUrl("qrc:/qml/Settings.qml"));
+        std::unique_ptr<QObject> form(settings.create()); QVERIFY2(form, qPrintable(settings.errorString()));
+        form->setProperty("section", 1);
+        auto *window = qobject_cast<QQuickWindow *>(form.get()); QVERIFY(window);
+        auto *help = itemNamed(window->contentItem(), "panel-gap-help"); QVERIFY(help);
+        QTRY_VERIFY(help->isVisible()); QVERIFY(help->property("text").toString().contains("main"));
+    }
     void panelAutoHideLifecycle_data() {
         QTest::addColumn<QString>("edge");
         QTest::addColumn<int>("margin");
@@ -401,7 +428,7 @@ private slots:
         QFETCH(QString, edge);
         QFETCH(int, margin);
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
-        const QString source = QString("[ui]\nshow_settings=false\n[[panels]]\nedge='%1'\nlayer='top'\nthickness=16\nlength=300\nmodules=['calendar']\nmargins={top=%2,bottom=%2,left=%2,right=%2}\nvisibility={mode='auto-hide',show_delay_ms=10,hide_delay_ms=20,edge_trigger_px=16}").arg(edge).arg(margin);
+        const QString source = QString("[ui]\nshow_settings=false\n[[panels]]\nedge='%1'\nlayer='top'\nthickness=16\nlength=300\nmodules=['calendar']\nmargins={top=%2,bottom=%2,left=%2,right=%2}\nvisibility={mode='auto-hide',show_delay_ms=10,hide_delay_ms=120,edge_trigger_px=16}").arg(edge).arg(margin);
         QVERIFY(config.previewText(source));
         QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
         engine.rootContext()->setContextProperty("Config", &config);
@@ -432,7 +459,8 @@ private slots:
         QVERIFY(!body->rootObject()->isVisible());
         QVERIFY(body->mask().intersected(QRegion(QRect(QPoint(), size))).isEmpty());
         QCOMPARE(vertical ? trigger->mask().boundingRect().width() : trigger->mask().boundingRect().height(), 16);
-        QEnterEvent enter(QPointF(1, 1), QPointF(1, 1), QPointF(1, 1));
+        const QPointF edgePoint = vertical ? QPointF(farEdge ? cross - 1 : 1, 1) : QPointF(1, farEdge ? cross - 1 : 1);
+        QEnterEvent enter(edgePoint, edgePoint, edgePoint);
         QCoreApplication::sendEvent(trigger, &enter); QCoreApplication::sendEvent(trigger, &leave);
         QTest::qWait(30); QVERIFY(!body->property("panelBodyVisible").toBool()); // Short edge pass cancels reveal.
         QCoreApplication::sendEvent(trigger, &enter);
@@ -440,11 +468,24 @@ private slots:
         QCOMPARE(body->size(), size); QVERIFY(body->rootObject()->isVisible());
         QCOMPARE(body->mask(), QRegion(QRect(QPoint(), size)));
         QCOMPARE(trigger->mask(), bridge);
-        QCoreApplication::sendEvent(body, &enter); QCoreApplication::sendEvent(trigger, &leave);
+        QEnterEvent bodyEnter(QPointF(1, 1), QPointF(1, 1), QPointF(1, 1));
+        if (margin == 0) {
+            // No Leave arrives after the edge mask disappears under the pointer.
+            // Its old Enter must not pin the revealed bar indefinitely.
+            QTRY_VERIFY(!body->property("panelBodyVisible").toBool());
+            QCoreApplication::sendEvent(trigger, &enter);
+            QTRY_VERIFY(body->property("panelBodyVisible").toBool());
+        }
+        QCoreApplication::sendEvent(body, &bodyEnter); QCoreApplication::sendEvent(trigger, &leave);
+        QMouseEvent outsideMove(QEvent::MouseMove, QPointF(-5, -5), QPointF(-5, -5), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(body, &outsideMove); // Implicit grab, no Leave.
+        QTRY_VERIFY(!body->property("panelBodyVisible").toBool());
+        QCoreApplication::sendEvent(trigger, &enter); QTRY_VERIFY(body->property("panelBodyVisible").toBool());
+        QCoreApplication::sendEvent(body, &bodyEnter); QCoreApplication::sendEvent(trigger, &leave);
         auto *anchor = itemNamed(body->rootObject(), "calendar-button"); QVERIFY(anchor);
         host.openModule("calendar", "main", body->screen()->name(), anchor);
-        QCoreApplication::sendEvent(body, &leave);
-        QTest::qWait(50); QVERIFY(body->property("panelBodyVisible").toBool()); // Queued popup and open popup pin it.
+        // Deliberately omit parent Leave: native popup grabs can consume it.
+        QTest::qWait(180); QVERIFY(body->property("panelBodyVisible").toBool()); // Queued popup and open popup pin it.
         host.closePopup();
         QTRY_VERIFY(!body->property("panelBodyVisible").toBool());
         QVERIFY(!config.previewText(source + "\nvisibility.mode='always'")); // TOML duplicate is rejected without rebuilding.
@@ -1113,6 +1154,21 @@ QtObject { property var order: Fields.describe("modules.taskbar.behavior.orderin
         QCOMPARE(find("media-artist")->property("text").toString(), "Artist A, Artist B");
         QVERIFY(find("media-artwork")->property("source").toUrl().isEmpty());
         auto *play = find("media-play-pause");
+        const auto queuePlay = [&] {
+            service.busy = true; emit service.changed();
+            QVERIFY(play->isEnabled());
+            QVERIFY(QMetaObject::invokeMethod(view.rootObject(), "dispatch", Q_ARG(QVariant, "playPause"), Q_ARG(QVariant, QVariantMap{})));
+        };
+        queuePlay(); QCOMPARE(service.actionCount, 0);
+        service.busy = false; emit service.changed(); QCOMPARE(service.actionCount, 0);
+        QTRY_COMPARE(service.actionCount, 1);
+        queuePlay(); view.hide(); service.busy = false; emit service.changed(); QTest::qWait(10); QCOMPARE(service.actionCount, 1);
+        view.show(); queuePlay();
+        row["service"] = "different.player"; service.items = {row}; emit service.changed();
+        service.busy = false; emit service.changed(); QTest::qWait(10); QCOMPARE(service.actionCount, 1);
+        row["service"] = "fixture.player"; service.items = {row}; emit service.changed();
+        queuePlay(); QVERIFY(config.previewText("[theme]\nopacity=0.6\n[modules.media.behavior]\nartwork_remote=false"));
+        service.busy = false; emit service.changed(); QTest::qWait(10); QCOMPARE(service.actionCount, 1);
         QVERIFY(find("media-shuffle-glyph")->scale() >= 1.);
         for (const auto &theme : {"midnight", "dawn"}) {
             QVERIFY(config.previewText(QString("[theme]\nname='%1'\n[modules.media.behavior]\nartwork_remote=false").arg(theme)));

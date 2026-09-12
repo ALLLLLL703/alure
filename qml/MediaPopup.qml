@@ -16,9 +16,15 @@ Control {
     readonly property bool ready: service.available && players.length > 0
     readonly property bool controllable: ready && options.allow_actions && !!player.CanControl
     property var queuedAction: null
+    readonly property bool viewActive: visible && !!Window.window && Window.window.visible
+    onViewActiveChanged: { if (!viewActive) queuedAction = null }
+    Connections { target: Config; function onModelChanged() { root.queuedAction = null } }
     property string actionError: ""
     readonly property real controlExtent: Math.min(options.control_size, Math.max(16, (availableWidth - 6 * theme.spacing) / 5.4))
+    readonly property string targetPlayerService: player.service || ""
+    onTargetPlayerServiceChanged: queuedAction = null
     function dispatch(name, args) {
+        if (!viewActive) return
         const request = {name: name, args: Object.assign({service: player.service}, args || {})}
         if (service.busy) queuedAction = request
         else actionError = service.action(request.name, request.args) ? "" : "This player did not accept the control request."
@@ -37,7 +43,7 @@ Control {
     function flushAction() {
         if (!queuedAction || service.busy) return
         const action = queuedAction; queuedAction = null
-        actionError = controllable && service.action(action.name, action.args) ? "" : "This player did not accept the control request."
+        actionError = viewActive && controllable && service.action(action.name, action.args) ? "" : "This player did not accept the control request."
     }
     focus: true
     padding: theme.padding
