@@ -197,7 +197,14 @@ private slots:
         const auto text = status->property("text");
         auto *scroll = itemNamed(view.rootObject(), "popup-scroll"); QVERIFY(scroll);
         auto *flickable = scroll->property("contentItem").value<QQuickItem *>(); QVERIFY(flickable);
-        QTest::qWait(20); flickable->setProperty("contentY", 100.);
+        QTest::qWait(20);
+        QVERIFY(flickable->property("contentHeight").toDouble() > flickable->height());
+        const auto wheelPoint = flickable->mapToScene(QPointF(flickable->width() / 2, flickable->height() / 2)).toPoint();
+        QTest::mouseMove(&view, wheelPoint);
+        QWheelEvent wheel(wheelPoint, view.mapToGlobal(wheelPoint), {}, {0, -360}, Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(&view, &wheel);
+        QTRY_VERIFY(flickable->property("contentY").toDouble() > 0.);
+        QTRY_VERIFY(!flickable->property("moving").toBool());
         const auto scrollY = flickable->property("contentY").toDouble();
         QPointer<QQuickItem> nested;
         if (moduleName == "wifi") nested = itemNamed(view.rootObject(), "wifi-saved-saved");
@@ -469,13 +476,19 @@ private slots:
         QCOMPARE(body->mask(), QRegion(QRect(QPoint(), size)));
         QCOMPARE(trigger->mask(), bridge);
         QEnterEvent bodyEnter(QPointF(1, 1), QPointF(1, 1), QPointF(1, 1));
+        // The stationary edge point is now over the body (zero margin), or
+        // still over the bridge. A mask shrink is not a physical pointer leave.
+        QTest::qWait(180); QVERIFY(body->property("panelBodyVisible").toBool());
+        QCoreApplication::sendEvent(trigger, &leave);
         if (margin == 0) {
-            // No Leave arrives after the edge mask disappears under the pointer.
-            // Its old Enter must not pin the revealed bar indefinitely.
-            QTRY_VERIFY(!body->property("panelBodyVisible").toBool());
-            QCoreApplication::sendEvent(trigger, &enter);
-            QTRY_VERIFY(body->property("panelBodyVisible").toBool());
+            // Ownership-induced trigger Leave must not undo the transfer before
+            // the new body's native Enter has arrived (possibly delayed).
+            QTest::qWait(180); QVERIFY(body->property("panelBodyVisible").toBool());
+            QCoreApplication::sendEvent(body, &bodyEnter);
+            QCoreApplication::sendEvent(body, &leave);
         }
+        QTRY_VERIFY(!body->property("panelBodyVisible").toBool());
+        QCoreApplication::sendEvent(trigger, &enter); QTRY_VERIFY(body->property("panelBodyVisible").toBool());
         QCoreApplication::sendEvent(body, &bodyEnter); QCoreApplication::sendEvent(trigger, &leave);
         QMouseEvent outsideMove(QEvent::MouseMove, QPointF(-5, -5), QPointF(-5, -5), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
         QCoreApplication::sendEvent(body, &outsideMove); // Implicit grab, no Leave.
@@ -486,8 +499,15 @@ private slots:
         host.openModule("calendar", "main", body->screen()->name(), anchor);
         // Deliberately omit parent Leave: native popup grabs can consume it.
         QTest::qWait(180); QVERIFY(body->property("panelBodyVisible").toBool()); // Queued popup and open popup pin it.
-        host.closePopup();
-        QTRY_VERIFY(!body->property("panelBodyVisible").toBool());
+        host.closePopup(); QTest::qWait(180);
+        QVERIFY(body->property("panelBodyVisible").toBool()); // Latest local evidence is still inside.
+        QCoreApplication::sendEvent(body, &leave); QTRY_VERIFY(!body->property("panelBodyVisible").toBool());
+        QCoreApplication::sendEvent(trigger, &enter); QTRY_VERIFY(body->property("panelBodyVisible").toBool());
+        QCoreApplication::sendEvent(body, &bodyEnter); QCoreApplication::sendEvent(trigger, &leave);
+        host.openModule("calendar", "main", body->screen()->name(), anchor);
+        QCoreApplication::sendEvent(body, &outsideMove); // Latest known point is outside, popup still pins.
+        QTest::qWait(180); QVERIFY(body->property("panelBodyVisible").toBool());
+        host.closePopup(); QTRY_VERIFY(!body->property("panelBodyVisible").toBool());
         QVERIFY(!config.previewText(source + "\nvisibility.mode='always'")); // TOML duplicate is rejected without rebuilding.
         QVERIFY(trigger); QVERIFY(body);
         QString always = source; always.replace("mode='auto-hide'", "mode='always'");

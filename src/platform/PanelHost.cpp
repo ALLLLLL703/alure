@@ -29,6 +29,8 @@ struct PanelHost::VisibilityState {
     QString output;
     bool bodyHovered = false, edgeHovered = false;
     QPoint edgePosition;
+    QRect triggerRect;
+    bool bodyHoverTransferred = false;
     bool visible = true, target = true;
 };
 namespace {
@@ -246,6 +248,8 @@ void PanelHost::configureVisibility(QQuickView *view, const QVariantMap &panel, 
     trigger->installEventFilter(this);
     const QMargins margins = placement.vertical ? QMargins(0, placement.margins.top(), 0, placement.margins.bottom())
                                                 : QMargins(placement.margins.left(), 0, placement.margins.right(), 0);
+    auto edgePlacement = placement; edgePlacement.size = triggerSize; edgePlacement.margins = margins;
+    state->triggerRect = panelOutputRect(edgePlacement, view->screen()->size());
     if (!m_preview) {
         auto *layer = W::get(trigger.get());
         layer->setScope("alure-edge-" + panel.value("id").toString());
@@ -255,8 +259,7 @@ void PanelHost::configureVisibility(QQuickView *view, const QVariantMap &panel, 
         layer->setLayer(W::LayerOverlay);
         layer->setKeyboardInteractivity(W::KeyboardInteractivityNone); layer->setActivateOnShow(false);
     } else {
-        auto edgePlacement = placement; edgePlacement.size = triggerSize; edgePlacement.margins = margins;
-        trigger->setPosition(view->screen()->geometry().topLeft() + panelOutputRect(edgePlacement, view->screen()->size()).topLeft());
+        trigger->setPosition(view->screen()->geometry().topLeft() + state->triggerRect.topLeft());
         view->setPosition(view->screen()->geometry().topLeft() + state->outputRect.topLeft());
     }
     trigger->setMask(QRegion(state->bridgeMask));
@@ -305,21 +308,20 @@ void PanelHost::setPanelVisible(VisibilityState &state, bool visible) {
     state.body->rootObject()->setVisible(visible);
     state.trigger->setMask(QRegion(visible ? state.bridgeMask : state.edgeMask));
     state.body->setProperty("panelBodyVisible", visible);
-    if (!visible) state.bodyHovered = false;
-    // A reveal shrinks the edge input region to its margin bridge. The old
-    // Enter no longer proves hover when its point is outside that new region;
-    // some compositor/grab paths do not deliver a matching Leave.
+    if (!visible) state.bodyHovered = state.bodyHoverTransferred = false;
+    // Shrinking the trigger mask transfers ownership, not pointer location.
+    // Keep known intent over the revealed body until a real local event
+    // reconciles it; its first native Enter may arrive after the hide delay.
+    if (visible && state.edgeHovered && state.outputRect.contains(state.triggerRect.topLeft() + state.edgePosition))
+        state.bodyHovered = state.bodyHoverTransferred = true;
     state.edgeHovered = state.edgeHovered && state.trigger->mask().contains(state.edgePosition);
     state.body->update(); state.trigger->update();
     trace(QString("panel %1 on %2 %3").arg(state.body->property("panelId").toString(), state.output, visible ? "revealed" : "hidden"));
     updateVisibility(state);
 }
 void PanelHost::releasePopupKeyboard() {
-    // A native popup grab can consume the parent's Leave. Once its pin is
-    // released, require fresh local pointer evidence instead of a stale Enter.
-    for (const auto &state : m_visibility) {
-        if (state->body == m_popupParent) state->bodyHovered = state->edgeHovered = false;
-    }
+    // Releasing a popup grab is not a pointer leave. Preserve the latest
+    // surface-local evidence, including a stationary pointer over the body.
     if (!m_preview && m_popupParent) {
         LayerShellQt::Window::get(m_popupParent)->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityNone);
         m_popupParent->update();
@@ -335,28 +337,36 @@ void PanelHost::closePopup() {
 }
 bool PanelHost::eventFilter(QObject *watched, QEvent *event) {
     const auto type = event->type();
-    if (type == QEvent::Enter || type == QEvent::Leave || type == QEvent::UngrabMouse ||
+    if (type == QEvent::Enter || type == QEvent::Leave ||
         type == QEvent::MouseMove || type == QEvent::MouseButtonPress || type == QEvent::MouseButtonRelease) {
         for (const auto &state : m_visibility) {
             const bool body = watched == state->body;
             if (!body && watched != state->trigger.get()) continue;
             const bool oldBody = state->bodyHovered, oldEdge = state->edgeHovered;
-            if (type == QEvent::Leave || type == QEvent::UngrabMouse) {
-                if (body) state->bodyHovered = false; else state->edgeHovered = false;
+            if (type == QEvent::Leave) {
+                // A trigger Leave can be caused by our mask shrink itself.
+                // It cannot invalidate the point transferred into the body;
+                // only subsequent body events or located trigger motion can.
+                if (body) state->bodyHovered = state->bodyHoverTransferred = false;
+                else state->edgeHovered = false;
             } else {
                 const QPointF position = type == QEvent::Enter ? static_cast<QEnterEvent *>(event)->position()
                                                                : static_cast<QMouseEvent *>(event)->position();
                 const QPoint point(std::floor(position.x()), std::floor(position.y()));
-                if (body) state->bodyHovered = state->visible && QRect(QPoint(), state->body->size()).contains(point);
-                else {
+                if (body) {
+                    state->bodyHoverTransferred = false;
+                    state->bodyHovered = state->visible && QRect(QPoint(), state->body->size()).contains(point);
+                } else {
                     state->edgePosition = point;
                     state->edgeHovered = state->trigger->mask().contains(point);
+                    if (state->bodyHoverTransferred && !state->outputRect.contains(state->triggerRect.topLeft() + point))
+                        state->bodyHovered = state->bodyHoverTransferred = false;
                 }
             }
-            if (oldBody != state->bodyHovered || oldEdge != state->edgeHovered)
-                trace(QString("panel %1 pointer body=%2 edge=%3 pinned=%4 event=%5")
+            if (oldBody != state->bodyHovered || oldEdge != state->edgeHovered || type == QEvent::Enter || type == QEvent::Leave)
+                trace(QString("panel %1 pointer body=%2 edge=%3 transferred=%4 pinned=%5 event=%6")
                       .arg(state->body->property("panelId").toString()).arg(state->bodyHovered).arg(state->edgeHovered)
-                      .arg(m_popupParent == state->body).arg(int(type)));
+                      .arg(state->bodyHoverTransferred).arg(m_popupParent == state->body).arg(int(type)));
             updateVisibility(*state);
             break;
         }

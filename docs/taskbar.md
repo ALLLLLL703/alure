@@ -62,8 +62,9 @@ may require panel recreation/restart because Qt caches loaded image URLs.
 An independent `EventStream` handles initial `WindowsChanged`/`WorkspacesChanged`,
 window open/change/close/focus, and workspace activation/configuration events.
 Disabling `workspaces` does not disable Task Manager. No subprocess polls and no
-periodic windows query runs while connected. Events irrelevant to tasks (e.g.
-window layout changes) are ignored. Disconnect, malformed/oversized JSON, missing
+periodic windows query runs while connected. Geometry-only layout events update
+panel visibility geometry without notifying the public task presentation list;
+they do not needlessly recreate task delegates. Disconnect, malformed/oversized JSON, missing
 socket and initial timeout clear the snapshot; bounded retries recover. Config
 changes to provider options cancel pending work and reestablish the stream.
 Actions use a separate socket because Niri stops reading requests on an event
@@ -90,4 +91,26 @@ Protocol tests use temporary local sockets, not the host compositor. QML tests
 exercise narrow 240/480-pixel popup layout, action IDs/names/permissions, icons,
 scopes, both orientations and existing audio/brightness/OSD regressions. Real
 Niri validation uses parent-owned isolated fixtures only; no host hardware,
-clipboard or Niri configuration is changed. No panel hiding is part of this stage.
+clipboard or Niri configuration is changed. Panel hiding is documented separately
+in [panel visibility](panel-visibility.md).
+
+## Real window thumbnails: deferred on Niri 26.04
+
+The user approved fixing the other issues first and documenting this limitation.
+Current icons/titles and right-click details are **not image previews**. No
+thumbnail UI, backend or preview settings have been added.
+
+Niri 26.04 supports foreign-toplevel metadata but its
+[release notes](https://github.com/niri-wm/niri/discussions/3899) explicitly say
+ext-image-copy-capture is not implemented yet. Enumeration/IPC window IDs cannot
+supply pixels. Its [versioned screenshot API](https://github.com/niri-wm/niri/blob/v26.04/niri-ipc/src/lib.rs)
+writes to the clipboard even when also saving a file; hover capture must not
+silently replace (or save/restore) clipboard contents. Capturing an output and
+cropping it leaks unrelated content and cannot show covered/offscreen windows.
+
+A future standard per-window capture backend requires compositor support plus
+bounded buffers and teardown on leave/close/lock/disconnect. A
+[ScreenCast portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
+flow is an explicitly consent-driven alternative, not silent arbitrary hover
+capture. Neither is implemented or promised for this release. No capture was
+performed during this audit.

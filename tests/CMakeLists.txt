@@ -34,7 +34,8 @@ target_link_libraries(ui_tests PRIVATE alure_platform alure_core alure_services 
 list(TRANSFORM ALURE_UI_FILES PREPEND "${PROJECT_SOURCE_DIR}/")
 qt_add_resources(ui_tests test_ui PREFIX / BASE ${PROJECT_SOURCE_DIR} FILES ${ALURE_UI_FILES})
 add_test(NAME QuickUi COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:ui_tests>)
-set_tests_properties(QuickUi PROPERTIES TIMEOUT 30)
+# Four-edge hover/grab lifecycle cases exercise real show/hide timers.
+set_tests_properties(QuickUi PROPERTIES TIMEOUT 90)
 
 qt_add_executable(config_editing_tests ConfigEditingTest.cpp)
 target_link_libraries(config_editing_tests PRIVATE alure_core Qt6::Test)
