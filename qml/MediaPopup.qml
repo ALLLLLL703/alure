@@ -27,7 +27,10 @@ Control {
         if (!viewActive) return
         const request = {name: name, args: Object.assign({service: player.service}, args || {})}
         if (service.busy) queuedAction = request
-        else actionError = service.action(request.name, request.args) ? "" : "This player did not accept the control request."
+        else {
+            queuedAction = null // A newer immediate request supersedes a deferred flush.
+            actionError = service.action(request.name, request.args) ? "" : "This player did not accept the control request."
+        }
     }
     function timeLabel(us) {
         const seconds = Math.max(0, Math.floor(Number(us || 0) / 1000000))

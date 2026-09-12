@@ -238,6 +238,50 @@ private slots:
         service.fail("Fixture unavailable"); QTRY_VERIFY(!row);
         QVERIFY2(warnings.isEmpty(), "No QML warnings during refresh");
     }
+    void popupImmediateActionSupersedesDeferred_data() {
+        QTest::addColumn<QString>("moduleName");
+        QTest::addColumn<bool>("busyAfterImmediate");
+        QTest::newRow("Popup-idle") << QString("updates") << false;
+        QTest::newRow("Popup-busy") << QString("updates") << true;
+        QTest::newRow("MediaPopup-idle") << QString("media") << false;
+        QTest::newRow("MediaPopup-busy") << QString("media") << true;
+    }
+    void popupImmediateActionSupersedesDeferred() {
+        QFETCH(QString, moduleName); QFETCH(bool, busyAfterImmediate);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        FixtureService service;
+        service.items = {QVariantMap{{"service", "fixture.player"}, {"identity", "Fixture player"},
+                                    {"title", "Fixture track"}, {"name", "Fixture package"}, {"CanControl", true}}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{moduleName, QVariant::fromValue(&service)}});
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(440, 560);
+        const bool media = moduleName == "media";
+        if (!media) view.setInitialProperties({{"moduleName", moduleName}});
+        view.setSource(QUrl(media ? "qrc:/qml/MediaPopup.qml" : "qrc:/qml/Popup.qml"));
+        QCOMPARE(view.status(), QQuickView::Ready); view.show(); QTest::qWait(20);
+        const auto request = [&](const QString &name, int id) {
+            return QMetaObject::invokeMethod(view.rootObject(), media ? "dispatch" : "act",
+                                            Q_ARG(QVariant, name), Q_ARG(QVariant, (QVariantMap{{"id", id}})));
+        };
+        service.busy = true; emit service.changed();
+        QVERIFY(request("older", 1)); QCOMPARE(service.actionCount, 0);
+        service.busy = false; emit service.changed(); // schedules Qt.callLater; do not process events yet
+        QCOMPARE(service.actionCount, 0);
+        QVERIFY(request("newer", 2)); QCOMPARE(service.actionCount, 1);
+        QCOMPARE(service.lastAction, "newer"); QCOMPARE(service.lastArguments.value("id").toInt(), 2);
+        if (media) QCOMPARE(service.lastArguments.value("service").toString(), "fixture.player");
+        // Cover both a synchronous action and an asynchronous action that is
+        // still busy when the older request's deferred callback runs.
+        service.busy = busyAfterImmediate; emit service.changed();
+        QTest::qWait(20);
+        QCOMPARE(service.actionCount, 1);
+        service.busy = false; emit service.changed(); QTest::qWait(20);
+        QCOMPARE(service.actionCount, 1); QCOMPARE(service.lastAction, "newer");
+        QCOMPARE(service.lastArguments.value("id").toInt(), 2);
+        QVERIFY2(warnings.isEmpty(), "No QML warnings during queue-order regression");
+    }
     void backgroundBlurGeometryAndLifecycle() {
         QQuickWindow window; window.resize(400, 240);
         QQuickItem parent(window.contentItem()); parent.setPosition({20, 30});

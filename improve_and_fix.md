@@ -108,3 +108,15 @@
 - 全量 CTest 从已知 8/11 到 9/11；QuickUi 与 SettingsCloseE2e 仍未通过。新增定时生命周期用例超过原 QuickUi 30 秒预算，单独调整到 90 秒后，完整运行仍暴露上述 fixture 失败／SIGSEGV，而非掩盖失败，**没有全量通过**。
 - 原生 OSD 与间距证据见上；自动隐藏原生反馈驱动了所有权修正，弹窗抓取和滚轮尚有上述明确边界。
 - 已提交阶段：`919f868` 弹窗通知／OSD 复用；`990530d` 面板局部输入／间距帮助及操作取消；`6b936f8` 修正所有权交接并补全报告。最终原生证据另有文档提交；以 Git 日志为准。无推送。
+
+### 最终审查修正：延迟操作不能覆盖较新的请求
+
+独立只读审查发现 P1：提供者忙时排队 A，变为空闲后 `Qt.callLater` 尚未执行，此时 B 直接发送却没有清除 A，随后 A 仍会发送。此前测试只证明延迟发送与取消，没有覆盖这个间隙。
+
+本次仅在 `Popup.act`／`MediaPopup.dispatch` 的直接发送分支先清空等待项，再调用服务；保留原有 volume `setVolume`／`adjustVolume` 忙时交给服务合并的例外路径。没有改变已发送命令的取消语义，也未改动面板／原生输入处理。
+
+- 新增 `popupImmediateActionSupersedesDeferred` 四个 fixture 数据行：通用与媒体弹窗，分别覆盖 B 发送后仍空闲、B 忙到延迟回调之后两种情况；检查只发送 B、参数及媒体目标未丢失，B 完成后也不重放 A。
+- 修复前专项运行四行均复现 `actionCount=2` 而非 1（2 个初始化／清理通过，4 失败）。初版通用 fixture 同时缺少包名造成 QML 警告，已补充 fixture 字段；修复后检查无 QML 警告。
+- `cmake --build build --target ui_tests -j2` 通过。显式私有 DBus、offscreen 专项命令：`env -u ALURE_TEST_NATIVE_WAYLAND dbus-run-session -- build/tests/ui_tests popupImmediateActionSupersedesDeferred popupStableRefresh mediaCardControls volumeContinuousDrag volumePendingFeedbackIsNotObserved volumeBackendCapabilities`，**15 通过、0 失败**（含初始化／清理）。覆盖新增顺序回归、旧延迟／取消、刷新滚动／焦点及连续音量输入。
+- 本次日志：`/tmp/alure-improve-recovery-{build,red,ui}.log`。此前专项 UI 24、ConfigStore 69、PanelHost 49、Services 45 通过／1 跳过仍是保留日志结果，并非本次重跑。**全量 CTest 仍保留 9/11 失败结论，本次未重跑**；QuickUi fixture／SIGSEGV、SettingsCloseE2e，以及原生 popup grab 丢事件／首击／滚轮边界均未宣称解决。
+- 此修正待父会话独立复审；用户 `ModuleStrip.qml` 保持与备份逐字节相同且不提交，本地工具文件不动。本次不启动原生 UI，不触碰宿主配置／设备，不安装或推送。

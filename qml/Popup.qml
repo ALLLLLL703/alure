@@ -29,6 +29,7 @@ Control {
             actionStatus = "Waiting for provider before sending request."
             return
         }
+        queuedAction = null // A newer immediate request supersedes a deferred flush.
         actionStatus = service && service.action(name, args || {}) ? "Request sent; waiting for provider." : "Request not accepted. Check availability, configured commands and action permissions."
     }
     function toggleDnd() {
