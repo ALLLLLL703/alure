@@ -119,4 +119,5 @@
 - 修复前专项运行四行均复现 `actionCount=2` 而非 1（2 个初始化／清理通过，4 失败）。初版通用 fixture 同时缺少包名造成 QML 警告，已补充 fixture 字段；修复后检查无 QML 警告。
 - `cmake --build build --target ui_tests -j2` 通过。显式私有 DBus、offscreen 专项命令：`env -u ALURE_TEST_NATIVE_WAYLAND dbus-run-session -- build/tests/ui_tests popupImmediateActionSupersedesDeferred popupStableRefresh mediaCardControls volumeContinuousDrag volumePendingFeedbackIsNotObserved volumeBackendCapabilities`，**15 通过、0 失败**（含初始化／清理）。覆盖新增顺序回归、旧延迟／取消、刷新滚动／焦点及连续音量输入。
 - 本次日志：`/tmp/alure-improve-recovery-{build,red,ui}.log`。此前专项 UI 24、ConfigStore 69、PanelHost 49、Services 45 通过／1 跳过仍是保留日志结果，并非本次重跑。**全量 CTest 仍保留 9/11 失败结论，本次未重跑**；QuickUi fixture／SIGSEGV、SettingsCloseE2e，以及原生 popup grab 丢事件／首击／滚轮边界均未宣称解决。
-- 此修正待父会话独立复审；用户 `ModuleStrip.qml` 保持与备份逐字节相同且不提交，本地工具文件不动。本次不启动原生 UI，不触碰宿主配置／设备，不安装或推送。
+- 父会话已独立检查 `1be7fe2` 的两处调度修正及四行回归：直接发送前清空旧等待项，消除了审查所列重放路径；未发现该补丁新增问题。另以显式私有 DBus／offscreen 复跑 `popupImmediateActionSupersedesDeferred popupStableRefresh`，10 通过、0 失败，日志 `/tmp/alure-improve-parent-review.log`。这不是全量测试通过或原生输入边界已解决的声明。
+- 用户 `ModuleStrip.qml` 与备份逐字节相同且未提交，本地工具文件未动，暂存区为空。父会话已停止 connection-owned 隔离测试桌面；未安装、推送或改动宿主配置／设备。
