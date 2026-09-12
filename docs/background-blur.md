@@ -127,8 +127,22 @@ separate verification; the parent owns that live check.
 
 The parent ran those three native probes on isolated Niri: exit 0, 5 passed
 including setup/cleanup, with no fatal protocol errors in
-`/tmp/alure-volume-crash/native-tests.log`. Actual application gesture stress
-and visual verification are recorded separately by the parent.
+`/tmp/alure-volume-crash/native-tests.log`.
+
+The parent also compared the actual application with a file-only simulated audio
+provider alternating 20%/80% every 200 ms. The pre-fix binary exited 255 after 42
+OSD requests. The fixed binary ran for its full 60-second deadline, handled 249
+OSD requests and exited 0 without a protocol error. Back-and-forth slider drags
+and wheel input were attempted during this run; the fixture recorded seven write
+commands (this does not assert delivery of every wheel event). Evidence:
+`/tmp/alure-volume-crash/{before-2.log,after.log,after.exit,audio.log}`.
+
+A subsequent computer-use visual check over high-contrast terminal text confirmed
+that disabling blur restored sharp background text and re-enabling it restored
+rounded panel blur. That application also exited 0 at its deadline. The isolated
+Niri desktop was stopped; no host audio, Niri configuration, installed binary or
+running Shell was modified. Physical multi-output and hardware controls were not
+tested.
 
 Implementation checks: build passed; lifecycle/surface UI checks 13 passed;
 volume controls/drag, settings, auto-hide and OSD checks 21 passed; Services 45
