@@ -25,10 +25,12 @@ void Service::configure(const QVariantMap &module) {
     m_config = executionConfig; ++m_generation; m_timer.stop();
     for (auto *watcher : findChildren<QDBusPendingCallWatcher *>(QString(), Qt::FindDirectChildrenOnly)) delete watcher;
     stop();
+    const bool wasBusy = m_busy, wasEnabled = m_enabled;
     m_busy = false; m_enabled = module.value("enabled").toBool();
     m_options = module.value("behavior").toMap();
-    m_available = false; m_state.clear(); m_items.clear(); m_diagnostic = m_enabled ? "Connecting" : "Disabled";
-    emit changed();
+    if (wasBusy != m_busy) emit busyChanged();
+    if (wasEnabled != m_enabled) emit enabledChanged();
+    updateSnapshot(false, m_enabled ? "Connecting" : "Disabled", {}, {});
     if (m_enabled) {
         m_timer.start(m_options.value("interval_ms").toInt());
         refresh();
@@ -39,13 +41,28 @@ bool Service::action(const QString &name, const QVariantMap &args) {
     if (!m_enabled || (m_busy && !canQueueAction(name)) || !m_options.value("allow_actions", true).toBool()) return false;
     return act(name, args);
 }
+void Service::updateSnapshot(bool available, QString diagnostic, QVariantMap state, QVariantList items) {
+    const bool availabilityChanged = m_available != available, errorChanged = m_diagnostic != diagnostic;
+    const bool newState = m_state != state, newItems = m_items != items;
+    m_available = available; m_diagnostic = std::move(diagnostic);
+    m_state = std::move(state); m_items = std::move(items);
+    if (availabilityChanged) emit availableChanged();
+    if (errorChanged) emit diagnosticChanged();
+    if (newState) emit stateChanged();
+    if (newItems) emit itemsChanged();
+    // Derived services also publish pending-action properties through changed.
+    emit changed();
+}
 void Service::publish(QVariantMap state, QVariantList items) {
-    m_available = true; m_diagnostic.clear(); m_state = std::move(state); m_items = std::move(items); emit changed();
+    updateSnapshot(true, {}, std::move(state), std::move(items));
 }
 void Service::fail(const QString &message) {
-    m_available = false; m_diagnostic = message; m_state.clear(); m_items.clear(); emit changed();
+    updateSnapshot(false, message, {}, {});
 }
-void Service::setBusy(bool value) { m_busy = value; emit changed(); }
+void Service::setBusy(bool value) {
+    if (m_busy == value) return;
+    m_busy = value; emit busyChanged(); emit changed();
+}
 void Service::call(const QDBusConnection &bus, const QString &destination, const QString &path,
                    const QString &interface, const QString &method, const QVariantList &args,
                    std::function<void(const QVariantList &)> success, std::function<void(const QString &)> failure) {

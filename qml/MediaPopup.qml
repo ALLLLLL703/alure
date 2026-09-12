@@ -30,11 +30,14 @@ Control {
     Connections {
         target: root.service
         function onChanged() {
-            if (root.queuedAction && !root.service.busy) {
-                const action = root.queuedAction; root.queuedAction = null
-                root.actionError = root.service.action(action.name, action.args) ? "" : "This player did not accept the control request."
-            }
+            if (!root.ready) root.queuedAction = null
+            if (root.queuedAction && !root.service.busy) Qt.callLater(root.flushAction)
         }
+    }
+    function flushAction() {
+        if (!queuedAction || service.busy) return
+        const action = queuedAction; queuedAction = null
+        actionError = controllable && service.action(action.name, action.args) ? "" : "This player did not accept the control request."
     }
     focus: true
     padding: theme.padding
@@ -215,14 +218,14 @@ Control {
                         visible: root.options.show_shuffle
                         symbol: "shuffle"; Accessible.name: "Shuffle"
                         accent: !!root.player.shuffle
-                        enabled: root.controllable && !!root.player.hasShuffle && !root.service.busy
+                        enabled: root.controllable && !!root.player.hasShuffle
                         onClicked: root.dispatch("setShuffle", {shuffle: !root.player.shuffle})
                     }
                     MediaButton {
                         Layout.preferredWidth: root.controlExtent; Layout.preferredHeight: root.controlExtent
                         objectName: "media-previous"
                         symbol: "previous"; Accessible.name: "Previous track"
-                        enabled: root.controllable && !!root.player.CanGoPrevious && !root.service.busy
+                        enabled: root.controllable && !!root.player.CanGoPrevious
                         onClicked: root.dispatch("previous")
                     }
                     MediaButton {
@@ -235,14 +238,14 @@ Control {
                         foreground: root.theme.palette.background
                         baseColor: root.theme.palette.accent
                         background: Rectangle { radius: width / 2; color: root.theme.palette.accent; opacity: parent.down ? 0.7 : 1 }
-                        enabled: root.controllable && !root.service.busy && (root.player.playbackStatus === "Playing" ? !!root.player.CanPause : !!root.player.CanPlay)
+                        enabled: root.controllable && (root.player.playbackStatus === "Playing" ? !!root.player.CanPause : !!root.player.CanPlay)
                         onClicked: root.dispatch("playPause")
                     }
                     MediaButton {
                         Layout.preferredWidth: root.controlExtent; Layout.preferredHeight: root.controlExtent
                         objectName: "media-next"
                         symbol: "next"; Accessible.name: "Next track"
-                        enabled: root.controllable && !!root.player.CanGoNext && !root.service.busy
+                        enabled: root.controllable && !!root.player.CanGoNext
                         onClicked: root.dispatch("next")
                     }
                     MediaButton {
@@ -252,7 +255,7 @@ Control {
                         symbol: root.player.loopStatus === "Track" ? "repeat-one" : "repeat"
                         Accessible.name: "Repeat: " + (root.player.loopStatus || "Not supported")
                         accent: root.player.loopStatus === "Track" || root.player.loopStatus === "Playlist"
-                        enabled: root.controllable && !!root.player.hasLoopStatus && !root.service.busy
+                        enabled: root.controllable && !!root.player.hasLoopStatus
                         onClicked: root.dispatch("setLoopStatus", {loopStatus: root.player.loopStatus === "None" ? "Playlist" : root.player.loopStatus === "Playlist" ? "Track" : "None"})
                     }
                     Item { Layout.fillWidth: true }

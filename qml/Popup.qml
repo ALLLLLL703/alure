@@ -14,10 +14,16 @@ Control {
     readonly property var service: moduleName === "calendar" ? null : Services[moduleName] || null
     readonly property bool ready: !!service && service.available
     readonly property var rows: !ready ? [] : moduleName === "taskbar" ? Ui.taskItems(service.items, config.behavior, outputName) : service.items
-    readonly property bool canAct: ready && config.behavior.allow_actions && !service.busy
+    readonly property bool canAct: ready && config.behavior.allow_actions
     property string actionStatus: ""
     property bool updateConfirmation: false
+    property var queuedAction: null
     function act(name, args) {
+        if (canAct && service.busy && !(moduleName === "volume" && (name === "setVolume" || name === "adjustVolume"))) {
+            queuedAction = {name: name, args: args || {}}
+            actionStatus = "Waiting for provider before sending request."
+            return
+        }
         actionStatus = service && service.action(name, args || {}) ? "Request sent; waiting for provider." : "Request not accepted. Check availability, configured commands and action permissions."
     }
     function toggleDnd() {
@@ -32,9 +38,19 @@ Control {
     Connections {
         target: root.service
         function onChanged() {
+            if (!root.ready) root.queuedAction = null
+            // Busy may be cleared inside a provider callback before its snapshot
+            // is published. Dispatch only after that callback has returned.
+            if (root.queuedAction && !root.service.busy) Qt.callLater(root.flushAction)
             if (root.actionStatus.indexOf("Request sent") === 0 && root.service.available && !root.service.busy)
                 root.actionStatus = "Provider snapshot updated."
         }
+    }
+    function flushAction() {
+        if (!queuedAction || !service || service.busy) return
+        const request = queuedAction
+        queuedAction = null
+        if (canAct) act(request.name, request.args)
     }
     focus: true
     padding: theme.padding
@@ -58,17 +74,18 @@ Control {
         RowLayout {
             Layout.fillWidth: true
             InfoText { text: Ui.title(root.moduleName); font.bold: true; font.pixelSize: root.theme.font_size * 1.35; Layout.fillWidth: true }
-            ShellButton { iconName: "refresh"; Accessible.name: "Refresh"; visible: !!root.service; enabled: !!root.service && !root.service.busy; onClicked: root.service.refresh() }
+            ShellButton { iconName: "refresh"; Accessible.name: "Refresh"; visible: !!root.service; enabled: !!root.service; onClicked: root.service.refresh() }
         }
         InfoText {
             visible: root.moduleName !== "calendar"
             objectName: "provider-status"
-            text: !root.service ? "No provider is implemented for this module." : root.service.diagnostic || ((root.moduleName === "taskbar" || root.moduleName === "workspaces") ? root.service.state.actionError || "" : "") || (root.moduleName === "volume" && root.ready && root.service.pendingPercent !== undefined && root.service.pendingPercent !== null ? "Pending volume: " + Math.round(root.service.pendingPercent) + "%" : root.service.busy && !(root.moduleName === "volume" && root.ready) ? "Refreshing…" : root.ready ? "Live system data" + (root.moduleName === "volume" && root.service.state.backend ? " · " + root.service.state.backend : "") : "Provider unavailable")
+            text: !root.service ? "No provider is implemented for this module." : root.service.diagnostic || ((root.moduleName === "taskbar" || root.moduleName === "workspaces") ? root.service.state.actionError || "" : "") || (root.moduleName === "volume" && root.ready && root.service.pendingPercent !== undefined && root.service.pendingPercent !== null ? "Pending volume: " + Math.round(root.service.pendingPercent) + "%" : root.service.busy && !root.ready ? "Refreshing…" : root.ready ? "Live system data" + (root.moduleName === "volume" && root.service.state.backend ? " · " + root.service.state.backend : "") : "Provider unavailable")
             color: root.ready ? root.theme.palette.muted : root.theme.palette.accent
             Layout.fillWidth: true
         }
         InfoText { visible: root.moduleName !== "volume" && root.actionStatus.length > 0; text: root.actionStatus; color: root.theme.palette.muted; Layout.fillWidth: true }
         ScrollView {
+            objectName: "popup-scroll"
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: availableWidth
@@ -127,6 +144,7 @@ Control {
                         model: root.moduleName === "wifi" && root.ready ? root.service.state.savedConnections || [] : []
                         ShellButton {
                             required property var modelData
+                            objectName: "wifi-saved-" + modelData.uuid
                             text: "Connect · " + modelData.name
                             Layout.fillWidth: true
                             enabled: root.canAct && (root.config.behavior.connect_command || []).length > 0
@@ -142,6 +160,7 @@ Control {
                         model: root.moduleName === "bluetooth" && root.ready ? root.service.state.adapters || [] : []
                         ShellButton {
                             required property var modelData
+                            objectName: "bluetooth-adapter-" + modelData.path
                             text: (modelData.Alias || modelData.Name || modelData.Address) + (modelData.Powered ? " · Turn off" : " · Turn on")
                             Layout.fillWidth: true
                             enabled: root.canAct

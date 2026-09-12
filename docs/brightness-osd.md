@@ -121,9 +121,15 @@ OSD is horizontally centered, inset from the **physical output bottom**, ignorin
 other layer reservations. Horizontal margin is minimum edge clearance; dimensions
 and margins clamp to small outputs. Values are logical pixels, so compositor
 scaling applies. Output names do not silently fall back if unavailable. `*`
-creates one copy per connected output. Latest change replaces the current OSD
+creates one copy per connected output. Latest change updates the current OSD in place
 and restarts its timeout; there is no history/stack. The bar clamps to 100% while
 the volume label can truthfully show configured amplification above 100%.
+
+While visible, each output keeps the same QQuickView, QML root and native
+surface; even a change of kind updates the `snapshot` property and restarts the
+expiry timer. Expiry, configuration/output rebuild and explicit close destroy
+that group. A disabled kind retains the previous dismissal behavior (closes the
+current group), rather than leaving an obsolete OSD visible.
 
 Only changed **observed** values trigger: not requests, busy signals, repeated
 snapshots, or failed writes. First readings, device/output identity changes,

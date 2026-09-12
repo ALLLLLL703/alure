@@ -7,14 +7,25 @@ an empty successful result, a fake workspace, or a battery on a desktop machine.
 ## QML / ownership API
 
 `Services` is a context object in panel and preview mode, absent in settings and
-headless validation. It owns its ten QObject services by value; the engine and
+headless validation. It owns its twelve QObject services by value; the engine and
 panels are destroyed before the services. Do not reparent or delete these objects.
 The context properties are `workspaces`, `media`, `tray`, `volume`, `updates`,
-`wifi`, `bluetooth`, `notifications`, `battery`, `clipboard`. Each exposes:
+`wifi`, `bluetooth`, `notifications`, `battery`, `clipboard`, `brightness`, `taskbar`. Each exposes:
 
 - `enabled`, `available`, `busy`, `diagnostic`, `state` (QVariantMap), `items`
-  (QVariantList of row maps); all notify through `changed`.
-- `refresh()` requests a read if enabled and not busy.
+  (QVariantList of row maps). Each property has its own equality-guarded NOTIFY
+  signal (`itemsChanged`, `stateChanged`, `busyChanged`, etc.). Background busy
+  changes and identical snapshots do not invalidate QML list bindings. The
+  aggregate `changed` signal remains for C++ consumers and pending-action state.
+  Genuine snapshot changes still update their bindings; this is not a keyed
+  incremental model for reordered or changed provider rows.
+- `refresh()` requests a read if enabled and not busy. Ready popup status stays
+  stable during ordinary polls. Popup controls retain focus/pressed state rather
+  than disabling on every poll; one latest requested action can wait for busy to
+  clear, dispatched on the next event turn after the provider callback returns.
+  Availability loss cancels that waiting request. Volume setters keep their
+  existing service-side coalescing. The backend still validates target IDs and
+  permissions, and the action result remains asynchronous.
 - `action(name, arguments)` returns whether a request was accepted, **not whether
   the asynchronous operation succeeded**. Invalid targets, unsupported actions,
   disabled actions or a busy service return false. Follow busy/diagnostic after

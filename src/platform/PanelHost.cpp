@@ -510,8 +510,17 @@ void PanelHost::closeOsd() {
 void PanelHost::showOsd(const QVariantMap &snapshot) {
     const auto options = m_config.model().value("ui").toMap().value("osd").toMap();
     const auto kind = snapshot.value("kind").toString();
-    closeOsd();
-    if (m_rebuildPending || !options.value("enabled").toBool() || !options.value(kind + "_enabled").toBool()) return;
+    if (m_rebuildPending || !options.value("enabled").toBool() || !options.value(kind + "_enabled").toBool()) {
+        closeOsd(); return;
+    }
+    // Config/output changes already close the group in rebuild(). Reuse live
+    // surfaces while the OSD is visible, including switches between kinds.
+    if (!m_osdWindows.empty()) {
+        for (const auto &view : m_osdWindows) view->rootObject()->setProperty("snapshot", snapshot);
+        m_osdTimer.start(options.value("duration_ms").toInt());
+        trace("update OSD " + kind);
+        return;
+    }
     const auto output = options.value("output").toString();
     for (auto *screen : QGuiApplication::screens()) {
         if (output != "*" && !(output == "primary" && screen == QGuiApplication::primaryScreen()) && output != screen->name()) continue;

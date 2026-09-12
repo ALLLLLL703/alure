@@ -10,12 +10,12 @@ namespace Alure {
 // Snapshot properties contain only observed data. Unavailable/disabled clears it.
 class Service : public QObject {
     Q_OBJECT
-    Q_PROPERTY(bool enabled READ enabled NOTIFY changed)
-    Q_PROPERTY(bool available READ available NOTIFY changed)
-    Q_PROPERTY(bool busy READ busy NOTIFY changed)
-    Q_PROPERTY(QString diagnostic READ diagnostic NOTIFY changed)
-    Q_PROPERTY(QVariantMap state READ state NOTIFY changed)
-    Q_PROPERTY(QVariantList items READ items NOTIFY changed)
+    Q_PROPERTY(bool enabled READ enabled NOTIFY enabledChanged)
+    Q_PROPERTY(bool available READ available NOTIFY availableChanged)
+    Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+    Q_PROPERTY(QString diagnostic READ diagnostic NOTIFY diagnosticChanged)
+    Q_PROPERTY(QVariantMap state READ state NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList items READ items NOTIFY itemsChanged)
 public:
     explicit Service(QObject *parent = nullptr);
     bool enabled() const { return m_enabled; }
@@ -28,7 +28,14 @@ public:
     Q_INVOKABLE void refresh();
     Q_INVOKABLE bool action(const QString &name, const QVariantMap &arguments = {});
 signals:
+    // Aggregate compatibility signal; QML snapshot bindings use granular signals.
     void changed();
+    void enabledChanged();
+    void availableChanged();
+    void busyChanged();
+    void diagnosticChanged();
+    void stateChanged();
+    void itemsChanged();
 protected:
     virtual void poll() = 0;
     virtual bool act(const QString &, const QVariantMap &) { return false; }
@@ -52,6 +59,7 @@ protected:
     bool dbusAction(const QDBusConnection &bus, const QString &destination, const QString &path,
                     const QString &interface, const QString &method, const QVariantList &arguments = {});
 private:
+    void updateSnapshot(bool available, QString diagnostic, QVariantMap state, QVariantList items);
     QTimer m_timer;
     bool m_enabled = false, m_available = false, m_busy = false;
     QString m_diagnostic = "Disabled";

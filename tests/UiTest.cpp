@@ -76,6 +76,22 @@ public:
 signals:
     void changed();
 };
+// Exercise the production notifier contract rather than FixtureService's broad
+// changed signal, which intentionally remains for old UI fixture tests.
+class RefreshFixture : public Alure::Service {
+public:
+    using Alure::Service::publish;
+    using Alure::Service::fail;
+    using Alure::Service::setBusy;
+    QString lastAction;
+    QVariantMap lastArguments;
+    int actionCount = 0;
+protected:
+    void poll() override {}
+    bool act(const QString &name, const QVariantMap &args) override {
+        lastAction = name; lastArguments = args; ++actionCount; return true;
+    }
+};
 class FixtureClipboard : public FixtureService {
     Q_OBJECT
     Q_PROPERTY(QVariantMap preview MEMBER preview NOTIFY previewChanged)
@@ -153,6 +169,61 @@ void replaceText(QQuickWindow *window, QQuickItem *item, const QString &text) {
 class UiTest : public QObject {
     Q_OBJECT
 private slots:
+    void popupStableRefresh_data() {
+        QTest::addColumn<QString>("moduleName");
+        for (const auto *name : {"updates", "notifications", "wifi", "bluetooth"}) QTest::newRow(name) << QString(name);
+    }
+    void popupStableRefresh() {
+        QFETCH(QString, moduleName);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        RefreshFixture service;
+        auto module = config.model().value("modules").toMap().value(moduleName).toMap();
+        auto behavior = module.value("behavior").toMap(); behavior["interval_ms"] = 60000;
+        module["behavior"] = behavior; service.configure(module);
+        QVariantList rows;
+        for (int i = 0; i < 30; ++i) rows << QVariantMap{{"id", QString::number(i)}, {"name", "package"}, {"ssid", "Fixture"}, {"Alias", "Device"}, {"summary", "Notification"}, {"body", "Observed fixture"}, {"active", true}, {"actions", QVariantList{}}};
+        QVariantMap state{{"adapters", QVariantList{QVariantMap{{"path", "/adapter"}, {"Alias", "Adapter"}, {"Powered", true}}}},
+                          {"savedConnections", QVariantList{QVariantMap{{"uuid", "saved"}, {"name", "Saved"}}}}};
+        service.publish(state, rows);
+        QSignalSpy itemsChanged(&service, &Alure::Service::itemsChanged), stateChanged(&service, &Alure::Service::stateChanged);
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{moduleName, QVariant::fromValue(&service)}});
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(440, 560);
+        view.setInitialProperties({{"moduleName", moduleName}}); view.setSource(QUrl("qrc:/qml/Popup.qml")); QCOMPARE(view.status(), QQuickView::Ready); view.show();
+        QPointer<QQuickItem> row = itemNamed(view.rootObject(), moduleName + "-text-0"); QVERIFY(row);
+        auto *status = itemNamed(view.rootObject(), "provider-status"); QVERIFY(status);
+        const auto text = status->property("text");
+        auto *scroll = itemNamed(view.rootObject(), "popup-scroll"); QVERIFY(scroll);
+        auto *flickable = scroll->property("contentItem").value<QQuickItem *>(); QVERIFY(flickable);
+        QTest::qWait(20); flickable->setProperty("contentY", 100.);
+        const auto scrollY = flickable->property("contentY").toDouble();
+        QPointer<QQuickItem> nested;
+        if (moduleName == "wifi") nested = itemNamed(view.rootObject(), "wifi-saved-saved");
+        if (moduleName == "bluetooth") nested = itemNamed(view.rootObject(), "bluetooth-adapter-/adapter");
+        if (nested) { nested->forceActiveFocus(); QVERIFY(nested->hasActiveFocus()); }
+        for (int i = 0; i < 10; ++i) {
+            service.setBusy(true); QCoreApplication::processEvents();
+            QVERIFY(row); if (nested) { QVERIFY(nested->isEnabled()); QVERIFY(nested->hasActiveFocus()); }
+            QCOMPARE(status->property("text"), text);
+            service.setBusy(false); service.publish(state, rows); QCoreApplication::processEvents();
+        }
+        QCOMPARE(itemsChanged.size(), 0); QCOMPARE(stateChanged.size(), 0);
+        QVERIFY(row); QCOMPARE(row.data(), itemNamed(view.rootObject(), moduleName + "-text-0"));
+        QCOMPARE(flickable->property("contentY").toDouble(), scrollY);
+        // A changed summary/state must not invalidate the independent item list.
+        state["count"] = 30; service.publish(state, rows); QCoreApplication::processEvents();
+        QCOMPARE(itemsChanged.size(), 0); QCOMPARE(stateChanged.size(), 1); QVERIFY(row);
+        if (moduleName == "wifi" || moduleName == "bluetooth") { QTest::qWait(10); QVERIFY(nested); }
+        service.setBusy(true);
+        QVERIFY(QMetaObject::invokeMethod(view.rootObject(), "act", Q_ARG(QVariant, "fixtureAction"), Q_ARG(QVariant, (QVariantMap{{"id", "0"}}))));
+        QCOMPARE(service.actionCount, 0);
+        service.setBusy(false); QCOMPARE(service.actionCount, 0); // callback has not returned yet
+        QTRY_COMPARE(service.actionCount, 1); QCOMPARE(service.lastArguments.value("id").toString(), "0");
+        service.fail("Fixture unavailable"); QTRY_VERIFY(!row);
+        QVERIFY2(warnings.isEmpty(), "No QML warnings during refresh");
+    }
     void backgroundBlurGeometryAndLifecycle() {
         QQuickWindow window; window.resize(400, 240);
         QQuickItem parent(window.contentItem()); parent.setPosition({20, 30});
@@ -576,11 +647,21 @@ QtObject { property var order: Fields.describe("modules.taskbar.behavior.orderin
         QVERIFY(window->flags().testFlag(Qt::WindowDoesNotAcceptFocus)); QVERIFY(window->flags().testFlag(Qt::WindowTransparentForInput));
         auto *view = qobject_cast<QQuickView *>(window); QVERIFY(view); QCOMPARE(view->status(), QQuickView::Ready);
         QVERIFY(view->rootObject()->property("muted").toBool()); QCOMPARE(view->rootObject()->property("label").toString(), "Muted");
-        QTRY_VERIFY(osds().isEmpty());
+        QPointer<QQuickView> original = view;
+        QPointer<QQuickItem> originalRoot = view->rootObject();
+        QTest::qWait(90);
+        host.showOsd({{"kind", "volume"}, {"percent", 75}, {"muted", false}});
+        QCOMPARE(osds().first(), original.data()); QCOMPARE(original->rootObject(), originalRoot.data());
+        QCOMPARE(itemNamed(originalRoot, "osd-value")->property("text").toString(), "75%");
+        QTest::qWait(90); QVERIFY(original); QVERIFY(original->isVisible()); // original deadline has passed
+        QTRY_VERIFY(osds().isEmpty()); QVERIFY(!original); QVERIFY(!originalRoot);
         host.showOsd({{"kind", "keyboard"}, {"percent", 50}, {"level", 1}, {"maximum", 2}});
         QCOMPARE(osds().size(), 1); view = qobject_cast<QQuickView *>(osds().first()); QVERIFY(view);
         QCOMPARE(itemNamed(view->rootObject(), "osd-value")->property("text").toString(), "1 / 2");
-        host.showOsd({{"kind", "screen"}, {"percent", 80}}); QCOMPARE(osds().size(), 1); // replace, do not stack
+        original = view; originalRoot = view->rootObject();
+        host.showOsd({{"kind", "screen"}, {"percent", 80}}); QCOMPARE(osds().size(), 1);
+        QCOMPARE(osds().first(), original.data()); QCOMPARE(original->rootObject(), originalRoot.data());
+        QCOMPARE(itemNamed(originalRoot, "osd-value")->property("text").toString(), "80%");
         QVERIFY(config.saveText("[[panels]]\nenabled=false\n[ui.osd]\nenabled=false")); QTest::qWait(20); QVERIFY(osds().isEmpty());
         host.showOsd({{"kind", "screen"}, {"percent", 30}}); QVERIFY(osds().isEmpty());
         QVERIFY(config.saveText("[[panels]]\nenabled=false\n[ui.osd]\noutput='nonexistent-output'")); QTest::qWait(20);
