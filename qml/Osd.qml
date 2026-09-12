@@ -1,4 +1,5 @@
 import QtQuick
+import Alure 1.0
 import QtQuick.Layouts
 
 Rectangle {
@@ -14,6 +15,7 @@ Rectangle {
     color: options.background || theme.palette.background
     opacity: options.opacity
     radius: options.radius
+    BackgroundBlur { anchors.fill: parent; radius: parent.radius; blurEnabled: Config.model.theme.blur_enabled }
     Accessible.role: Accessible.Indicator
     Accessible.name: label + " " + Math.round(snapshot.percent) + "%"
     ColumnLayout {

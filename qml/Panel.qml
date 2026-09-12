@@ -1,4 +1,5 @@
 import QtQuick
+import Alure 1.0
 import QtQuick.Controls
 
 Item {
@@ -18,6 +19,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: root.theme.radius
+        BackgroundBlur { anchors.fill: parent; radius: parent.radius; blurEnabled: Config.model.theme.blur_enabled }
         color: Qt.alpha(root.theme.palette.background, root.theme.opacity)
         border.color: Qt.alpha(root.theme.palette.border, root.theme.opacity)
         border.width: root.theme.border_width

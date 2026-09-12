@@ -1,3 +1,4 @@
+#include "BackgroundBlur.h"
 #include "ConfigStore.h"
 #include "PanelHost.h"
 #include "PopupPlacement.h"
@@ -151,6 +152,116 @@ void replaceText(QQuickWindow *window, QQuickItem *item, const QString &text) {
 class UiTest : public QObject {
     Q_OBJECT
 private slots:
+    void backgroundBlurGeometryAndLifecycle() {
+        QQuickWindow window; window.resize(400, 240);
+        QQuickItem parent(window.contentItem()); parent.setPosition({20, 30});
+        Alure::BackgroundBlur blur(&parent);
+        blur.setSize({100, 60}); blur.setBlurEnabled(true); blur.setRadius(12);
+        QVERIFY(blur.requestedRegion().isEmpty()); // hidden window
+        window.show();
+        QTRY_VERIFY(!blur.requestedRegion().isEmpty());
+        QCOMPARE(blur.requestedRegion().boundingRect(), QRect(20, 30, 100, 60));
+        QVERIFY(blur.requestedRegion().contains(QPoint(70, 60)));
+        QVERIFY(!blur.requestedRegion().contains(QPoint(20, 30)));
+        blur.setRadius(0);
+        QTRY_COMPARE(blur.requestedRegion(), QRegion(20, 30, 100, 60));
+        parent.setPosition({300, 220});
+        QTRY_COMPARE(blur.requestedRegion(), QRegion(300, 220, 100, 20));
+        window.resize(320, 230);
+        QTRY_COMPARE(blur.requestedRegion(), QRegion(300, 220, 20, 10));
+        blur.setWidth(0); QTRY_VERIFY(blur.requestedRegion().isEmpty());
+        blur.setSize({60, 40}); parent.setPosition({10, 10});
+        QTRY_COMPARE(blur.requestedRegion(), QRegion(10, 10, 60, 40));
+        parent.setVisible(false); QTRY_VERIFY(blur.requestedRegion().isEmpty());
+        parent.setVisible(true); QTRY_VERIFY(!blur.requestedRegion().isEmpty());
+        parent.setOpacity(0); QTRY_VERIFY(blur.requestedRegion().isEmpty());
+        parent.setOpacity(0.4); QTRY_VERIFY(!blur.requestedRegion().isEmpty());
+        blur.setBlurEnabled(false); QTRY_VERIFY(blur.requestedRegion().isEmpty());
+        blur.setBlurEnabled(true); QTRY_VERIFY(!blur.requestedRegion().isEmpty());
+        window.hide(); QTRY_VERIFY(blur.requestedRegion().isEmpty());
+        window.destroy(); window.show(); QTRY_VERIFY(!blur.requestedRegion().isEmpty());
+        QQuickWindow other; other.resize(200, 100); other.show();
+        parent.setParentItem(other.contentItem());
+        QTRY_COMPARE(blur.window(), &other);
+        QTRY_COMPARE(blur.requestedRegion(), QRegion(10, 10, 60, 40));
+        parent.setParentItem(nullptr); QTRY_VERIFY(blur.requestedRegion().isEmpty());
+    }
+    void backgroundBlurSurfaces_data() {
+        QTest::addColumn<QString>("surface");
+        for (const auto *surface : {"Panel", "calendar", "media", "clipboard", "TrayMenu", "Toast", "Osd", "ClipboardOverlay"})
+            QTest::newRow(surface) << QString(surface);
+    }
+    void backgroundBlurSurfaces() {
+        QFETCH(QString, surface);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        const QString source = "[theme]\nopacity=0.4\n[[panels]]\nmodules=['calendar']";
+        QVERIFY(config.previewText(source));
+        FixtureService service; FixtureClipboard clipboard; FixtureShell shell;
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        engine.rootContext()->setContextProperty("Shell", &shell);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{"tray", QVariant::fromValue(&service)}, {"media", QVariant::fromValue(&service)}, {"notifications", QVariant::fromValue(&service)}, {"clipboard", QVariant::fromValue(&clipboard)}});
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(800, 600);
+        QVariantMap properties;
+        QString file = surface;
+        if (surface == "Panel") properties = {{"panel", config.model().value("panels").toList().first()}, {"vertical", false}, {"outputName", "fixture"}};
+        else if (surface == "calendar" || surface == "media" || surface == "clipboard") {
+            file = "ModulePopup"; properties = {{"moduleName", surface}, {"popupPadding", 24}};
+        } else if (surface == "TrayMenu") properties = {{"trayItem", "fixture"}, {"popupPadding", 24}};
+        else if (surface == "Toast") properties = {{"notification", QVariantMap{{"id", "1"}, {"appName", "Fixture"}, {"summary", "Summary"}, {"body", "Body"}}}};
+        else if (surface == "Osd") properties = {{"snapshot", QVariantMap{{"kind", "volume"}, {"percent", 40}}}};
+        view.setInitialProperties(properties);
+        view.setSource(QUrl("qrc:/qml/" + file + ".qml"));
+        QCOMPARE(view.status(), QQuickView::Ready); view.show();
+        auto *blur = view.rootObject()->findChild<Alure::BackgroundBlur *>(); QVERIFY(blur);
+        if (surface == "ClipboardOverlay") {
+            QTest::qWait(20); QVERIFY(blur->requestedRegion().isEmpty()); // full-screen cursor probe
+            view.rootObject()->setProperty("anchorPosition", QPointF(50, 60));
+            view.rootObject()->setProperty("cardVisible", true);
+        }
+        QTRY_VERIFY(!blur->requestedRegion().isEmpty());
+        const auto rect = blur->mapRectToScene(blur->boundingRect()).toAlignedRect();
+        QCOMPARE(blur->requestedRegion().boundingRect(), rect);
+        QVERIFY(!blur->requestedRegion().contains(rect.topLeft()));
+        if (file == "ModulePopup" || file == "TrayMenu") QCOMPARE(rect.topLeft(), QPoint(24, 24));
+        if (file == "ClipboardOverlay") QVERIFY(rect.size() != view.size());
+        const qreal originalOpacity = blur->parentItem()->opacity();
+        QVERIFY(config.previewText(source + "\n[theme]" ) == false); // invalid draft retains the valid request
+        QVERIFY(blur->blurEnabled());
+        QVERIFY(config.previewText("[theme]\nblur_enabled=false\nopacity=0.4\n[[panels]]\nmodules=['calendar']"));
+        QTRY_VERIFY(blur->requestedRegion().isEmpty());
+        QCOMPARE(blur->parentItem()->opacity(), originalOpacity);
+        QVERIFY(config.previewText(source)); QTRY_VERIFY(!blur->requestedRegion().isEmpty());
+        const auto previous = blur->requestedRegion();
+        view.resize(720, 520); QTRY_VERIFY(blur->requestedRegion() != previous);
+        view.rootObject()->setVisible(false); QTRY_VERIFY(blur->requestedRegion().isEmpty());
+        view.rootObject()->setVisible(true); QTRY_VERIFY(!blur->requestedRegion().isEmpty());
+        view.hide(); QTRY_VERIFY(blur->requestedRegion().isEmpty());
+        QCOMPARE(warnings.size(), 0);
+    }
+    void backgroundBlurSettings() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QQmlEngine engine; engine.rootContext()->setContextProperty("Config", &config);
+        QQmlComponent component(&engine);
+        component.setData("import QtQml\nimport \"qrc:/qml/SettingsFields.js\" as Fields\nQtObject { property var field: Fields.describe('theme.blur_enabled', Config.model.theme.blur_enabled) }", QUrl());
+        std::unique_ptr<QObject> object(component.create()); QVERIFY2(object, qPrintable(component.errorString()));
+        const auto field = object->property("field").value<QJSValue>();
+        QCOMPARE(field.property("kind").toString(), "boolean");
+        QCOMPARE(field.property("label").toString(), "Frosted glass background");
+        engine.addImageProvider("icons", new Alure::IconProvider);
+        QQmlComponent settings(&engine, QUrl("qrc:/qml/Settings.qml"));
+        std::unique_ptr<QObject> form(settings.create()); QVERIFY2(form, qPrintable(settings.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(form.get()); QVERIFY(window);
+        QQuickItem *toggle = nullptr;
+        QTRY_VERIFY(toggle = itemNamed(window->contentItem(), "field-theme.blur_enabled-switch"));
+        QVERIFY(toggle->property("checked").toBool());
+        revealItem(toggle); clickItem(window, toggle);
+        QVERIFY(form->property("dirty").toBool());
+        QVERIFY(config.model().value("theme").toMap().value("blur_enabled").toBool()); // still a draft
+        QVERIFY(QMetaObject::invokeMethod(form.get(), "save"));
+        QVERIFY(config.reload()); QVERIFY(!config.model().value("theme").toMap().value("blur_enabled").toBool());
+    }
     void panelAutoHideLifecycle_data() {
         QTest::addColumn<QString>("edge");
         QTest::addColumn<int>("margin");
@@ -1425,6 +1536,7 @@ QtObject { property var order: Fields.describe("modules.taskbar.behavior.orderin
 int main(int argc, char **argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen"); qputenv("QT_QUICK_BACKEND", "software");
     QGuiApplication app(argc, argv); QQuickStyle::setStyle("Basic"); QQuickWindow::setDefaultAlphaBuffer(true);
+    Alure::BackgroundBlur::registerQmlType();
     UiTest test; return QTest::qExec(&test, argc, argv);
 }
 #include "UiTest.moc"

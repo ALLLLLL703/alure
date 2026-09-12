@@ -9,6 +9,9 @@ calendar/battery details expose supported controls and honest provider diagnosti
 A lazy [cliphist module](docs/clipboard.md) adds text/image history previews,
 search, copy and deletion; `alure --clipboard` opens a standalone view at the cursor.
 No wallpaper, compositor replacement or simulated system state is supplied.
+[Frosted glass backgrounds](docs/background-blur.md) request compositor blur by default;
+`theme.blur_enabled=false` restores alpha-only transparency. Blur requires compositor
+support (Niri >=26.04); opacity remains independent of compositor-controlled blur strength.
 
 See [architecture](docs/architecture.md), [configuration](docs/configuration.md),
 [interface/configuration coverage](docs/interface.md), [current UI changes](docs/ui-refinement.md), and
@@ -20,8 +23,8 @@ See [architecture](docs/architecture.md), [configuration](docs/configuration.md)
 System dependencies (no downloads by CMake): C++20 compiler, CMake >=3.24, Ninja,
 Qt >=6.9 Core/Gui/Quick/QuickControls2/QuickDialogs2/Svg/DBus/Network/Test, Qt Wayland runtime,
 LayerShellQt >=6.6 (Interface target with `setExclusiveEdge`, `setScreen`,
-`setDesiredSize`; tested with Qt 6.11.2 / LayerShellQt 6.7.5), and toml++ >=3.4. On Arch these correspond to `base-devel cmake
-ninja qt6-base qt6-declarative qt6-svg qt6-wayland layer-shell-qt tomlplusplus`.
+`setDesiredSize`; tested with Qt 6.11.2 / LayerShellQt 6.7.5), KWindowSystem >=6.25 (tested with 6.30.0), and toml++ >=3.4. On Arch these correspond to `base-devel cmake
+ninja qt6-base qt6-declarative qt6-svg qt6-wayland layer-shell-qt kwindowsystem tomlplusplus`.
 Qt Test and `dbus-run-session` are only required with BUILD_TESTING=ON. No packages are installed by Alure. Runtime integrations use optional `wpctl`/`pactl` ([automatic audio backends](docs/audio.md)),
 `checkupdates`, `nmcli`, `cliphist`/`wl-copy` (clipboard module), Niri IPC, session DBus, BlueZ and sysfs; absent providers
 produce diagnostics, not simulated data. Module popups rely on Qt Wayland 6.9+

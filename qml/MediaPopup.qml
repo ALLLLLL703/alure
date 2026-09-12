@@ -1,4 +1,5 @@
 import QtQuick
+import Alure 1.0
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -51,6 +52,7 @@ Control {
     Keys.onEscapePressed: event => { if (Config.model.ui.escape_closes) { Shell.closePopup(); event.accepted = true } }
     background: Rectangle {
         radius: root.theme.radius
+        BackgroundBlur { anchors.fill: parent; radius: parent.radius; blurEnabled: Config.model.theme.blur_enabled }
         color: Qt.alpha(root.theme.palette.background, root.theme.opacity)
         border.width: root.theme.border_width
         border.color: root.theme.palette.border

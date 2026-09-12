@@ -1,4 +1,5 @@
 import QtQuick
+import Alure 1.0
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -54,7 +55,13 @@ Control {
     palette.highlight: theme.palette.accent
     palette.highlightedText: theme.palette.background
     Keys.onEscapePressed: event => { if (Config.model.ui.escape_closes) { Shell.closePopup(); event.accepted = true } }
-    background: Rectangle { color: Qt.alpha(root.theme.palette.background, root.theme.opacity); radius: root.theme.radius; border.width: root.theme.border_width; border.color: root.theme.palette.border }
+    background: Rectangle {
+        color: Qt.alpha(root.theme.palette.background, root.theme.opacity)
+        radius: root.theme.radius
+        border.width: root.theme.border_width
+        border.color: root.theme.palette.border
+        BackgroundBlur { anchors.fill: parent; radius: parent.radius; blurEnabled: Config.model.theme.blur_enabled }
+    }
     contentItem: ColumnLayout {
         spacing: root.theme.spacing
         RowLayout {

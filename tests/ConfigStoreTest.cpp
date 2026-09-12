@@ -30,6 +30,20 @@ private slots:
         QVERIFY(store.reload()); QVERIFY(!QFile::exists(store.path()));
         QCOMPARE(store.model(), model);
     }
+    void backgroundBlurOptions() {
+        QVariantMap model; QString error;
+        QVERIFY2(ConfigStore::parse({}, model, error), qPrintable(error));
+        QVERIFY(model.value("theme").toMap().value("blur_enabled").toBool());
+        for (const auto *enabled : {"true", "false"}) {
+            QVERIFY2(ConfigStore::parse(QByteArray("[theme]\nblur_enabled=") + enabled + "\nopacity=0.4", model, error), qPrintable(error));
+            QCOMPARE(model.value("theme").toMap().value("blur_enabled").toBool(), QByteArray(enabled) == "true");
+            QCOMPARE(model.value("theme").toMap().value("opacity").toDouble(), 0.4);
+        }
+        for (const auto *invalid : {"1", "0.5", "'true'", "[]", "{}"}) {
+            QVERIFY(!ConfigStore::parse(QByteArray("[theme]\nblur_enabled=") + invalid, model, error));
+            QVERIFY2(error.contains("theme.blur_enabled"), qPrintable(error));
+        }
+    }
     void panelVisibilityOptions() {
         QVariantMap model; QString error;
         QVERIFY(ConfigStore::parse({}, model, error));

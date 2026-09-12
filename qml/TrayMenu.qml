@@ -1,4 +1,5 @@
 import QtQuick
+import Alure 1.0
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -27,6 +28,7 @@ FocusScope {
         border.color: root.theme.palette.border
         border.width: root.theme.border_width
         radius: root.theme.radius
+        BackgroundBlur { anchors.fill: parent; radius: parent.radius; blurEnabled: Config.model.theme.blur_enabled }
         ColumnLayout {
             id: content
             anchors.fill: parent

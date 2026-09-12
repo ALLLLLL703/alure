@@ -13,6 +13,7 @@ padding = 12
 radius = 14
 border_width = 1
 opacity = 0.88
+blur_enabled = true # compositor background blur; false retains alpha only (reload applies)
 icon_mode = "builtin" # builtin or theme (QIcon/qt6ct with SVG fallback)
 icon_size = 18
 icon_theme = "" # empty respects the desktop / qt6ct default

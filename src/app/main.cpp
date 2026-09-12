@@ -1,3 +1,4 @@
+#include "BackgroundBlur.h"
 #include "ClipboardHost.h"
 #include "ClipboardImageProvider.h"
 #include "ConfigStore.h"
@@ -136,6 +137,7 @@ int main(int argc, char **argv) {
     clipboard->configure(module);
   } else if (!parser.isSet("settings"))
     services = std::make_unique<Alure::Services>(config);
+  Alure::BackgroundBlur::registerQmlType();
   QQmlApplicationEngine engine;
   QObject::connect(&engine, &QQmlEngine::warnings, &engine,
                    [](const QList<QQmlError> &errors) {

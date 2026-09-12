@@ -43,6 +43,17 @@ QVariant model; their exact source survives saves. Maximum document size: 1 MiB.
   panel process to enable it again. Other supported values apply on valid reload.
   Qt platform/qt6ct environment selection is external and requires process restart.
 
+## Frosted glass backgrounds
+
+`theme.blur_enabled = true` (default) requests real compositor background blur;
+`false` restores alpha-only backgrounds. This is a strict TOML boolean. The
+Appearance form exposes **Frosted glass background**. Save & apply reloads
+watching panels; with `runtime.watch=false`, restart. Existing standalone
+clipboard windows read the option at launch; settings stays opaque.
+`theme.opacity` still controls tint alpha, not blur strength. See
+[background blur](background-blur.md) for surface coverage, an example,
+unsupported-platform fallback and Niri xray behavior.
+
 ## Known keys and validation
 
 TOML types must match defaults exactly, except float fields also accept integers.
@@ -54,7 +65,7 @@ shown in defaults are validated by type; enum/range constraints follow below.
 |---|---|
 | root | `version` integer, exactly 1 |
 | runtime | `watch` bool=true; `reload_delay_ms` integer 50..10000, default 200; `trace_windows` bool=false emits window lifecycle stderr diagnostics |
-| theme | `name` midnight/dawn/forest/onedark/catppuccin/tokyonight; `font` nonempty string; `font_size` integer 6..72; `spacing`, `padding`, `radius` integer 0..128; `border_width` integer 0..16; `opacity` finite number 0..1 (backdrop alpha only); `icon_mode` builtin/theme; `icon_size` integer 8..128 |
+| theme | `name` midnight/dawn/forest/onedark/catppuccin/tokyonight; `font` nonempty string; `font_size` integer 6..72; `spacing`, `padding`, `radius` integer 0..128; `border_width` integer 0..16; `opacity` finite number 0..1 (backdrop alpha); `blur_enabled` boolean, default true, requests compositor background blur; `icon_mode` builtin/theme; `icon_size` integer 8..128 |
 | theme.palette | Optional `background`, `surface`, `foreground`, `muted`, `accent`, `border`: Qt color strings (`#rrggbb` recommended). Start with selected named theme, then apply overrides. `opacity` controls panel background/border alpha; content stays opaque. |
 | settings | `width` integer 400..7680; `height` 300..4320; `editor_font` nonempty string; `editor_font_size` integer 6..72 |
 | foundation | `label`, `notice`, `icon` strings; `bold`, `show_icon`, `show_notice` booleans. `icon` is a nonempty built-in or freedesktop theme icon name (letters/digits/underscore/dot/hyphen), not a filesystem path. Deprecated compatibility keys, validated but no longer rendered. |
