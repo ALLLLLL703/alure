@@ -26,6 +26,9 @@ void diagnoseSupport() {
 void BackgroundBlur::registerQmlType() {
     static const int type = qmlRegisterType<BackgroundBlur>("Alure", 1, 0, "BackgroundBlur");
     Q_UNUSED(type)
+    // Start asynchronous protocol discovery before QML creates/maps the first
+    // surface, not only after its background geometry becomes available.
+    if (wayland()) (void)KWindowEffects::isEffectAvailable(KWindowEffects::BlurBehind);
 }
 
 BackgroundBlur::BackgroundBlur(QQuickItem *parent) : QQuickItem(parent) {

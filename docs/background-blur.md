@@ -84,6 +84,33 @@ Implementation validation (Qt 6.11.2 / KWindowSystem 6.30.0):
   assertions and a clipboardView crash; SettingsCloseE2e fails. They are not
   repaired by this feature and no fully passing suite is claimed.
 
+### Parent live verification
+
+Computer-use checks ran in an isolated Sway → Niri 26.04 desktop, using a
+high-contrast terminal text fixture behind a calendar-only panel. Only the
+isolated Niri configuration set `background-effect { xray false; }`; it did not
+force `blur true`, so Alure's request controlled the effect.
+
+- At `theme.opacity=0.4`, enabling blur softened the terminal behind the panel
+  and calendar popup while their own text/icons stayed sharp. Rounded corners
+  and transparent popup padding did not blur the surrounding terminal.
+- Disabling `theme.blur_enabled` and reopening the popup restored sharp
+  background text; re-enabling restored blur through the file watcher.
+- Initial live inspection found that discovering the protocol only after mapping
+  the first panel could leave it alpha-only until reload. Discovery now starts
+  at QML type registration before window creation. Two fresh process launches
+  showed panel blur without a configuration reload. Wayland traces confirmed
+  `set_blur_region` before the first buffer commit in the corrected startup.
+- After the startup correction, the build passed; focused geometry/surface/settings
+  UI checks passed 12 cases, and blur configuration checks passed 3 (including
+  setup/cleanup). The earlier full-suite baseline failures remain unresolved.
+
+Fixtures, protocol traces and focused logs are under `/tmp/alure-blur-live/`;
+visual captures are in the parent computer-use transcript. The isolated desktop
+was stopped. No host Niri configuration, running Shell, or hardware setting was
+changed. Actual toast/OSD/clipboard visuals, physical multi-output and fractional
+scaling were not covered by this bounded live check.
+
 Sources inspected for this implementation:
 - [Niri 26.04 window effects](https://niri-wm.github.io/niri/Window-Effects.html)
 - [KWindowSystem v6.30 Wayland implementation](https://github.com/KDE/kwindowsystem/blob/v6.30.0/src/platforms/wayland/windoweffects.cpp)
