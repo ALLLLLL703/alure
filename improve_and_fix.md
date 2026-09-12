@@ -60,7 +60,7 @@
 
 `window_gap` 是**当前面板额外保留量**，不是“希望最终看见的间距”。本轮保持默认 0、整数范围 -256..256 和原公式，只在设置页明确显示所选面板 ID／边／输出、模式和补偿是否有效，改进字段帮助、默认 TOML 注释与[配置文档](docs/configuration.md)。
 
-父会话在隔离原生 Settings 中已看到顶部 `top-audit` 的帮助，显示自动预留空间、-16 调整量及 compositor 间距的区别；底部面板帮助尚未在原生界面观察，不能把自动化提示测试当作两块面板均已完成原生验证。
+父会话在显式私有 DBus、嵌套 Niri 的原生 Settings 中分别检查了两块面板：顶部 `top-audit` 显示自动预留空间、-16 调整量及 compositor gaps／struts 的区别；下拉选择底部 `tasks-audit` 后，帮助明确说明 auto-hide 不预留空间、window_gap／reserved screen space 被忽略，应选择紧邻不期望间距的 always-visible 面板。两项均有实际 computer-use 截图；只查看与切换选择，没有保存、应用或修改配置。日志：`/tmp/alure-improve-session/settings-isolated.log`。
 
 - always 且自动或正数 zone：`max(0, base_zone + window_gap)`。
 - `exclusive_zone=0` 不保留；auto-hide／dodge 发 -1、不保留，window_gap 被忽略；0 与 -1 的协议语义不同。
