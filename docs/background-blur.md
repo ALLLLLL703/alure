@@ -40,9 +40,10 @@ keep their previous meanings; blur itself does not soften text or icons.
 A helper inside each background Rectangle derives its rounded region in window-
 local logical pixels. It follows resizing, movement, visibility, opacity-zero
 ancestors and reparenting; regions are clipped to the window. Empty/hidden shapes
-explicitly disable blur: passing an empty enabled region to KWindowEffects would
-incorrectly blur the entire window. KWindowSystem owns Wayland objects, capability
-changes and surface recreation. Shape updates are event-driven and coalesced;
+clear visible blur using a nonempty off-surface region: passing an empty enabled
+region to KWindowEffects would incorrectly blur the entire window. KWindowSystem
+retains ownership of Wayland objects, capability changes and surface recreation;
+see the lifecycle workaround below. Shape updates are event-driven and coalesced;
 there is no screenshot capture or render-loop blur workload in Alure.
 
 ## Compositor policy and fallback
@@ -62,6 +63,78 @@ reports unavailable support. X11/offscreen previews do not request blur; their
 lifecycle tests cannot establish actual compositor visuals. No fake fallback is
 rendered. Support discovery can change after the diagnostic; KWindowSystem keeps
 requests for subsequent capability/expose events.
+
+## Rapid volume / OSD lifecycle fix
+
+Rapid observed volume changes replace the OSD window. On KWindowSystem 6.30, the
+Wayland `enableBlurBehind(window, false)` path removes the window's blur region,
+destroys its effect and disconnects its destruction observers, but then calls
+`installBlur(false)`. That call creates a **new** background-effect object with a
+null region, retained by the now-untracked window address. After that surface is
+destroyed, a later QWindow at the same address can reuse the stale effect. Niri
+correctly rejects the request with `wl_surface was destroyed`, disconnecting the
+entire application (exit 255), not just its OSD.
+
+The parent reproduced the reported failure with simulated volume readings
+alternating 20/80 every 200 ms: the old executable exited after 42 OSD requests.
+Its protocol trace showed effect 69 destroyed, effect 71 created with a null
+region for surface 64, surface 64 destroyed, then effect 71 reused roughly 7.4
+seconds later and rejected. Evidence: `/tmp/alure-volume-crash/before-2.log`.
+The fetched upstream 6.30 and master implementations matched this sequence.
+
+Alure avoids that false path in its shared BackgroundBlur helper. A disabled,
+hidden, zero-sized or detached helper uses `QRegion(-1, -1, 1, 1)`, wholly outside
+valid surface pixels, while leaving KWindowSystem's ownership tracking enabled.
+An initially disabled helper makes no request. Destruction listeners therefore
+remain installed until the owning window/surface dies; no fake visual blur or
+whole-window region is used. Public `QPlatformSurfaceEvent` tracks native
+creation/destruction, and no new request is issued once destruction starts.
+No protocol code is vendored and no library or compositor configuration is patched.
+
+A deterministic same-address window test also exposed a separate helper teardown
+hazard: QQuickItem's base destructor can emit `windowChanged` after the derived
+connection list/timer have been destroyed. Self and ancestor connections are now
+disconnected in the derived destructor before those members are destroyed.
+The pre-fix test failed in `BackgroundBlur::watchAncestors` (Qt assertion; core
+3788123, saved stack `/tmp/alure-volume-fix-destructor-core.txt`); the corrected
+test passes. Both fixes apply to all shared blur surfaces,
+not only volume; OSD timing, audio queues and all configuration semantics remain
+unchanged.
+
+### Lifecycle regression checks
+
+Default tests remain offscreen and never construct hardware/audio services:
+
+```sh
+cmake --build build -j2
+dbus-run-session -- ./build/tests/ui_tests backgroundBlurReusedWindowLifetime volumeOsdBlurChurn backgroundBlurGeometryAndLifecycle
+```
+
+For a **separately created isolated** Niri/Wayland display, set its actual runtime,
+Wayland and session bus environment, then opt into native protocol checks:
+
+```sh
+ALURE_TEST_NATIVE_WAYLAND=1 ./build/tests/ui_tests backgroundBlurReusedWindowLifetime volumeOsdBlurChurn backgroundBlurGeometryAndLifecycle
+```
+
+Do not point the native probe at the user's desktop. It deliberately creates and
+destroys 32 windows at the same C++ address and 120 actual PanelHost OSD windows,
+covering disabled/zero/hidden shapes, helper deletion, native surface recreation,
+OSD close/replacement and reparenting. A protocol error terminates the test
+process, so native success (unlike offscreen geometry checks) detects the original
+failure class. Native rendering and unsupported-compositor behavior require
+separate verification; the parent owns that live check.
+
+The parent ran those three native probes on isolated Niri: exit 0, 5 passed
+including setup/cleanup, with no fatal protocol errors in
+`/tmp/alure-volume-crash/native-tests.log`. Actual application gesture stress
+and visual verification are recorded separately by the parent.
+
+Implementation checks: build passed; lifecycle/surface UI checks 13 passed;
+volume controls/drag, settings, auto-hide and OSD checks 21 passed; Services 45
+passed with one opt-in hardware probe skipped; blur config 3 passed. Full CTest
+was not rerun for this fix; the three previously recorded unrelated baseline
+suite failures remain unresolved.
 
 ## Verification and sources
 

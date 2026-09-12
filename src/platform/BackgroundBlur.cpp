@@ -2,6 +2,7 @@
 #include <KWindowEffects>
 #include <QGuiApplication>
 #include <QPainterPath>
+#include <QPlatformSurfaceEvent>
 #include <QQuickWindow>
 #include <QtQml>
 #include <algorithm>
@@ -37,26 +38,49 @@ BackgroundBlur::BackgroundBlur(QQuickItem *parent) : QQuickItem(parent) {
     connect(this, &QQuickItem::windowChanged, this, [this] {
         detachWindow();
         m_window = window();
+        m_surfaceAlive = m_window && m_window->handle();
         if (m_window) m_window->installEventFilter(this);
         watchAncestors();
     });
     watchAncestors();
     m_window = window();
+    m_surfaceAlive = m_window && m_window->handle();
     if (m_window) m_window->installEventFilter(this);
 }
 
-BackgroundBlur::~BackgroundBlur() { detachWindow(); }
+BackgroundBlur::~BackgroundBlur() {
+    // QQuickItem's base destructor can emit windowChanged/parentChanged after
+    // our connection list and timer have already been destroyed.
+    disconnect(this, nullptr, this, nullptr);
+    for (const auto &connection : m_ancestorConnections) disconnect(connection);
+    detachWindow();
+}
 
 void BackgroundBlur::detachWindow() {
+    m_update.stop();
     if (m_window) {
+        // A detached/deleted helper must clear its still-live window, but must
+        // not issue protocol requests during native surface destruction.
+        if (m_backendRequested && m_surfaceAlive) applyRegion({});
         m_window->removeEventFilter(this);
-        if (wayland() && !m_region.isEmpty()) {
-            KWindowEffects::enableBlurBehind(m_window, false);
-            m_window->update();
-        }
     }
     m_window = nullptr;
+    m_surfaceAlive = false;
+    m_backendRequested = false;
     m_region = {};
+}
+
+void BackgroundBlur::applyRegion(const QRegion &region) {
+    if (!wayland() || !m_window || !m_surfaceAlive) return;
+    // KWindowSystem 6.30's false path removes its destruction observers, then
+    // creates a new ext-background-effect object. Reusing the QWindow address
+    // can then send requests to that dead surface (fatal Wayland error).
+    // Keep the library's ownership tracking, using a nonempty region wholly
+    // outside the surface to disable visible blur. Empty means WHOLE window.
+    const auto trackedRegion = region.isEmpty() ? QRegion(-1, -1, 1, 1) : region;
+    KWindowEffects::enableBlurBehind(m_window, true, trackedRegion);
+    m_backendRequested = true;
+    m_window->update(); // Double-buffered surface state; no manual wl_commit.
 }
 
 void BackgroundBlur::setBlurEnabled(bool enabled) {
@@ -97,7 +121,7 @@ void BackgroundBlur::watchAncestors() {
 }
 
 QRegion BackgroundBlur::shape() const {
-    if (!m_enabled || !m_window || !m_window->isVisible() || width() <= 0 || height() <= 0) return {};
+    if (!m_enabled || !m_window || !m_surfaceAlive || !m_window->isVisible() || width() <= 0 || height() <= 0) return {};
     for (const QQuickItem *item = this; item; item = item->parentItem())
         if (!item->isVisible() || item->opacity() <= 0) return {};
     QPainterPath path;
@@ -114,17 +138,22 @@ void BackgroundBlur::sync() {
     m_region = region;
     if (!m_window) return;
     if (!region.isEmpty()) diagnoseSupport();
-    if (wayland()) {
-        // An empty region means the WHOLE window to KWindowEffects. Never pass
-        // it with enable=true (notably clipboard probes and hidden panels).
-        // Keep the request even before capabilities arrive; KDE replays it on
-        // discovery, expose and native surface recreation and owns its lifetime.
-        KWindowEffects::enableBlurBehind(m_window, !region.isEmpty(), region);
-        m_window->update(); // Blur regions are double-buffered surface state.
-    }
+    applyRegion(region);
 }
 
 bool BackgroundBlur::eventFilter(QObject *, QEvent *event) {
+    if (event->type() == QEvent::PlatformSurface) {
+        const auto type = static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType();
+        m_surfaceAlive = type == QPlatformSurfaceEvent::SurfaceCreated;
+        if (!m_surfaceAlive) {
+            m_update.stop();
+            m_region = {};
+            // KWindowSystem keeps its own surface/window destruction listeners.
+            // Do not untrack it or manufacture a new effect while tearing down.
+        } else {
+            schedule();
+        }
+    }
     if (event->type() == QEvent::Resize || event->type() == QEvent::Show ||
         event->type() == QEvent::Hide || event->type() == QEvent::Expose)
         schedule();

@@ -31,8 +31,11 @@ private:
     void watchAncestors();
     void sync();
     void detachWindow();
+    void applyRegion(const QRegion &region);
     QRegion shape() const;
     bool m_enabled = false;
+    bool m_surfaceAlive = false;
+    bool m_backendRequested = false;
     qreal m_radius = 0;
     QPointer<QQuickWindow> m_window;
     QRegion m_region;

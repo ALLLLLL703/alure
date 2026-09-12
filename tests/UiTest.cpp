@@ -27,6 +27,7 @@
 #include <QPointer>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <optional>
 
 class FixtureMenu : public QObject {
     Q_OBJECT
@@ -185,6 +186,62 @@ private slots:
         QTRY_COMPARE(blur.window(), &other);
         QTRY_COMPARE(blur.requestedRegion(), QRegion(10, 10, 60, 40));
         parent.setParentItem(nullptr); QTRY_VERIFY(blur.requestedRegion().isEmpty());
+    }
+    void backgroundBlurReusedWindowLifetime() {
+        // std::optional guarantees the same QWindow address on each emplace.
+        // A stale effect keyed by that address is a fatal error on real Wayland,
+        // not detectable from QML geometry assertions alone.
+        std::optional<QQuickWindow> window;
+        for (int iteration = 0; iteration < 32; ++iteration) {
+            window.emplace(); window->resize(240, 120); window->setColor(Qt::transparent);
+            auto *blur = new Alure::BackgroundBlur(window->contentItem()); // Qt owns it
+            blur->setSize({200, 100}); blur->setRadius(12); blur->setBlurEnabled(true);
+            window->show(); QTRY_VERIFY(!blur->requestedRegion().isEmpty());
+            switch (iteration % 4) {
+            case 0:
+                blur->setBlurEnabled(false); QTRY_VERIFY(blur->requestedRegion().isEmpty());
+                break;
+            case 1:
+                blur->setOpacity(0); QTRY_VERIFY(blur->requestedRegion().isEmpty());
+                blur->setOpacity(1); QTRY_VERIFY(!blur->requestedRegion().isEmpty());
+                blur->setWidth(0); QTRY_VERIFY(blur->requestedRegion().isEmpty());
+                break;
+            case 2:
+                // The helper disappears while its window is still live.
+                delete blur;
+                break;
+            case 3:
+                window->destroy(); window->show(); QTRY_VERIFY(!blur->requestedRegion().isEmpty());
+                window->hide(); QTRY_VERIFY(blur->requestedRegion().isEmpty());
+                window->show(); QTRY_VERIFY(!blur->requestedRegion().isEmpty());
+                break;
+            }
+            QTest::qWait(5); // Flush requests/replies before and after destruction.
+            window.reset(); QTest::qWait(5);
+        }
+    }
+    void volumeOsdBlurChurn() {
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        QVERIFY(config.saveText("[[panels]]\nenabled=false\n[ui.osd]\nduration_ms=100\n[theme]\nblur_enabled=true"));
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        const bool native = QGuiApplication::platformName().startsWith("wayland");
+        Alure::PanelHost host(config, engine, !native);
+        for (int iteration = 0; iteration < 120; ++iteration) {
+            // Only observed fixture values: never create an audio/system service.
+            host.showOsd({{"kind", "volume"}, {"percent", iteration % 2 ? 20 : 80}, {"muted", iteration % 3 == 0}});
+            QQuickView *osd = nullptr;
+            for (auto *candidate : QGuiApplication::topLevelWindows())
+                if (candidate->title() == "Alure OSD" && candidate->isVisible()) osd = qobject_cast<QQuickView *>(candidate);
+            QVERIFY(osd);
+            auto *blur = osd->rootObject()->findChild<Alure::BackgroundBlur *>(); QVERIFY(blur);
+            QTRY_VERIFY(!blur->requestedRegion().isEmpty());
+            QTest::qWait(5);
+            if (iteration % 10 == 0) { host.closeOsd(); QTest::qWait(5); }
+        }
+        host.closeOsd(); QTest::qWait(20);
+        QCOMPARE(warnings.size(), 0);
     }
     void backgroundBlurSurfaces_data() {
         QTest::addColumn<QString>("surface");
@@ -1534,7 +1591,10 @@ QtObject { property var order: Fields.describe("modules.taskbar.behavior.orderin
     }
 };
 int main(int argc, char **argv) {
-    qputenv("QT_QPA_PLATFORM", "offscreen"); qputenv("QT_QUICK_BACKEND", "software");
+    // Native lifecycle probes must be explicitly launched on an isolated
+    // Wayland display; default CTest never uses the user's desktop.
+    qputenv("QT_QPA_PLATFORM", qEnvironmentVariableIntValue("ALURE_TEST_NATIVE_WAYLAND") == 1 ? "wayland" : "offscreen");
+    qputenv("QT_QUICK_BACKEND", "software");
     QGuiApplication app(argc, argv); QQuickStyle::setStyle("Basic"); QQuickWindow::setDefaultAlphaBuffer(true);
     Alure::BackgroundBlur::registerQmlType();
     UiTest test; return QTest::qExec(&test, argc, argv);
