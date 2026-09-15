@@ -137,3 +137,11 @@ with Event 12 acknowledged, exit 0, and one surface. The isolated native session
 was stopped by the parent. This is parent-supplied evidence, not worker-run
 native validation; native multi-output, scaling and focus-loss remain untested.
 No unrelated full-suite success is claimed.
+
+After the review fixes, the parent independently inspected the observer/menu/parser
+changes and reran all seven scoped suites at `971c448`: **7/7 passed**, 24.94s
+(`/tmp/alure-tray-launcher/parent-tests-final.log`). The earlier delayed-reply test
+failure was corrected by using a separate private-bus fixture connection and
+scoped fixture cleanup. The user's ModuleStrip snapshot was byte-compared: only
+the deliberately committed launcher-label expression differs; original formatting
+and deleted learning files remain uncommitted. No installation or push occurred.
