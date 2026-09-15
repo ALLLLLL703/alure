@@ -90,8 +90,8 @@ for UI, per-module style, controls_style and icon_theme keys.
 | thickness | 44 | Integer 16..512 logical pixels, clamped to output extent |
 | length | 0 | Integer 0..32768; 0 fills the edge, otherwise centered along edge and clamped to output |
 | exclusive_zone | -1 | Integer -1..32768; -1 sends clamped thickness as the protocol zone, 0 disables reservation, positive sends an explicit protocol zone; the compositor adds the anchored edge margin to positive zones |
-| layer | top | background / bottom / top / overlay |
-| visibility | see below | Per-panel table: `mode="always"` (always/dodge-windows/auto-hide), `show_delay_ms=100`, `hide_delay_ms=350` (integers 0..10000), `edge_trigger_px=2` (integer 1..16), `unknown_geometry="hide"` (hide/show). Dynamic modes never reserve space; reload applies. |
+| layer | top | background / bottom / top / overlay; overlay is capped to top while `visibility.respect_fullscreen=true` |
+| visibility | see below | Per-panel table: `mode="always"` (always/dodge-windows/auto-hide), `respect_fullscreen=true` (boolean; native fullscreen stacking for body and trigger), `show_delay_ms=100`, `hide_delay_ms=350` (integers 0..10000), `edge_trigger_px=2` (integer 1..16), `unknown_geometry="hide"` (hide/show). Dynamic modes never reserve space; reload applies. |
 | margins | all 8 | Table top/right/bottom/left integers 0..4096 logical pixels |
 | modules | all ten names in default example | Ordered string array, no duplicate or undefined names |
 

@@ -22,6 +22,7 @@ struct PanelPlacement {
     LayerShellQt::Window::Anchors anchors;
     LayerShellQt::Window::Anchor edge;
     LayerShellQt::Window::Layer layer;
+    LayerShellQt::Window::Layer triggerLayer;
     int exclusiveZone;
     bool vertical;
 };

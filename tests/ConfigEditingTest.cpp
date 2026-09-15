@@ -10,7 +10,7 @@ private slots:
         QTemporaryDir dir; ConfigStore store(dir.filePath("config.toml"));
         for (const QString &source : {QString("# inherited panel\nversion=1\n"), QString("# explicit panel\n[[panels]]\nid='main'\n"), QString::fromUtf8(ConfigStore::defaultSource())}) {
             QString edited = source;
-            for (const auto &field : QList<QPair<QString, QString>>{{"mode", "'dodge-windows'"}, {"show_delay_ms", "0"}, {"hide_delay_ms", "700"}, {"edge_trigger_px", "4"}, {"unknown_geometry", "'show'"}}) {
+            for (const auto &field : QList<QPair<QString, QString>>{{"respect_fullscreen", "false"}, {"mode", "'dodge-windows'"}, {"show_delay_ms", "0"}, {"hide_delay_ms", "700"}, {"edge_trigger_px", "4"}, {"unknown_geometry", "'show'"}}) {
                 const auto result = store.editLiteral(edited, "panels.0.visibility." + field.first, field.second);
                 QVERIFY2(result.value("error").toString().isEmpty(), qPrintable(result.value("error").toString()));
                 edited = result.value("text").toString();
@@ -19,6 +19,7 @@ private slots:
             QVariantMap model; QString error; QVERIFY(ConfigStore::parse(edited.toUtf8(), model, error));
             const auto visibility = model.value("panels").toList().first().toMap().value("visibility").toMap();
             QCOMPARE(visibility.value("mode").toString(), "dodge-windows");
+            QCOMPARE(visibility.value("respect_fullscreen").toBool(), false);
             QCOMPARE(visibility.value("edge_trigger_px").toInt(), 4);
             const auto invalid = store.editLiteral(edited, "panels.0.visibility.edge_trigger_px", "0");
             QVERIFY(!invalid.value("error").toString().isEmpty()); QCOMPARE(invalid.value("text").toString(), edited);

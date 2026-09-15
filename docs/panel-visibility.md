@@ -13,6 +13,7 @@ layer = "top"
 # Other panel keys inherit defaults.
 [panels.visibility]
 mode = "dodge-windows" # always, dodge-windows, auto-hide
+respect_fullscreen = true
 show_delay_ms = 100
 hide_delay_ms = 350
 edge_trigger_px = 2
@@ -20,7 +21,7 @@ unknown_geometry = "hide" # hide or show
 ```
 
 See [the three-panel example](../config/panel-visibility-example.toml). Settings →
-Panels → Panel visibility exposes all five fields, with the same enums/ranges as
+Panels → Panel visibility exposes all six fields, with the same enums/ranges as
 TOML. Save applies through the normal valid configuration reload; with
 `runtime.watch=false`, restart the panel process. Invalid types, enum strings,
 and out-of-range numbers produce diagnostics and retain the last good runtime
@@ -29,10 +30,28 @@ configuration. Missing keys inherit the defaults above.
 | Key | Type / bounds | Meaning |
 |---|---|---|
 | `mode` | string enum | `always`: visible, preserves `exclusive_zone` / `window_gap`; `dodge-windows`: hide for an intersecting window; `auto-hide`: hide when pointer leaves |
+| `respect_fullscreen` | boolean, default `true` | Use native compositor fullscreen stacking: cap an overlay body to top and put the edge trigger on top. False preserves the requested body layer and overlay trigger. |
 | `show_delay_ms` | integer 0–10000 | Continuous edge hover or unobstructed dodge state before revealing; popup/menu pinning reveals immediately |
 | `hide_delay_ms` | integer 0–10000 | Delay before hiding after pointer/popup pinning ends and mode requires hiding; repeated layout events do not postpone an already pending transition |
 | `edge_trigger_px` | integer 1–16 logical pixels | Invisible physical-output-edge input strip, along the panel's configured length; clamped to the output |
 | `unknown_geometry` | string `hide` / `show` | Conservative obstruction / ignore unknown rectangles in dodge mode; also selects hide / show while initial snapshots are incomplete or the Niri connection is unavailable |
+
+## Native fullscreen stacking
+
+By default all modes respect fullscreen through layer-shell, without IPC fullscreen
+fields, window-size heuristics or polling. A requested `overlay` body becomes `top`;
+`top`, `bottom` and `background` remain unchanged. Dynamic edge triggers use `top`
+so they do not capture the edge above fullscreen. Set `respect_fullscreen=false`
+per panel to restore its requested body layer and the old overlay trigger.
+
+[Niri's layer-shell documentation](https://niri-wm.github.io/niri/Layer%E2%80%90Shell-Components.html)
+states that focused, settled fullscreen windows render above the top layer;
+overlay renders above fullscreen. Focus, output/workspace selection and transition
+stacking remain compositor-owned. This is not app-specific forced hiding: panel
+visibility state, reservation, popup pinning and explicit popup layers are unchanged.
+In particular `always` retains its reservation, and an overlay body only stays above
+fullscreen when this option is off. Other compositors use their native layer policy.
+Save/reload applies the option (restart with `runtime.watch=false`).
 
 ## Geometry and precision limits
 
@@ -79,7 +98,7 @@ The proposed Niri viewport extension is not treated as an available API.
   scene content is invisible and its input mask lies entirely outside the surface.
   Hidden body clicks therefore pass through; an empty Qt mask is deliberately not
   used because that means full input. Reveal/hide never resizes the desktop.
-- One transparent, non-keyboard-interactive overlay surface per dynamic panel
+- One transparent, non-keyboard-interactive edge surface per dynamic panel
   catches the physical edge. While hidden **only the thin strip** takes input;
   while revealed a transparent bridge spans the configured edge margin, allowing
   travel from edge to panel without losing hover. Outside the configured panel
@@ -89,8 +108,9 @@ The proposed Niri viewport extension is not treated as an available API.
   submenus pin the originating panel from the queued open request through dismissal.
   Hover reveal never requests activation or keyboard focus. Existing explicit
   popup opening retains its on-demand keyboard policy; it is restored on close.
-- `layer` still controls the body. Use `top` or `overlay` to reveal over ordinary
-  clients, and `overlay` if it must also appear over fullscreen clients. A configured
+- `layer` controls the body subject to the fullscreen cap above. Use `top` or
+  `overlay` to reveal over ordinary clients; use `overlay` with
+  `respect_fullscreen=false` to appear over fullscreen clients. A configured
   `bottom`/`background` body can remain behind clients even when logically revealed.
 - Same-edge panels may overlap, including their triggers; there is no stacking
   solver. Prefer disjoint edges/outputs/lengths. Compositor shortcuts at the edge

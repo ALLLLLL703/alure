@@ -1675,7 +1675,7 @@ QtObject { property var order: Fields.describe("modules.taskbar.behavior.orderin
             return paths;
         };
         const QStringList themePriority{"theme.name", "theme.font", "theme.font_size", "theme.opacity", "theme.spacing", "theme.padding", "theme.radius", "theme.icon_size", "theme.icon_mode", "theme.icon_theme"};
-        const QStringList expectedPanel{"panels.0.edge", "panels.0.enabled", "panels.0.exclusive_zone", "panels.0.id", "panels.0.layer", "panels.0.layout", "panels.0.length", "panels.0.margins.bottom", "panels.0.margins.left", "panels.0.margins.right", "panels.0.margins.top", "panels.0.output", "panels.0.spacer_size", "panels.0.thickness", "panels.0.visibility.edge_trigger_px", "panels.0.visibility.hide_delay_ms", "panels.0.visibility.mode", "panels.0.visibility.show_delay_ms", "panels.0.visibility.unknown_geometry", "panels.0.window_gap"};
+        const QStringList expectedPanel{"panels.0.edge", "panels.0.enabled", "panels.0.exclusive_zone", "panels.0.id", "panels.0.layer", "panels.0.layout", "panels.0.length", "panels.0.margins.bottom", "panels.0.margins.left", "panels.0.margins.right", "panels.0.margins.top", "panels.0.output", "panels.0.spacer_size", "panels.0.thickness", "panels.0.visibility.edge_trigger_px", "panels.0.visibility.hide_delay_ms", "panels.0.visibility.mode", "panels.0.visibility.respect_fullscreen", "panels.0.visibility.show_delay_ms", "panels.0.visibility.unknown_geometry", "panels.0.window_gap"};
         for (int pass = 0; pass < 2; ++pass) {
             QCOMPARE(fieldPaths().mid(0, themePriority.size()), themePriority);
             const auto remaining = fieldPaths().mid(themePriority.size()); auto sorted = remaining; sorted.sort();

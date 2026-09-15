@@ -58,6 +58,28 @@ private slots:
             }
         }
     }
+    void fullscreenLayers() {
+        using W = LayerShellQt::Window;
+        QVariantMap model; QString error; QVERIFY(Alure::ConfigStore::parse({}, model, error));
+        auto panel = model.value("panels").toList().first().toMap();
+        for (const auto *mode : {"always", "dodge-windows", "auto-hide"}) {
+            for (const auto *edge : {"top", "bottom", "left", "right"}) {
+                for (const auto &entry : QList<QPair<QString, W::Layer>>{{"background", W::LayerBackground}, {"bottom", W::LayerBottom}, {"top", W::LayerTop}, {"overlay", W::LayerOverlay}}) {
+                    panel["edge"] = edge; panel["layer"] = entry.first;
+                    for (const auto &setting : {QVariant(), QVariant(true), QVariant(false)}) {
+                        QVariantMap visibility{{"mode", mode}};
+                        if (setting.isValid()) visibility["respect_fullscreen"] = setting;
+                        panel["visibility"] = visibility;
+                        const bool respect = !setting.isValid() || setting.toBool();
+                        const auto p = Alure::panelPlacement(panel, {1920, 1080});
+                        QCOMPARE(p.layer, respect && entry.second == W::LayerOverlay ? W::LayerTop : entry.second);
+                        QCOMPARE(p.triggerLayer, respect ? W::LayerTop : W::LayerOverlay);
+                        QCOMPARE(p.exclusiveZone, QString(mode) == "always" ? 44 : -1);
+                    }
+                }
+            }
+        }
+    }
     void dynamicPlacementNeverReserves() {
         QVariantMap model; QString error; QVERIFY(Alure::ConfigStore::parse({}, model, error));
         auto panel = model.value("panels").toList().first().toMap(); panel["length"] = 500;
@@ -173,7 +195,7 @@ private slots:
         p = Alure::panelPlacement(panel, {1920, 1080});
         QCOMPARE(p.size, vertical ? QSize(44, 500) : QSize(500, 44));
         QCOMPARE(p.anchors.toInt(), anchor); QCOMPARE(p.exclusiveZone, 0);
-        QCOMPARE(p.layer, LayerShellQt::Window::LayerOverlay);
+        QCOMPARE(p.layer, LayerShellQt::Window::LayerTop);
         panel["length"] = 50000; panel["thickness"] = 512;
         panel["exclusive_zone"] = -1;
         panel["margins"] = QVariantMap{{"top", 3}, {"bottom", 7}, {"left", 11}, {"right", 13}};

@@ -102,7 +102,9 @@ PanelPlacement panelPlacement(const QVariantMap &panel, QSize screenSize) {
     const int length = configuredLength == 0 ? available : std::min(configuredLength, available);
     if (configuredLength == 0) anchors |= vertical ? W::Anchors(W::AnchorTop) | W::AnchorBottom : W::Anchors(W::AnchorLeft) | W::AnchorRight;
     const int thickness = std::min(panel.value("thickness").toInt(), std::max(1, vertical ? screenSize.width() - m.left() - m.right() : screenSize.height() - m.top() - m.bottom()));
-    const auto layerName = panel.value("layer").toString();
+    const bool respectFullscreen = panel.value("visibility").toMap().value("respect_fullscreen", true).toBool();
+    // Let the compositor stack focused fullscreen clients above both surfaces.
+    const auto layerName = respectFullscreen && panel.value("layer") == "overlay" ? QString("top") : panel.value("layer").toString();
     const auto layer = layerName == "background" ? W::LayerBackground : layerName == "bottom" ? W::LayerBottom : layerName == "overlay" ? W::LayerOverlay : W::LayerTop;
     int zone = panel.value("exclusive_zone").toInt();
     // The compositor adds the anchored margin to a positive protocol zone.
@@ -111,7 +113,7 @@ PanelPlacement panelPlacement(const QVariantMap &panel, QSize screenSize) {
     // Dynamic surfaces ignore other reservations and never reserve space themselves.
     // This remains constant through every reveal/hide transition.
     if (mode != "always") zone = -1;
-    return {vertical ? QSize(thickness, length) : QSize(length, thickness), m, anchors, edge, layer, zone, vertical};
+    return {vertical ? QSize(thickness, length) : QSize(length, thickness), m, anchors, edge, layer, respectFullscreen ? W::LayerTop : W::LayerOverlay, zone, vertical};
 }
 OsdPlacement osdPlacement(const QVariantMap &options, QSize screenSize) {
     const int width = std::max(1, screenSize.width()), height = std::max(1, screenSize.height());
@@ -234,7 +236,7 @@ void PanelHost::configureVisibility(QQuickView *view, const QVariantMap &panel, 
     const bool farEdge = placement.edge == W::AnchorBottom || placement.edge == W::AnchorRight;
     state->edgeMask = placement.vertical ? QRect(farEdge ? cross - edgeWidth : 0, 0, edgeWidth, triggerSize.height())
                                         : QRect(0, farEdge ? cross - edgeWidth : 0, triggerSize.width(), edgeWidth);
-    // The overlay must never intercept the revealed body, even when the hidden
+    // The trigger must never intercept the revealed body, even when the hidden
     // edge strip is wider than the margin. Empty masks mean full-surface input.
     state->bridgeMask = gap == 0 ? QRect(-1, -1, 1, 1)
         : placement.vertical ? QRect(farEdge ? cross - gap : 0, 0, gap, triggerSize.height())
@@ -256,7 +258,7 @@ void PanelHost::configureVisibility(QQuickView *view, const QVariantMap &panel, 
         layer->setScreen(view->screen());
         layer->setAnchors(placement.anchors); layer->setMargins(margins);
         layer->setDesiredSize(triggerSize); layer->setExclusiveZone(-1);
-        layer->setLayer(W::LayerOverlay);
+        layer->setLayer(placement.triggerLayer);
         layer->setKeyboardInteractivity(W::KeyboardInteractivityNone); layer->setActivateOnShow(false);
     } else {
         trigger->setPosition(view->screen()->geometry().topLeft() + state->triggerRect.topLeft());

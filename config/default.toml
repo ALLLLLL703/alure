@@ -100,7 +100,7 @@ window_gap = 0 # THIS always-visible panel only: extra reservation, not final ga
 exclusive_zone = -1 # -1 = clamped thickness on wire; compositor adds edge margin
 # 0 = no reservation; >0 = explicit protocol zone (also excludes edge margin)
 layer = "top" # background, bottom, top, overlay
-visibility = { mode = "always", show_delay_ms = 100, hide_delay_ms = 350, edge_trigger_px = 2, unknown_geometry = "hide" }
+visibility = { mode = "always", respect_fullscreen = true, show_delay_ms = 100, hide_delay_ms = 350, edge_trigger_px = 2, unknown_geometry = "hide" }
 # mode: always, dodge-windows, auto-hide. Dynamic modes never reserve space.
 # unknown_geometry: hide (conservative Niri tiled fallback) or show; also used while disconnected.
 margins = { top = 8, right = 8, bottom = 8, left = 8 }

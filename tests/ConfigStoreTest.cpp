@@ -79,6 +79,19 @@ private slots:
         }
         QVERIFY(!ConfigStore::parse("[[panels]]\nvisibility='always'", model, error));
     }
+    void panelRespectFullscreenOptions() {
+        QVariantMap model; QString error;
+        QVERIFY(ConfigStore::parse({}, model, error));
+        QCOMPARE(model.value("panels").toList().first().toMap().value("visibility").toMap().value("respect_fullscreen").toBool(), true);
+        for (const auto *value : {"true", "false"}) {
+            QVERIFY2(ConfigStore::parse(QByteArray("[[panels]]\nvisibility.respect_fullscreen=") + value, model, error), qPrintable(error));
+            QCOMPARE(model.value("panels").toList().first().toMap().value("visibility").toMap().value("respect_fullscreen").toBool(), QByteArray(value) == "true");
+        }
+        for (const auto *value : {"1", "0.5", "'true'", "[]", "{}"}) {
+            QVERIFY(!ConfigStore::parse(QByteArray("[[panels]]\nvisibility.respect_fullscreen=") + value, model, error));
+            QVERIFY2(error.contains("visibility.respect_fullscreen"), qPrintable(error));
+        }
+    }
     void volumeScrollOptions() {
         QVariantMap model; QString error; QVERIFY(ConfigStore::parse({}, model, error));
         const auto options = model.value("modules").toMap().value("volume").toMap().value("behavior").toMap();

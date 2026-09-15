@@ -7,6 +7,7 @@ edge = "top"
 modules = ["workspaces", "calendar"]
 [panels.visibility]
 mode = "always"
+respect_fullscreen = true # Native compositor fullscreen stacking, in every mode.
 show_delay_ms = 100
 hide_delay_ms = 350
 edge_trigger_px = 2
@@ -21,6 +22,7 @@ layer = "top"
 modules = ["taskbar"]
 [panels.visibility]
 mode = "dodge-windows" # Never reserves space, even when revealed.
+respect_fullscreen = true
 show_delay_ms = 100
 hide_delay_ms = 350
 edge_trigger_px = 2
@@ -32,10 +34,11 @@ id = "auto-right"
 output = "primary"
 edge = "right"
 length = 360
-layer = "overlay" # Reveal over fullscreen too; does not request keyboard focus.
+layer = "overlay" # Capped to top when respect_fullscreen=true.
 modules = ["tray", "volume", "brightness", "notifications"]
 [panels.visibility]
 mode = "auto-hide"
+respect_fullscreen = false # Opt out: overlay body/trigger can reveal over fullscreen.
 show_delay_ms = 150
 hide_delay_ms = 500
 edge_trigger_px = 3
