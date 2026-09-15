@@ -13,7 +13,7 @@ QVariantMap dbusMap(const QVariant &v) {
     if (v.metaType() == QMetaType::fromType<QDBusArgument>()) return qdbus_cast<QVariantMap>(v);
     return v.toMap();
 }
-Service::Service(QObject *parent) : QObject(parent) {
+Service::Service(QObject *parent, bool autoStartServices) : QObject(parent), m_autoStartServices(autoStartServices) {
     connect(&m_timer, &QTimer::timeout, this, &Service::refresh);
 }
 void Service::configure(const QVariantMap &module) {
@@ -71,6 +71,7 @@ void Service::call(const QDBusConnection &bus, const QString &destination, const
     }
     auto message = QDBusMessage::createMethodCall(destination, path, interface, method);
     message.setArguments(args);
+    message.setAutoStartService(m_autoStartServices);
     auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(message, timeout()), this);
     const auto generation = m_generation;
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, generation, success = std::move(success), failure = std::move(failure)] {

@@ -14,7 +14,7 @@ QDBusArgument &operator<<(QDBusArgument &arg, const MenuLayout &layout) {
 const QDBusArgument &operator>>(const QDBusArgument &arg, MenuLayout &layout) {
     arg.beginStructure(); arg >> layout.id >> layout.properties >> layout.children; arg.endStructure(); return arg;
 }
-TrayMenu::TrayMenu(QObject *parent) : QObject(parent) {
+TrayMenu::TrayMenu(QObject *parent, bool autoStartServices) : QObject(parent), m_autoStartServices(autoStartServices) {
     qDBusRegisterMetaType<MenuLayout>();
     m_reload.setSingleShot(true);
     connect(&m_reload, &QTimer::timeout, this, [this] { load(false); });
@@ -29,8 +29,17 @@ void TrayMenu::clear(const QString &error) {
             bus.disconnect(m_destination, m_path, interface, signal, this, SLOT(menuUpdated(QDBusMessage)));
     }
     for (auto *watcher : findChildren<QDBusPendingCallWatcher *>()) delete watcher;
+    m_eventPending = false;
     m_destination.clear(); m_path.clear(); m_parents.clear(); m_items.clear(); m_loading = false; m_refreshPending = false; m_error = error;
     emit changed();
+}
+void TrayMenu::invalidate(const QString &error) {
+    // An already-sent Event cannot be undone: retain its reply/timeout, but no rows.
+    if (m_eventPending) {
+        m_reload.stop(); m_refreshPending = false; m_parents.clear(); m_items.clear();
+        emit changed(); return;
+    }
+    clear(error);
 }
 void TrayMenu::open(const QString &destination, const QString &path, int timeout) {
     clear();
@@ -43,13 +52,14 @@ void TrayMenu::open(const QString &destination, const QString &path, int timeout
 }
 void TrayMenu::request(const QString &method, const QVariantList &args, std::function<void(const QVariantList &)> success) {
     auto message = QDBusMessage::createMethodCall(m_destination, m_path, interface, method); message.setArguments(args);
+    message.setAutoStartService(m_autoStartServices);
     auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message, m_timeout), this);
     const auto generation = m_generation;
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, generation, success = std::move(success)] {
         const auto reply = watcher->reply(); watcher->deleteLater();
         if (generation != m_generation) return;
         if (reply.type() == QDBusMessage::ErrorMessage) {
-            m_loading = false; m_items.clear(); m_error = reply.errorName() + ": " + reply.errorMessage(); emit changed(); return;
+            m_eventPending = false; m_loading = false; m_items.clear(); m_error = reply.errorName() + ": " + reply.errorMessage(); emit changed(); return;
         }
         success(reply.arguments());
     });
@@ -91,7 +101,7 @@ bool TrayMenu::select(int id) {
             m_parents << id; m_items.clear(); load(true);
         } else {
             if (!m_allowActions) return false;
-            m_loading = true; emit changed();
+            m_eventPending = true; m_loading = true; emit changed();
             request("Event", {id, "clicked", QVariant::fromValue(QDBusVariant(0)),
                               static_cast<uint>(QDateTime::currentMSecsSinceEpoch())}, [this](const QVariantList &) { clear(); emit activated(); });
         }
@@ -103,7 +113,7 @@ void TrayMenu::back() {
     if (!canGoBack()) return;
     ++m_generation; m_reload.stop();
     for (auto *watcher : findChildren<QDBusPendingCallWatcher *>()) delete watcher;
-    m_loading = false; m_refreshPending = false;
+    m_eventPending = false; m_loading = false; m_refreshPending = false;
     m_parents.removeLast(); m_items.clear(); load(true);
 }
 void TrayMenu::menuUpdated(const QDBusMessage &) {

@@ -20,7 +20,8 @@ class UiRegistry : public QObject {
     Q_CLASSINFO("D-Bus Interface", "org.kde.StatusNotifierWatcher")
     Q_PROPERTY(QStringList RegisteredStatusNotifierItems READ items)
 public:
-    QStringList items() const { return {"org.alure.LauncherFixture/StatusNotifierItem"}; }
+    QStringList registeredItems{"org.alure.LauncherFixture/StatusNotifierItem"};
+    QStringList items() const { return registeredItems; }
 };
 class UiItem : public QObject {
     Q_OBJECT
@@ -30,6 +31,14 @@ class UiItem : public QObject {
 public:
     QString title() const { return "Synthetic Music"; }
     QDBusObjectPath menu() const { return QDBusObjectPath("/Menu"); }
+};
+class PausableTrayService : public Alure::TrayService {
+public:
+    PausableTrayService() : TrayService(nullptr, WatcherPolicy::ObserveOnly) {}
+    bool holdRefresh = false;
+    void resume() { holdRefresh = false; setBusy(false); refresh(); }
+protected:
+    void poll() override { if (holdRefresh) setBusy(true); else TrayService::poll(); }
 };
 class TrayLauncherUiTest : public QObject {
     Q_OBJECT
@@ -66,7 +75,7 @@ private slots:
     void searchNavigationLifetime() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("missing")); QVERIFY(config.reload());
         QVERIFY(config.previewText("[theme]\nopacity=0.45\n[modules.tray_launcher.style]\nbackground='#123456'\nforeground='#abcdef'\n"));
-        Alure::TrayService tray(nullptr, Alure::TrayService::WatcherPolicy::ObserveOnly);
+        PausableTrayService tray;
         auto module = config.model().value("modules").toMap().value("tray_launcher").toMap(); module["enabled"] = true;
         tray.configure(module); QTRY_VERIFY(tray.available());
         QQmlApplicationEngine engine;
@@ -86,10 +95,17 @@ private slots:
             auto *selectedBackground = find(root, "tray-launcher-row-background-" + selected.toString()); QVERIFY(selectedBackground);
             QVERIFY(qAbs(selectedBackground->property("color").value<QColor>().alphaF() - .16) < .01);
 
-            tray.refresh(); QTRY_VERIFY(!tray.busy());
+            auto *entries = find(root, "tray-launcher-entries"); QVERIFY(entries);
+            const auto entriesY = entries->y();
+            tray.holdRefresh = true; tray.refresh(); QVERIFY(tray.busy());
+            QTest::qWait(30);
+            QVERIFY(!root->property("busy").toBool());
+            QVERIFY(!find(root, "tray-launcher-status")->isVisible()); QCOMPARE(entries->y(), entriesY);
+            QVERIFY(find(root, "tray-launcher-entry-" + selected.toString())->isEnabled());
             QCOMPARE(root->property("selectedId"), selected); QCOMPARE(search->property("text").toString(), "mUsIc"); QVERIFY(search->hasActiveFocus());
             QTest::keyClick(view, Qt::Key_Return);
             QTRY_VERIFY(!root->property("registryPage").toBool()); QTRY_VERIFY(!tray.menu()->loading());
+            tray.resume();
             QCOMPARE(search->property("text").toString(), "");
             QCOMPARE(view->rootObject(), root); QCOMPARE(QGuiApplication::topLevelWindows().size(), 1);
             QTRY_VERIFY(find(root, "tray-launcher-entry-2")); QVERIFY(!find(root, "tray-launcher-entry-2")->isEnabled());
@@ -132,6 +148,36 @@ private slots:
         QSignalSpy finished(&host, &Alure::TrayLauncherHost::finished); menu.clicked = -1;
         QTRY_VERIFY(find(root, "tray-launcher-entry-7")); QVERIFY(click("tray-launcher-entry-7")); QTRY_COMPARE(menu.clicked, 7); QTRY_COMPARE(finished.size(), 1);
         QVERIFY(!view->isVisible()); QCOMPARE(QGuiApplication::topLevelWindows().size(), 1);
+    }
+    void registryInvalidatesPendingMenu_data() {
+        QTest::addColumn<bool>("watcherLoss");
+        QTest::newRow("item-removed") << false;
+        QTest::newRow("watcher-lost") << true;
+    }
+    void registryInvalidatesPendingMenu() {
+        QFETCH(bool, watcherLoss);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("missing")); QVERIFY(config.reload());
+        Alure::TrayService tray(nullptr, Alure::TrayService::WatcherPolicy::ObserveOnly);
+        auto module = config.model().value("modules").toMap().value("tray_launcher").toMap(); module["enabled"] = true;
+        tray.configure(module); QTRY_VERIFY(tray.available());
+        QQmlApplicationEngine engine; engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Tray", &tray);
+        Alure::TrayLauncherHost host(config, engine, true); QVERIFY(host.ready());
+        QQuickView *view = nullptr; for (auto *w : QGuiApplication::topLevelWindows()) if (w->title() == "Alure tray launcher") view = qobject_cast<QQuickView *>(w);
+        QVERIFY(view); auto *root = view->rootObject(); auto *search = find(root, "tray-launcher-search");
+        QTRY_VERIFY(search->hasActiveFocus()); QTest::keyClick(view, Qt::Key_Return); QTRY_VERIFY(!tray.menu()->loading());
+        search->setProperty("text", "More"); QTRY_COMPARE(root->property("selectedId").toString(), "5");
+        menu.shown = -1; menu.clicked = -1; menu.holdSubmenu = true;
+        QTest::keyClick(view, Qt::Key_Return); QTRY_COMPARE(menu.shown, 5); QVERIFY(tray.menu()->loading());
+        const auto original = registry.registeredItems;
+        auto bus = QDBusConnection("launcher-fixture");
+        if (watcherLoss) QVERIFY(bus.unregisterService("org.kde.StatusNotifierWatcher"));
+        else { registry.registeredItems.clear(); tray.refresh(); }
+        QTRY_VERIFY(!tray.menu()->loading()); QVERIFY(!tray.menu()->error().isEmpty()); QVERIFY(tray.menu()->items().isEmpty());
+        menu.releaseSubmenu(); QTest::qWait(50); QVERIFY(tray.menu()->items().isEmpty());
+        QVERIFY(!tray.menu()->select(7)); QTest::keyClick(view, Qt::Key_Return); QCOMPARE(menu.clicked, -1);
+        QTest::keyClick(view, Qt::Key_Escape); QTRY_VERIFY(root->property("registryPage").toBool());
+        registry.registeredItems = original; menu.holdSubmenu = false;
+        if (watcherLoss) QVERIFY(bus.registerService("org.kde.StatusNotifierWatcher"));
     }
     void errorsBusyAndSettings() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("missing")); QVERIFY(config.reload());

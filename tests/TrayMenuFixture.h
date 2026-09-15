@@ -2,6 +2,7 @@
 #include "TrayMenu.h"
 #include <QDBusVariant>
 #include <QDBusContext>
+#include <QDBusConnection>
 #include <QObject>
 
 class FakeTrayMenu : public QObject, protected QDBusContext {
@@ -9,12 +10,16 @@ class FakeTrayMenu : public QObject, protected QDBusContext {
     Q_CLASSINFO("D-Bus Interface", "com.canonical.dbusmenu")
 public:
     int clicked = -1, shown = -1;
-    bool checked = true, rejectSubmenu = false, holdSubmenu = false;
+    bool checked = true, rejectSubmenu = false, holdSubmenu = false, holdEvent = false;
+    QDBusMessage pendingSubmenu, pendingEvent;
+    QDBusConnection replyBus = QDBusConnection::sessionBus();
+    void releaseSubmenu() { replyBus.send(pendingSubmenu.createReply(QVariantList{false})); }
+    void releaseEvent() { replyBus.send(pendingEvent.createReply()); }
 public slots:
     bool AboutToShow(int id) {
         shown = id;
         if (id == 5 && rejectSubmenu) sendErrorReply("org.alure.SubmenuFailure", "Synthetic submenu failure");
-        if (id == 5 && holdSubmenu) setDelayedReply(true);
+        if (id == 5 && holdSubmenu) { replyBus = connection(); pendingSubmenu = message(); setDelayedReply(true); }
         return false;
     }
     uint GetLayout(int parent, int, const QStringList &, Alure::MenuLayout &layout) {
@@ -29,7 +34,10 @@ public slots:
             node(6, {{"label", "Hidden"}, {"visible", false}})} : QVariantList{node(7, {{"label", "Submenu action"}})};
         return 1;
     }
-    void Event(int id, const QString &event, const QDBusVariant &, uint) { if (event == "clicked") clicked = id; }
+    void Event(int id, const QString &event, const QDBusVariant &, uint) {
+        if (event == "clicked") clicked = id;
+        if (holdEvent) { replyBus = connection(); pendingEvent = message(); setDelayedReply(true); }
+    }
 signals:
     void LayoutUpdated(uint revision, int parent);
 };

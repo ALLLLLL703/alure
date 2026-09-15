@@ -23,9 +23,10 @@ class TrayMenu : public QObject {
     Q_PROPERTY(QString error READ error NOTIFY changed)
     Q_PROPERTY(bool canGoBack READ canGoBack NOTIFY changed)
 public:
-    explicit TrayMenu(QObject *parent = nullptr);
+    explicit TrayMenu(QObject *parent = nullptr, bool autoStartServices = true);
     void open(const QString &destination, const QString &path, int timeout);
     void clear(const QString &error = {});
+    void invalidate(const QString &error);
     void setAllowActions(bool allowed) { m_allowActions = allowed; }
     QVariantList items() const { return m_items; }
     bool loading() const { return m_loading; }
@@ -49,6 +50,8 @@ private:
     QTimer m_reload;
     int m_timeout = 3000;
     quint64 m_generation = 0;
+    const bool m_autoStartServices;
+    bool m_eventPending = false;
     bool m_allowActions = true;
     bool m_loading = false, m_refreshPending = false;
 };

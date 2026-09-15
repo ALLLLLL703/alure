@@ -17,7 +17,7 @@ class Service : public QObject {
     Q_PROPERTY(QVariantMap state READ state NOTIFY stateChanged)
     Q_PROPERTY(QVariantList items READ items NOTIFY itemsChanged)
 public:
-    explicit Service(QObject *parent = nullptr);
+    explicit Service(QObject *parent = nullptr, bool autoStartServices = true);
     bool enabled() const { return m_enabled; }
     bool available() const { return m_available; }
     bool busy() const { return m_busy; }
@@ -60,6 +60,7 @@ protected:
                     const QString &interface, const QString &method, const QVariantList &arguments = {});
 private:
     void updateSnapshot(bool available, QString diagnostic, QVariantMap state, QVariantList items);
+    const bool m_autoStartServices;
     QTimer m_timer;
     bool m_enabled = false, m_available = false, m_busy = false;
     QString m_diagnostic = "Disabled";

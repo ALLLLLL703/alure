@@ -15,7 +15,7 @@ Control {
     property string selectedId: ""
     property string statusText: ""
     readonly property bool registryPage: appId.length === 0
-    readonly property bool busy: registryPage ? Tray.busy : menu.loading
+    readonly property bool busy: registryPage ? (Tray.busy && !Tray.available) : menu.loading
     readonly property string diagnostic: registryPage ? Tray.diagnostic : menu.error || (!Tray.available ? Tray.diagnostic : "")
     readonly property var rows: {
         const query = options.search_case_sensitive ? search.text : search.text.toLocaleLowerCase()
@@ -51,7 +51,7 @@ Control {
         search.forceActiveFocus()
     }
     function choose(id) {
-        if (busy) return
+        if (busy || !Tray.available) return
         const row = rows.find(row => String(row.id) === id)
         if (!row || !selectable(row)) return
         selectedId = id
@@ -84,15 +84,6 @@ Control {
                 root.statusText = "Action acknowledged"
                 Tray.openMenu(root.appId)
                 root.pageChanged()
-            }
-        }
-    }
-    Connections {
-        target: Tray
-        function onItemsChanged() {
-            if (!root.registryPage && Tray.available && !Tray.items.some(row => row.id === root.appId)) {
-                root.menu.close()
-                root.statusText = "Tray application is no longer registered; use Back"
             }
         }
     }

@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QDBusArgument>
 #include <QDBusConnectionInterface>
+#include <QDBusPendingCallWatcher>
 #include <QImage>
 #include <QBuffer>
 namespace Alure {
@@ -49,14 +50,35 @@ void TrayWatcher::ownerChanged(const QString &name, const QString &oldOwner, con
     for (const auto &id : items) if (splitId(id).first == name) { m_items.removeAll(id); emit StatusNotifierItemUnregistered(id); }
     m_service->refresh();
 }
-TrayService::TrayService(QObject *parent, WatcherPolicy policy) : Service(parent), m_policy(policy), m_watcher(this),
+TrayService::TrayService(QObject *parent, WatcherPolicy policy) : Service(parent, policy != WatcherPolicy::ObserveOnly), m_policy(policy),
+    m_menu(nullptr, policy != WatcherPolicy::ObserveOnly), m_watcher(this),
     m_hostName("org.kde.StatusNotifierHost.Alure" + QString::number(QCoreApplication::applicationPid())) {
     QDBusConnection::sessionBus().connect("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged",
                                          &m_watcher, SLOT(ownerChanged(QString,QString,QString)));
+    if (m_policy == WatcherPolicy::ObserveOnly) {
+        connect(this, &Service::availableChanged, this, &TrayService::validateOpenMenu);
+        connect(this, &Service::itemsChanged, this, &TrayService::validateOpenMenu);
+        QDBusConnection::sessionBus().connect("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+                                             this, SLOT(observerOwnerChanged(QString,QString,QString)));
+    }
 }
 TrayService::~TrayService() { stop(); }
+void TrayService::validateOpenMenu() {
+    if (m_menuId.isEmpty()) return;
+    if (available() && m_observedIds.contains(m_menuId)) return;
+    m_menuId.clear();
+    m_menu.invalidate(available() ? "Tray application is no longer registered; use Back" : "Tray registry unavailable: " + diagnostic());
+}
+void TrayService::observerOwnerChanged(const QString &name, const QString &oldOwner, const QString &) {
+    if (name != watcherName || oldOwner.isEmpty() || !enabled()) return;
+    // Discard a snapshot read from the old watcher, including delayed provider reads.
+    ++m_generation;
+    for (auto *watcher : findChildren<QDBusPendingCallWatcher *>(QString(), Qt::FindDirectChildrenOnly)) delete watcher;
+    fail("StatusNotifierWatcher disconnected");
+    setBusy(false);
+}
 void TrayService::stop() {
-    m_menu.clear();
+    m_menuId.clear(); m_observedIds.clear(); m_menu.clear();
     auto bus = QDBusConnection::sessionBus();
     if (m_ownsWatcher) { bus.unregisterService(watcherName); bus.unregisterObject(watcherPath); }
     if (m_hostRegistered) bus.unregisterService(m_hostName);
@@ -81,7 +103,10 @@ void TrayService::poll() {
         if (m_policy == WatcherPolicy::ObserveOnly) {
             if (!args.value(0).toBool()) { setBusy(false); fail("No StatusNotifierWatcher is running"); return; }
             properties(bus, watcherName, watcherPath, watcherName, [this](const QVariantMap &props) {
-                readItems(qdbus_cast<QStringList>(props.value("RegisteredStatusNotifierItems")).mid(0, 128), {});
+                m_observedIds = qdbus_cast<QStringList>(props.value("RegisteredStatusNotifierItems")).mid(0, 128);
+                // Confirm removal before potentially slow reads of the remaining providers.
+                validateOpenMenu();
+                readItems(m_observedIds, {});
             });
         } else if (!args.value(0).toBool() && bus.registerService(watcherName)) {
             m_ownsWatcher = bus.registerObject(watcherPath, &m_watcher, QDBusConnection::ExportScriptableSlots | QDBusConnection::ExportScriptableSignals | QDBusConnection::ExportAllProperties);
@@ -106,13 +131,17 @@ void TrayService::readItems(QStringList ids, QVariantList rows) {
     });
 }
 void TrayService::openMenu(const QString &id) {
-    m_menu.clear();
+    m_menuId.clear(); m_menu.clear();
     if (!enabled()) { m_menu.clear("Tray observer is disabled"); return; }
+    if (m_policy == WatcherPolicy::ObserveOnly && (!available() || !m_observedIds.contains(id))) {
+        m_menu.clear("Tray application is no longer available."); return;
+    }
     if (m_policy == WatcherPolicy::OwnIfAbsent && !m_options.value("allow_actions", true).toBool()) return;
     m_menu.setAllowActions(m_options.value("allow_actions", true).toBool());
     for (const auto &entry : items()) {
         const auto row = entry.toMap();
         if (row.value("id").toString() != id) continue;
+        m_menuId = id;
         m_menu.open(splitId(id).first, row.value("Menu").toString(), timeout());
         return;
     }

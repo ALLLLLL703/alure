@@ -16,11 +16,12 @@ int main(int argc, char **argv) {
     parser.addOption({"config", "Alure TOML configuration", "path", QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/alure/config.toml"});
     parser.addOption({"timeout", "Overall deadline in milliseconds (100..600000)", "ms", "10000"});
     parser.addPositionalArgument("command", "list | menu <tray-id> [submenu-id ...] | click <tray-id> <menu-id ...>");
-    parser.process(app);
+    const auto error = [](const QString &message, int code) { QTextStream(stderr) << "alure-trayctl: " << message << '\n'; return code; };
+    if (!parser.parse(app.arguments())) return error(parser.errorText(), 2);
+    if (parser.isSet("help")) { QTextStream(stdout) << parser.helpText(); return 0; }
     const auto args = parser.positionalArguments();
     bool ok = false;
     const int timeout = parser.value("timeout").toInt(&ok);
-    const auto error = [](const QString &message, int code) { QTextStream(stderr) << "alure-trayctl: " << message << '\n'; return code; };
     if (!ok || timeout < 100 || timeout > 600000) return error("--timeout must be 100..600000", 2);
     if (args.isEmpty() || (args[0] != "list" && args[0] != "menu" && args[0] != "click") ||
         (args[0] == "list" && args.size() != 1) || (args[0] == "menu" && args.size() < 2) || (args[0] == "click" && args.size() < 3) || args.size() > 34)

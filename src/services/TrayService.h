@@ -43,12 +43,16 @@ protected:
     void poll() override;
     void stop() override;
     bool act(const QString &, const QVariantMap &) override;
+private slots:
+    void observerOwnerChanged(const QString &name, const QString &oldOwner, const QString &newOwner);
 private:
+    void validateOpenMenu();
     void readItems(QStringList ids, QVariantList rows);
     const WatcherPolicy m_policy;
     TrayMenu m_menu;
     TrayWatcher m_watcher;
     bool m_ownsWatcher = false, m_hostRegistered = false;
-    QString m_hostName;
+    QString m_hostName, m_menuId;
+    QStringList m_observedIds;
 };
 }

@@ -2,7 +2,9 @@
 
 Display-independent (`QCoreApplication`) client of the **existing**
 `org.kde.StatusNotifierWatcher` and `com.canonical.dbusmenu`. Never starts a
-watcher, provider, app, shell, or provider-owned context menu.
+watcher, provider, app, shell, or provider-owned context menu. All observer
+D-Bus requests disable service auto-start, so even activatable stale names fail
+without restarting the watcher or provider.
 
 ```
 alure-trayctl [--config PATH] [--timeout MS] list
@@ -20,9 +22,14 @@ label matching, or implicit activation occurs during traversal (maximum 32 IDs).
 Exit 0 means reads completed, or, **for click only**, the provider acknowledged
 Event. It does not prove the app performed its business operation. Exit 1 means
 unavailable/no watcher/stale ID/no menu/refused action/D-Bus error/timeout; exit 2
-means syntax/configuration error. Errors go to stderr. Timeout is an overall
+means syntax/configuration error, including unknown options and missing option values. Errors go to stderr. Timeout is an overall
 100..600000 ms deadline, default 10000; a timeout after sending Event means its
 outcome is unknown, not that it was undone. `--help` needs no bus or display.
+
+Watcher loss, registry failure, or confirmed removal invalidates an open menu
+and stops pending path traversal before any further Event can be sent. An Event
+already sent still waits for its own acknowledgement/error/deadline; registry
+invalidation cannot undo it or manufacture success.
 
 Uses Alure's TOML config (default `$XDG_CONFIG_HOME/alure/config.toml`, missing
 file uses defaults). Explicit invocation is independent of panel enablement;
