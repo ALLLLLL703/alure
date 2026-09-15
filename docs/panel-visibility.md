@@ -53,6 +53,16 @@ In particular `always` retains its reservation, and an overlay body only stays a
 fullscreen when this option is off. Other compositors use their native layer policy.
 Save/reload applies the option (restart with `runtime.watch=false`).
 
+Native verification (Niri 26.04, 2026-09-15): with a synthetic fullscreen window,
+a requested overlay top bar and an auto-hide bottom bar both stayed underneath;
+hovering the physical bottom edge for 2200ms did not reveal the bar over fullscreen.
+Protocol logs confirmed top layers for the body and trigger. Reloading
+`respect_fullscreen=false` restored the overlay top bar above fullscreen and the
+overlay trigger; re-enabling the option restored top layers. Leaving fullscreen
+restored normal panel/menu access. This single-output test used a private runtime
+and private DBus, without changing host configuration; multi-output transitions
+were not exercised.
+
 ## Geometry and precision limits
 
 Dodge uses the taskbar's existing Niri EventStream, including

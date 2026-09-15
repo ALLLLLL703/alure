@@ -62,6 +62,25 @@ per-control stylesheet is claimed. Standard Qt editor/control keys apply; Escape
 closing shell details is configurable. UI English labels and derived contrast,
 hover/disabled alpha ratios are design tokens, not separately editable strings.
 
+### Radio-action validation (2026-09-15)
+
+The focused offscreen/private-DBus UI group passed 30 tests, including all 13
+module popup routes, status-row removal/diagnostic restoration, icon actions,
+hover/accessibility, permissions and the existing queue/volume regressions.
+ConfigStore, ConfigEditing and PanelHostContract passed 3/3 CTest suites; this
+was not a full-suite rerun or a claim to resolve earlier unrelated failures.
+Independent read-only review found no issues in these changes.
+
+Native computer-use checks in nested Niri with explicit private session **and
+system** DBus showed Wi-Fi/Bluetooth names and icon-only controls without the
+healthy-provider banner. Observed hover text included “Turn Wi-Fi off”, “Connect
+to Synthetic home”, “Turn off Synthetic adapter” and “Disconnect Synthetic
+headphones”. A synthetic BlueZ provider recorded connect, disconnect and power-off;
+no physical radio or network was changed. Wi-Fi command execution remains covered
+by the automated fixtures, not claimed from this native observation. The isolated
+desktop was stopped afterward. Temporary local evidence is under
+`/tmp/alure-fullscreen-session/`; it is not a committed test fixture.
+
 ### Popup surfaces and banners
 
 Details are native **xdg_popup** `QQuickView` windows transient to the actual
