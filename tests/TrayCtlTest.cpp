@@ -114,6 +114,7 @@ private slots:
         QCOMPARE(run({"--unknown", "list"}), 2); QVERIFY(diagnostic.contains("Unknown option")); QVERIFY(output.isEmpty());
         QCOMPARE(run({"list", "--config"}), 2); QVERIFY(diagnostic.contains("Missing value")); QVERIFY(output.isEmpty());
         QCOMPARE(run({"--help"}), 0); QVERIFY(output.contains("Usage:")); QVERIFY(diagnostic.isEmpty());
+        QCOMPARE(run({"--help-all"}), 0); QVERIFY(output.contains("Usage:")); QVERIFY(diagnostic.isEmpty());
     }
     void invalidationDuringTraversal_data() {
         QTest::addColumn<bool>("watcherLoss");

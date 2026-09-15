@@ -18,7 +18,7 @@ int main(int argc, char **argv) {
     parser.addPositionalArgument("command", "list | menu <tray-id> [submenu-id ...] | click <tray-id> <menu-id ...>");
     const auto error = [](const QString &message, int code) { QTextStream(stderr) << "alure-trayctl: " << message << '\n'; return code; };
     if (!parser.parse(app.arguments())) return error(parser.errorText(), 2);
-    if (parser.isSet("help")) { QTextStream(stdout) << parser.helpText(); return 0; }
+    if (parser.isSet("help") || parser.isSet("help-all")) { parser.process(app); return 0; }
     const auto args = parser.positionalArguments();
     bool ok = false;
     const int timeout = parser.value("timeout").toInt(&ok);

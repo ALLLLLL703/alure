@@ -24,7 +24,7 @@ Event. It does not prove the app performed its business operation. Exit 1 means
 unavailable/no watcher/stale ID/no menu/refused action/D-Bus error/timeout; exit 2
 means syntax/configuration error, including unknown options and missing option values. Errors go to stderr. Timeout is an overall
 100..600000 ms deadline, default 10000; a timeout after sending Event means its
-outcome is unknown, not that it was undone. `--help` needs no bus or display.
+outcome is unknown, not that it was undone. `--help` and `--help-all` need no bus or display.
 
 Watcher loss, registry failure, or confirmed removal invalidates an open menu
 and stops pending path traversal before any further Event can be sent. An Event
