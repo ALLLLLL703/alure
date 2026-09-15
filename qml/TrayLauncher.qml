@@ -164,6 +164,23 @@ Control {
                 highlighted: String(modelData.id) === root.selectedId
                 focusPolicy: Qt.NoFocus
                 text: root.registryPage ? String(modelData.Title || modelData.id) : (modelData["toggle-type"] ? (modelData["toggle-state"] === 1 ? "● " : modelData["toggle-state"] === -1 ? "− " : "○ ") : "") + String(modelData.label || "").replace(/_(.)/g, "$1") + (modelData.submenu ? "  ›" : "")
+                background: Rectangle {
+                    objectName: "tray-launcher-row-background-" + entry.modelData.id
+                    radius: Math.min(root.theme.radius, height / 2)
+                    color: entry.highlighted || entry.hovered ? Qt.alpha(root.theme.palette.accent, 0.16) : "transparent"
+                    border.width: entry.highlighted ? root.theme.border_width : 0
+                    border.color: root.theme.palette.accent
+                }
+                contentItem: Text {
+                    objectName: "tray-launcher-row-label-" + entry.modelData.id
+                    text: entry.text
+                    textFormat: Text.PlainText
+                    font: entry.font
+                    color: root.module.style.foreground || root.theme.palette.foreground
+                    opacity: entry.enabled ? 1 : 0.45
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
                 Accessible.name: text
                 Accessible.description: !root.registryPage && modelData["toggle-type"] ? modelData["toggle-type"] + ": " + modelData["toggle-state"] : ""
                 Rectangle { anchors.centerIn: parent; width: parent.width; height: root.theme.border_width; visible: entry.modelData.type === "separator"; color: root.theme.palette.border }

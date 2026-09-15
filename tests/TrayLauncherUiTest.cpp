@@ -81,6 +81,11 @@ private slots:
             QTRY_VERIFY(search->hasActiveFocus());
             search->setProperty("text", "mUsIc"); QTRY_VERIFY(!root->property("selectedId").toString().isEmpty());
             const auto selected = root->property("selectedId");
+            auto *selectedLabel = find(root, "tray-launcher-row-label-" + selected.toString()); QVERIFY(selectedLabel);
+            QCOMPARE(selectedLabel->property("color").value<QColor>(), QColor("#abcdef"));
+            auto *selectedBackground = find(root, "tray-launcher-row-background-" + selected.toString()); QVERIFY(selectedBackground);
+            QVERIFY(qAbs(selectedBackground->property("color").value<QColor>().alphaF() - .16) < .01);
+
             tray.refresh(); QTRY_VERIFY(!tray.busy());
             QCOMPARE(root->property("selectedId"), selected); QCOMPARE(search->property("text").toString(), "mUsIc"); QVERIFY(search->hasActiveFocus());
             QTest::keyClick(view, Qt::Key_Return);
@@ -118,6 +123,10 @@ private slots:
         QVERIFY(view); auto *root = view->rootObject();
         const auto click = [&](const QString &name) { auto *entry = find(root, name); if (!entry) return false; QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, entry->mapToScene(QPointF(entry->width()/2, entry->height()/2)).toPoint()); return true; };
         QTRY_VERIFY(find(root, "tray-launcher-search")->hasActiveFocus());
+        auto *label = find(root, "tray-launcher-row-label-org.alure.LauncherFixture/StatusNotifierItem"); QVERIFY(label);
+        const auto theme = config.model().value("theme").toMap().value("palette").toMap();
+        QCOMPARE(label->property("color").value<QColor>(), QColor(theme.value("foreground").toString()));
+        QVERIFY(label->property("color").value<QColor>() != QColor(theme.value("background").toString()));
         QVERIFY(click("tray-launcher-entry-org.alure.LauncherFixture/StatusNotifierItem")); QTRY_VERIFY(!root->property("registryPage").toBool()); QTRY_VERIFY(!tray.menu()->loading());
         QTRY_VERIFY(find(root, "tray-launcher-entry-5")); QVERIFY(click("tray-launcher-entry-5")); QTRY_VERIFY(tray.menu()->canGoBack()); QTRY_VERIFY(!tray.menu()->loading());
         QSignalSpy finished(&host, &Alure::TrayLauncherHost::finished); menu.clicked = -1;
