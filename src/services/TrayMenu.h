@@ -26,6 +26,7 @@ public:
     explicit TrayMenu(QObject *parent = nullptr);
     void open(const QString &destination, const QString &path, int timeout);
     void clear(const QString &error = {});
+    void setAllowActions(bool allowed) { m_allowActions = allowed; }
     QVariantList items() const { return m_items; }
     bool loading() const { return m_loading; }
     QString error() const { return m_error; }
@@ -48,6 +49,7 @@ private:
     QTimer m_reload;
     int m_timeout = 3000;
     quint64 m_generation = 0;
+    bool m_allowActions = true;
     bool m_loading = false, m_refreshPending = false;
 };
 }

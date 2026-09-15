@@ -33,7 +33,8 @@ class TrayService : public Service {
     Q_OBJECT
     Q_PROPERTY(Alure::TrayMenu *menu READ menu CONSTANT)
 public:
-    explicit TrayService(QObject *parent = nullptr);
+    enum class WatcherPolicy { OwnIfAbsent, ObserveOnly };
+    explicit TrayService(QObject *parent = nullptr, WatcherPolicy policy = WatcherPolicy::OwnIfAbsent);
     ~TrayService() override;
     void registerItem(const QString &service, const QString &sender);
     TrayMenu *menu() { return &m_menu; }
@@ -44,6 +45,7 @@ protected:
     bool act(const QString &, const QVariantMap &) override;
 private:
     void readItems(QStringList ids, QVariantList rows);
+    const WatcherPolicy m_policy;
     TrayMenu m_menu;
     TrayWatcher m_watcher;
     bool m_ownsWatcher = false, m_hostRegistered = false;

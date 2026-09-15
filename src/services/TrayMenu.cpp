@@ -90,6 +90,7 @@ bool TrayMenu::select(int id) {
             if (m_parents.size() >= 32 || m_parents.contains(id)) return false;
             m_parents << id; m_items.clear(); load(true);
         } else {
+            if (!m_allowActions) return false;
             m_loading = true; emit changed();
             request("Event", {id, "clicked", QVariant::fromValue(QDBusVariant(0)),
                               static_cast<uint>(QDateTime::currentMSecsSinceEpoch())}, [this](const QVariantList &) { clear(); emit activated(); });

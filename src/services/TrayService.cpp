@@ -49,7 +49,7 @@ void TrayWatcher::ownerChanged(const QString &name, const QString &oldOwner, con
     for (const auto &id : items) if (splitId(id).first == name) { m_items.removeAll(id); emit StatusNotifierItemUnregistered(id); }
     m_service->refresh();
 }
-TrayService::TrayService(QObject *parent) : Service(parent), m_watcher(this),
+TrayService::TrayService(QObject *parent, WatcherPolicy policy) : Service(parent), m_policy(policy), m_watcher(this),
     m_hostName("org.kde.StatusNotifierHost.Alure" + QString::number(QCoreApplication::applicationPid())) {
     QDBusConnection::sessionBus().connect("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged",
                                          &m_watcher, SLOT(ownerChanged(QString,QString,QString)));
@@ -73,12 +73,17 @@ void TrayService::registerItem(const QString &service, const QString &sender) {
 void TrayService::poll() {
     auto bus = QDBusConnection::sessionBus();
     if (!bus.isConnected()) { fail("Session bus disconnected"); return; }
-    if (!m_hostRegistered) m_hostRegistered = bus.registerService(m_hostName);
-    if (!m_hostRegistered) { fail("Cannot register tray host name"); return; }
+    if (m_policy == WatcherPolicy::OwnIfAbsent && !m_hostRegistered) m_hostRegistered = bus.registerService(m_hostName);
+    if (m_policy == WatcherPolicy::OwnIfAbsent && !m_hostRegistered) { fail("Cannot register tray host name"); return; }
     setBusy(true);
     if (m_ownsWatcher) { readItems(m_watcher.registeredItems(), {}); return; }
     call(bus, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameHasOwner", {watcherName}, [this, bus](const QVariantList &args) mutable {
-        if (!args.value(0).toBool() && bus.registerService(watcherName)) {
+        if (m_policy == WatcherPolicy::ObserveOnly) {
+            if (!args.value(0).toBool()) { setBusy(false); fail("No StatusNotifierWatcher is running"); return; }
+            properties(bus, watcherName, watcherPath, watcherName, [this](const QVariantMap &props) {
+                readItems(qdbus_cast<QStringList>(props.value("RegisteredStatusNotifierItems")).mid(0, 128), {});
+            });
+        } else if (!args.value(0).toBool() && bus.registerService(watcherName)) {
             m_ownsWatcher = bus.registerObject(watcherPath, &m_watcher, QDBusConnection::ExportScriptableSlots | QDBusConnection::ExportScriptableSignals | QDBusConnection::ExportAllProperties);
             if (!m_ownsWatcher) { bus.unregisterService(watcherName); setBusy(false); fail("Cannot export tray watcher"); return; }
             readItems(m_watcher.registeredItems(), {});
@@ -102,7 +107,8 @@ void TrayService::readItems(QStringList ids, QVariantList rows) {
 }
 void TrayService::openMenu(const QString &id) {
     m_menu.clear();
-    if (!enabled() || !m_options.value("allow_actions", true).toBool()) return;
+    if (!enabled()) { m_menu.clear("Tray observer is disabled"); return; }
+    m_menu.setAllowActions(m_options.value("allow_actions", true).toBool());
     for (const auto &entry : items()) {
         const auto row = entry.toMap();
         if (row.value("id").toString() != id) continue;
