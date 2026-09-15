@@ -26,7 +26,8 @@ outcome is unknown, not that it was undone. `--help` needs no bus or display.
 
 Uses Alure's TOML config (default `$XDG_CONFIG_HOME/alure/config.toml`, missing
 file uses defaults). Explicit invocation is independent of panel enablement;
-`allow_actions=false` prohibits clicks but permits inspection. Uses the shared
+`modules.tray_launcher.behavior.explicit_launch=false` rejects all commands;
+`modules.tray_launcher.behavior.allow_actions=false` prohibits clicks but permits inspection. Uses the shared
 TrayService/TrayMenu implementation and its 128-app/512-row/depth-32 bounds.
 
 Build: `cmake -S . -B build && cmake --build build --target alure-trayctl`.

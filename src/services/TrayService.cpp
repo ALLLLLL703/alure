@@ -108,6 +108,7 @@ void TrayService::readItems(QStringList ids, QVariantList rows) {
 void TrayService::openMenu(const QString &id) {
     m_menu.clear();
     if (!enabled()) { m_menu.clear("Tray observer is disabled"); return; }
+    if (m_policy == WatcherPolicy::OwnIfAbsent && !m_options.value("allow_actions", true).toBool()) return;
     m_menu.setAllowActions(m_options.value("allow_actions", true).toBool());
     for (const auto &entry : items()) {
         const auto row = entry.toMap();

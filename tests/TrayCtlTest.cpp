@@ -110,11 +110,15 @@ private slots:
     }
     void policyAndConfig() {
         QFile file(dir.filePath("deny.toml")); QVERIFY(file.open(QIODevice::WriteOnly));
-        file.write("[modules.tray.behavior]\nallow_actions = false\n"); file.close(); config = file.fileName();
+        file.write("[modules.tray_launcher.behavior]\nallow_actions = false\n"); file.close(); config = file.fileName();
         QCOMPARE(run({"click", registry.items().first(), "1"}), 1); QVERIFY(diagnostic.contains("allow_actions"));
         QCOMPARE(run({"menu", registry.items().first(), "5"}), 0);
         QCOMPARE(run({"--timeout", "0", "list"}), 2);
         QCOMPARE(run({"click", registry.items().first(), "oops"}), 2);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate)); file.write("[modules.tray_launcher.behavior]\nexplicit_launch=false\n"); file.close();
+        QCOMPARE(run({"list"}), 1); QVERIFY(diagnostic.contains("explicit_launch"));
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate)); file.write("[modules.tray_launcher.behavior]\nallow_actions=1\n"); file.close();
+        QCOMPARE(run({"list"}), 2); QVERIFY(diagnostic.contains("allow_actions"));
     }
 };
 QTEST_GUILESS_MAIN(TrayCtlTest)

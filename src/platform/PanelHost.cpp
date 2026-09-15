@@ -395,6 +395,16 @@ bool PanelHost::openSettings() {
     return QProcess::startDetached(QCoreApplication::applicationFilePath(), {"--settings", "--config", m_config.path()});
 }
 void PanelHost::openModule(const QString &name, const QString &panelId, const QString &output, QQuickItem *anchor, const QString &trayItem) {
+    if (name == "tray_launcher") {
+        const auto module = m_config.model().value("modules").toMap().value(name).toMap();
+        const auto behavior = module.value("behavior").toMap();
+        if (module.value("enabled").toBool() && behavior.value("popup_enabled").toBool() && behavior.value("explicit_launch").toBool()) {
+            QStringList arguments{"tray-launcher", "--config", m_config.path()};
+            if (m_preview) arguments << "--preview";
+            if (!QProcess::startDetached(QCoreApplication::applicationFilePath(), arguments)) qWarning("Cannot start tray launcher");
+        }
+        return;
+    }
     trace(QString("request %1 visible=%2").arg(name).arg(m_popup && m_popup->isVisible()));
     if (!anchor || m_rebuildPending) return; // Legacy callers without an actual source cannot be placed safely.
     const auto module = m_config.model().value("modules").toMap().value(name).toMap();

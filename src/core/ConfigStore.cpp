@@ -311,6 +311,19 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model,
         range(behavior, "menu_width", 160, 1920, path);
         range(behavior, "menu_height", 100, 2160, path);
       }
+      if (it.key() == "tray_launcher") {
+        range(behavior, "popup_width", 240, 1920, path);
+        range(behavior, "popup_height", 240, 2160, path);
+        const auto output = behavior.value("output").toString();
+        if (output.isEmpty() || output == "*" || output.contains(QChar::Null))
+          invalid(path + "output", "expected primary or one output name");
+        for (const auto &key : {"next_shortcut", "previous_shortcut", "activate_shortcut", "back_shortcut", "close_shortcut"}) {
+          const auto shortcut = behavior.value(key).toString();
+          const auto sequence = QKeySequence::fromString(shortcut, QKeySequence::PortableText);
+          if (!shortcut.isEmpty() && (sequence.isEmpty() || sequence.toString(QKeySequence::PortableText) != shortcut))
+            invalid(path + key, "expected canonical Qt shortcut or empty");
+        }
+      }
       if (it.key() == "clipboard") {
         range(behavior, "popup_width", 280, 1920, path);
         range(behavior, "popup_height", 320, 2160, path);

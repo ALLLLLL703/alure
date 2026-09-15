@@ -33,7 +33,8 @@ int main(int argc, char **argv) {
     }
     Alure::ConfigStore config(parser.value("config"));
     if (!config.reload()) return error(config.diagnostic(), 2);
-    auto module = config.model().value("modules").toMap().value("tray").toMap();
+    auto module = config.model().value("modules").toMap().value("tray_launcher").toMap();
+    if (!module.value("behavior").toMap().value("explicit_launch").toBool()) return error("explicit_launch is false", 1);
     module["enabled"] = true;
     const bool allowActions = module.value("behavior").toMap().value("allow_actions").toBool();
     if (args[0] == "click" && !allowActions) return error("allow_actions is false", 1);

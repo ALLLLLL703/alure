@@ -23,12 +23,26 @@ private slots:
         QCOMPARE(model.value("ui").toMap().value("popup_alignment").toString(), "center");
         QCOMPARE(model.value("ui").toMap().value("popup_direction").toString(), "inward");
         QCOMPARE(model.value("panels").toList().size(), 1);
-        QCOMPARE(model.value("modules").toMap().keys(), (QStringList{"battery", "bluetooth", "brightness", "calendar", "clipboard", "media", "notifications", "taskbar", "tray", "updates", "volume", "wifi", "workspaces"}));
+        QCOMPARE(model.value("modules").toMap().keys(), (QStringList{"battery", "bluetooth", "brightness", "calendar", "clipboard", "media", "notifications", "taskbar", "tray", "tray_launcher", "updates", "volume", "wifi", "workspaces"}));
         QVERIFY(model.value("modules").toMap().value("clipboard").toMap().value("enabled").toBool()); // Lazy until opened.
         QCOMPARE(model.value("theme").toMap().value("palette").toMap().value("background").toString(), "#151923");
         QTemporaryDir dir; ConfigStore store(dir.filePath("missing.toml"));
         QVERIFY(store.reload()); QVERIFY(!QFile::exists(store.path()));
         QCOMPARE(store.model(), model);
+    }
+    void trayLauncherOptions() {
+        QVariantMap model; QString error;
+        QVERIFY(ConfigStore::parse({}, model, error));
+        const auto module = model.value("modules").toMap().value("tray_launcher").toMap();
+        QVERIFY(!module.value("enabled").toBool());
+        QVERIFY(module.value("behavior").toMap().value("explicit_launch").toBool());
+        QVERIFY(!module.value("behavior").toMap().value("search_case_sensitive").toBool());
+        QVERIFY(ConfigStore::parse("[modules.tray_launcher]\nenabled=true\n[modules.tray_launcher.behavior]\npopup_width=900\npopup_height=700\noutput='DP-2'\nallow_actions=false\nsearch_case_sensitive=true\nnext_shortcut='Ctrl+N'", model, error));
+        QCOMPARE(model.value("modules").toMap().value("tray_launcher").toMap().value("behavior").toMap().value("popup_width").toInt(), 900);
+        for (const auto *source : {"popup_width=0", "popup_height=2161", "output='*'", "output=''", "explicit_launch=1", "search_case_sensitive='yes'", "next_shortcut='Nonsense'", "close_on_activate=1"}) {
+            QVERIFY(!ConfigStore::parse(QByteArray("[modules.tray_launcher.behavior]\n") + source, model, error));
+            QVERIFY(error.contains("tray_launcher"));
+        }
     }
     void backgroundBlurOptions() {
         QVariantMap model; QString error;

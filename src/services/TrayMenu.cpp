@@ -100,7 +100,10 @@ bool TrayMenu::select(int id) {
     return false;
 }
 void TrayMenu::back() {
-    if (m_loading || !canGoBack()) return;
+    if (!canGoBack()) return;
+    ++m_generation; m_reload.stop();
+    for (auto *watcher : findChildren<QDBusPendingCallWatcher *>()) delete watcher;
+    m_loading = false; m_refreshPending = false;
     m_parents.removeLast(); m_items.clear(); load(true);
 }
 void TrayMenu::menuUpdated(const QDBusMessage &) {

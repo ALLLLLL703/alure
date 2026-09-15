@@ -1,6 +1,6 @@
 .pragma library
 function title(name) {
-    const names = {taskbar: "Task Manager", clipboard: "Clipboard", workspaces: "Workspaces", media: "Now playing", tray: "System tray", volume: "Sound", brightness: "Brightness", updates: "Updates", wifi: "Wi-Fi", bluetooth: "Bluetooth", notifications: "Notifications", calendar: "Calendar", battery: "Battery"}
+    const names = {tray_launcher: "Tray launcher", taskbar: "Task Manager", clipboard: "Clipboard", workspaces: "Workspaces", media: "Now playing", tray: "System tray", volume: "Sound", brightness: "Brightness", updates: "Updates", wifi: "Wi-Fi", bluetooth: "Bluetooth", notifications: "Notifications", calendar: "Calendar", battery: "Battery"}
     return names[name] || name
 }
 function moduleDescription(name) {
@@ -9,6 +9,7 @@ function moduleDescription(name) {
         taskbar: "Focus open Niri windows by ID; application icons or labeled tasks.",
         media: "View the current track and control playback.",
         clipboard: "Search clipboard history, preview images, copy or delete entries.",
+        tray_launcher: "Search current tray apps and navigate their menus in one window.",
         tray: "Access application tray icons and menus.",
         volume: "Adjust audio output volume and mute.",
         brightness: "Adjust display brightness and discrete keyboard backlight levels.",

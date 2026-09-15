@@ -69,3 +69,8 @@ target_compile_definitions(trayctl_tests PRIVATE TRAYCTL_EXECUTABLE="$<TARGET_FI
 add_dependencies(trayctl_tests alure-trayctl)
 add_test(NAME TrayCtl COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:trayctl_tests>)
 set_tests_properties(TrayCtl PROPERTIES TIMEOUT 40)
+qt_add_executable(tray_launcher_ui_tests TrayLauncherUiTest.cpp TrayMenuFixture.h)
+target_link_libraries(tray_launcher_ui_tests PRIVATE alure_platform alure_services Qt6::Test Qt6::QuickControls2)
+qt_add_resources(tray_launcher_ui_tests tray_launcher_ui PREFIX / BASE ${PROJECT_SOURCE_DIR} FILES ${ALURE_UI_FILES})
+add_test(NAME TrayLauncherUi COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tray_launcher_ui_tests>)
+set_tests_properties(TrayLauncherUi PROPERTIES TIMEOUT 40)

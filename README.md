@@ -139,3 +139,7 @@ device/media controls remain unverified. Automatic zones now send thickness only
 (44 + separate margin 8 reserves 52); corner margins are
 relative to the remaining usable rectangle. Workspace ordering defaults to
 `modules.workspaces.behavior.ordering="output-index"`; `"provider"` opts out.
+
+## Tray launcher / headless CLI
+
+`alure tray-launcher` searches current tray apps and navigates their DBusMenus in one centered overlay window. `alure-trayctl list|menu|click` uses the same observer-only backend without a display. See [configuration, interaction and validation](docs/tray-launcher.md) and [CLI contract](tools/alure-trayctl/README.md).

@@ -1,0 +1,37 @@
+# Reopen the launcher/CLI to apply; panel entry settings apply on panel reload.
+[theme]
+name = "midnight"
+blur_enabled = true
+opacity = 0.82
+
+[modules.tray_launcher]
+enabled = true # optional panel entry; explicit commands ignore this switch
+[modules.tray_launcher.style]
+icon = "tray"
+show_label = true
+foreground = "" # theme inheritance
+background = "" # theme background tinted by theme.opacity
+opacity = 1.0
+[modules.tray_launcher.behavior]
+explicit_launch = true
+popup_enabled = true
+allow_actions = true # false: inspection/navigation only, including CLI
+format = "Tray apps"
+popup_width = 680
+popup_height = 560
+output = "primary"
+interval_ms = 1000
+timeout_ms = 3000
+search_case_sensitive = false
+reset_search_on_page = true
+close_on_activate = true
+close_on_focus_loss = false
+next_shortcut = "Down"
+previous_shortcut = "Up"
+activate_shortcut = "Return"
+back_shortcut = "Alt+Left"
+close_shortcut = "Esc"
+
+[[panels]]
+id = "tray-entry"
+modules = ["tray_launcher", "@settings"]

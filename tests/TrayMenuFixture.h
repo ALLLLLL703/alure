@@ -1,16 +1,22 @@
 #pragma once
 #include "TrayMenu.h"
 #include <QDBusVariant>
+#include <QDBusContext>
 #include <QObject>
 
-class FakeTrayMenu : public QObject {
+class FakeTrayMenu : public QObject, protected QDBusContext {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "com.canonical.dbusmenu")
 public:
     int clicked = -1, shown = -1;
-    bool checked = true;
+    bool checked = true, rejectSubmenu = false, holdSubmenu = false;
 public slots:
-    bool AboutToShow(int id) { shown = id; return false; }
+    bool AboutToShow(int id) {
+        shown = id;
+        if (id == 5 && rejectSubmenu) sendErrorReply("org.alure.SubmenuFailure", "Synthetic submenu failure");
+        if (id == 5 && holdSubmenu) setDelayedReply(true);
+        return false;
+    }
     uint GetLayout(int parent, int, const QStringList &, Alure::MenuLayout &layout) {
         const auto node = [](int id, QVariantMap props) { return QVariant::fromValue(QDBusVariant(QVariant::fromValue(Alure::MenuLayout{id, props, {}}))); };
         layout.id = parent;

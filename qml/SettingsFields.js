@@ -93,6 +93,19 @@ function describe(path, value) {
         help.debounce_ms = "Rate-limit one brightness command and one latest pending target across both kinds; continuous input is not postponed indefinitely."
         help.sysfs_path = "Absolute sysfs class directory. Alternative paths are for fixtures; the writer command must also target your fixture, not real hardware."
     }
+    if (path.startsWith("modules.tray_launcher.")) {
+        help.explicit_launch = "Permit alure tray-launcher and alure-trayctl, independently of the optional panel entry's Enabled switch. Reopen to apply."
+        help.allow_actions = "Permit acknowledged DBusMenu leaf clicks. Off still allows registry/menu inspection and submenu navigation."
+        help.output = "Exactly one output: primary or its screen name (not *). Reopen to apply."
+        help.search_case_sensitive = "Search the current app/menu page. Default ignores case; never recursively activates or searches provider menus."
+        help.reset_search_on_page = "Clear search on app/submenu/Back transitions, not on live updates."
+        help.close_on_activate = "Close only after the provider replies to Event(clicked). False reopens the app menu."
+        help.close_shortcut = "Escape by default: Back on menu pages, close on registry. Empty disables."
+        help.command = "Unused. The launcher never starts tray applications."
+        help.interval_ms = "Refresh existing watcher registry; never acquire a watcher. Reopen to apply all launcher configuration."
+        help.popup_enabled = "Permit the static panel button to open the launcher. No service runs for this button."
+        help.format = "Static panel label."
+    }
     if (path.startsWith("modules.taskbar.")) {
         help.focus_on_click = "Focus the exact observed window ID. Off disables task activation; no minimize or launcher action."
         help.ordering = "ID: stable numeric order. App-id/title: case-insensitive lexical order, with numeric ID ties."
