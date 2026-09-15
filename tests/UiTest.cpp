@@ -169,6 +169,121 @@ void replaceText(QQuickWindow *window, QQuickItem *item, const QString &text) {
 class UiTest : public QObject {
     Q_OBJECT
 private slots:
+    void modulePopupProviderStatus_data() {
+        QTest::addColumn<QString>("moduleName");
+        for (const auto *name : {"workspaces", "taskbar", "tray", "updates", "wifi", "bluetooth", "notifications", "battery", "volume", "brightness", "calendar", "media", "clipboard"})
+            QTest::newRow(name) << QString(name);
+    }
+    void modulePopupProviderStatus() {
+        QFETCH(QString, moduleName);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        FixtureClipboard service; FixtureShell shell;
+        service.state = {{"percent", 40}, {"backend", "pulseaudio"}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Shell", &shell);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{moduleName, QVariant::fromValue(&service)}});
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(440, 560);
+        view.setInitialProperties({{"moduleName", moduleName}, {"popupPadding", 0}});
+        view.setSource(QUrl("qrc:/qml/ModulePopup.qml")); QCOMPARE(view.status(), QQuickView::Ready); view.show(); QTest::qWait(30);
+        const auto noLiveCopy = [&](auto &&self, QQuickItem *item) -> bool {
+            if (item->property("text").toString().contains("Live system data")) return false;
+            for (auto *child : item->childItems()) if (!self(self, child)) return false;
+            return true;
+        };
+        QVERIFY(noLiveCopy(noLiveCopy, view.rootObject()));
+        auto *status = itemNamed(view.rootObject(), "provider-status");
+        if (moduleName != "media" && moduleName != "clipboard") {
+            QVERIFY(status); QVERIFY(!status->isVisible());
+            if (moduleName != "calendar") {
+                QCOMPARE(status->property("text").toString(), QString());
+                auto *scroll = itemNamed(view.rootObject(), "popup-scroll"); QVERIFY(scroll);
+                const auto initialY = scroll->mapToScene(QPointF()).y();
+                service.diagnostic = "Fixture provider error"; emit service.changed();
+                QTRY_VERIFY(status->isVisible()); QCOMPARE(status->property("text").toString(), service.diagnostic);
+                QTRY_VERIFY(scroll->mapToScene(QPointF()).y() > initialY);
+                service.diagnostic.clear(); service.available = false; service.busy = true; emit service.changed();
+                QCOMPARE(status->property("text").toString(), "Refreshing…"); QVERIFY(status->isVisible());
+                service.busy = false; emit service.changed();
+                QCOMPARE(status->property("text").toString(), "Provider unavailable");
+                service.available = true; emit service.changed();
+                QTRY_VERIFY(!status->isVisible()); QTRY_COMPARE(scroll->mapToScene(QPointF()).y(), initialY);
+                if (moduleName == "taskbar" || moduleName == "workspaces") {
+                    service.state["actionError"] = "Fixture action failed"; emit service.changed();
+                    QTRY_VERIFY(status->isVisible()); QCOMPARE(status->property("text").toString(), "Fixture action failed");
+                }
+            }
+        }
+        QCOMPARE(service.actionCount, 0); QVERIFY(warnings.isEmpty());
+    }
+    void radioIconActions_data() {
+        QTest::addColumn<QString>("moduleName");
+        QTest::newRow("wifi") << QString("wifi"); QTest::newRow("bluetooth") << QString("bluetooth");
+    }
+    void radioIconActions() {
+        QFETCH(QString, moduleName);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());
+        const QString source = "[settings]\nmodule_tooltip_delay_ms=10\n[theme]\nicon_size=28\n[ui]\nmodule_height=48\n";
+        QVERIFY(config.previewText(source));
+        FixtureService service; FixtureShell shell;
+        service.state = {{"powered", true}, {"savedConnections", QVariantList{QVariantMap{{"uuid", "saved"}, {"name", "Office profile"}}}},
+                         {"adapters", QVariantList{QVariantMap{{"path", "/adapter"}, {"Alias", "Desk adapter"}, {"Powered", true}}}}};
+        service.items = {QVariantMap{{"id", "device"}, {"path", "/device"}, {"Alias", "Headphones"}, {"Paired", true}, {"Connected", false}, {"ssid", "Office"}, {"signal", 80}}};
+        QQmlEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Shell", &shell);
+        engine.rootContext()->setContextProperty("Services", QVariantMap{{moduleName, QVariant::fromValue(&service)}});
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        QQuickView view(&engine, nullptr); view.setResizeMode(QQuickView::SizeRootObjectToView); view.resize(440, 700);
+        view.setInitialProperties({{"moduleName", moduleName}}); view.setSource(QUrl("qrc:/qml/Popup.qml")); QCOMPARE(view.status(), QQuickView::Ready); view.show(); QTest::qWait(30);
+        auto *power = itemNamed(view.rootObject(), moduleName == "wifi" ? "wifi-power" : "bluetooth-adapter-/adapter");
+        auto *connection = itemNamed(view.rootObject(), moduleName == "wifi" ? "wifi-saved-saved" : "bluetooth-device-/device");
+        QVERIFY(power); QVERIFY(connection);
+        auto *label = itemNamed(view.rootObject(), moduleName == "wifi" ? "wifi-saved-label-saved" : "bluetooth-adapter-label-/adapter");
+        QVERIFY(label); QVERIFY(label->isVisible());
+        QCOMPARE(label->property("text").toString(), moduleName == "wifi" ? "Office profile" : "Desk adapter");
+        const auto accessibleName = [](QQuickItem *item) { return QQmlProperty::read(item, "Accessible.name", qmlContext(item)).toString(); };
+        QCOMPARE(accessibleName(power), moduleName == "wifi" ? "Turn Wi-Fi off" : "Turn off Desk adapter");
+        QCOMPARE(accessibleName(connection), moduleName == "wifi" ? "Connect to Office profile" : "Connect to Headphones");
+        for (auto *button : {power, connection}) {
+            QVERIFY(button->isVisible()); QVERIFY(button->isEnabled()); QCOMPARE(button->property("text").toString(), QString());
+            QCOMPARE(button->property("iconSize").toInt(), 28); QCOMPARE(button->height(), 48.);
+            QVERIFY(button->property("iconSource").toString().startsWith("image://icons/builtin/"));
+            auto *tooltip = QQmlProperty::read(button, "ToolTip.toolTip", qmlContext(button)).value<QObject *>(); QVERIFY(tooltip);
+            QTest::mouseMove(&view, button->mapToScene(QPointF(button->width()/2, button->height()/2)).toPoint());
+            QTRY_VERIFY(tooltip->property("visible").toBool()); QCOMPARE(tooltip->property("text").toString(), accessibleName(button));
+            QTest::mouseMove(&view, QPoint(1, 1)); QTRY_VERIFY(!tooltip->property("visible").toBool());
+        }
+        QCOMPARE(connection->property("iconName").toString(), "next");
+        clickItem(&view, power); QCOMPARE(service.lastAction, "setPowered"); QCOMPARE(service.lastArguments.value("powered").toBool(), false);
+        if (moduleName == "bluetooth") QCOMPARE(service.lastArguments.value("path").toString(), "/adapter");
+        service.state["powered"] = false;
+        service.state["adapters"] = QVariantList{QVariantMap{{"path", "/adapter"}, {"Alias", "Desk adapter"}, {"Powered", false}}}; emit service.changed();
+        power = itemNamed(view.rootObject(), moduleName == "wifi" ? "wifi-power" : "bluetooth-adapter-/adapter"); QVERIFY(power);
+        QCOMPARE(accessibleName(power), moduleName == "wifi" ? "Turn Wi-Fi on" : "Turn on Desk adapter");
+        QTest::qWait(20); clickItem(&view, power); QCOMPARE(service.lastAction, "setPowered"); QCOMPARE(service.lastArguments.value("powered").toBool(), true);
+        clickItem(&view, connection); QCOMPARE(service.lastAction, moduleName == "wifi" ? "connectSaved" : "connect");
+        QCOMPARE(service.lastArguments.value(moduleName == "wifi" ? "uuid" : "path").toString(), moduleName == "wifi" ? "saved" : "/device");
+        if (moduleName == "bluetooth") {
+            auto row = service.items.first().toMap(); row["Connected"] = true; service.items = {row}; emit service.changed();
+            connection = itemNamed(view.rootObject(), "bluetooth-device-/device"); QVERIFY(connection); QTest::qWait(20);
+            QCOMPARE(connection->property("iconName").toString(), "close"); QCOMPARE(accessibleName(connection), "Disconnect Headphones");
+            clickItem(&view, connection); QCOMPARE(service.lastAction, "disconnect"); QCOMPARE(service.lastArguments.value("path").toString(), "/device");
+            row["Paired"] = false; service.items = {row}; emit service.changed();
+            connection = itemNamed(view.rootObject(), "bluetooth-device-/device"); QVERIFY(connection); QVERIFY(!connection->isEnabled());
+        } else {
+            QVERIFY(config.previewText(source + "[modules.wifi.behavior]\nradio_command=[]\nconnect_command=[]"));
+            QVERIFY(!power->isEnabled()); QVERIFY(!connection->isEnabled());
+        }
+        const auto actionCount = service.actionCount;
+        QVERIFY(config.previewText(source + "[modules." + moduleName + ".behavior]\nallow_actions=false"));
+        QVERIFY(!power->isEnabled()); QVERIFY(!connection->isEnabled());
+        clickItem(&view, power); clickItem(&view, connection); QCOMPARE(service.actionCount, actionCount);
+        QVERIFY(config.previewText(QString(source).replace("module_tooltip_delay_ms=10", "module_tooltip_delay_ms=0\nmodule_tooltips=false")));
+        QTest::mouseMove(&view, power->mapToScene(QPointF(power->width()/2, power->height()/2)).toPoint());
+        QTest::qWait(30); auto *tooltip = QQmlProperty::read(power, "ToolTip.toolTip", qmlContext(power)).value<QObject *>(); QVERIFY(tooltip); QVERIFY(!tooltip->property("visible").toBool());
+        service.available = false; emit service.changed(); QVERIFY(!view.rootObject()->property("canAct").toBool());
+        QCOMPARE(service.actionCount, actionCount); QVERIFY(warnings.isEmpty());
+    }
     void popupStableRefresh_data() {
         QTest::addColumn<QString>("moduleName");
         for (const auto *name : {"updates", "notifications", "wifi", "bluetooth"}) QTest::newRow(name) << QString(name);
@@ -866,12 +981,14 @@ QtObject { property var order: Fields.describe("modules.taskbar.behavior.orderin
         QCOMPARE(status->property("text").toString(), "Pending volume: 75%");
         QCOMPARE(service.state.value("percent").toInt(), 40);
         QCOMPARE(slider->property("value").toDouble(), 40.); // no invented observation
-        QVERIFY(slider->isEnabled()); QCOMPARE(slider->mapToScene(QPointF()).y(), initialY);
+        QVERIFY(slider->isEnabled()); QTRY_VERIFY(status->isVisible());
+        QTRY_VERIFY(slider->mapToScene(QPointF()).y() > initialY); // Only real feedback occupies a row.
         service.pendingPercent = QVariant{}; service.adjusting = false; service.busy = false; service.state["percent"] = 73; emit service.changed();
         QCOMPARE(slider->property("value").toDouble(), 73.);
-        QVERIFY(!status->property("text").toString().contains("Pending"));
+        QCOMPARE(status->property("text").toString(), QString()); QTRY_VERIFY(!status->isVisible());
+        QTRY_COMPARE(slider->mapToScene(QPointF()).y(), initialY);
         service.diagnostic = "Audio action failed: Fixture rejection"; service.available = false; emit service.changed();
-        QCOMPARE(status->property("text").toString(), service.diagnostic);
+        QCOMPARE(status->property("text").toString(), service.diagnostic); QTRY_VERIFY(status->isVisible());
     }
     void volumeBackendCapabilities() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("config.toml")); QVERIFY(config.reload());

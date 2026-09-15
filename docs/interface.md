@@ -35,6 +35,18 @@ still requires explicit opt-in and never replaces another daemon.
 - Wi-Fi shows cached APs, radio control and connect-by-observed saved profile.
   Bluetooth shows adapter power and paired-device connection controls. No new
   passwords, pairing, trust, forced scans or background control actions.
+  Their action buttons are icon-only: the bundled forward chevron (`next`) means
+  connect, the cross (`close`) means disconnect; the Wi-Fi/Bluetooth radio glyph
+  toggles power, accented while powered. Saved-profile, adapter and device names
+  remain visible labels. Hover text and accessible names describe the exact action
+  and target. Buttons retain action permissions and command requirements; Wi-Fi
+  still only exposes saved-profile connection, not a new disconnect operation.
+  Sizing uses `theme.icon_size`, `ui.module_height` and existing padding/spacing;
+  hover text follows `settings.module_tooltips` and `module_tooltip_delay_ms`.
+  Changes apply with configuration reload; no extra presentation toggle is needed.
+- Module popups omit the routine healthy-provider status line without reserving
+  a blank row. Actual errors, unavailable/refreshing state and pending volume
+  feedback remain visible; successful provider data is shown directly.
 - Notification history is newest first, plain text, with DND, dismiss, app actions
   and clear history. Opt-out/history-empty/backend failure are not conflated.
 - Calendar uses real local dates, a 42-cell month grid, adjacent-month dates,

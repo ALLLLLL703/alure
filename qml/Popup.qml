@@ -15,6 +15,16 @@ Control {
     readonly property bool ready: !!service && service.available
     readonly property var rows: !ready ? [] : moduleName === "taskbar" ? Ui.taskItems(service.items, config.behavior, outputName) : service.items
     readonly property bool canAct: ready && config.behavior.allow_actions
+    component RadioActionButton: ShellButton {
+        id: actionButton
+        required property string actionLabel
+        iconSource: "image://icons/builtin/" + iconName
+        Accessible.name: actionLabel
+        accessibleDescription: actionLabel
+        ToolTip.text: actionLabel
+        ToolTip.delay: Config.model.settings.module_tooltip_delay_ms
+        ToolTip.visible: Config.model.settings.module_tooltips && actionButton.visible && actionButton.enabled && actionButton.hovered && !actionButton.down
+    }
     property string actionStatus: ""
     property bool updateConfirmation: false
     property var queuedAction: null
@@ -83,9 +93,9 @@ Control {
             ShellButton { iconName: "refresh"; Accessible.name: "Refresh"; visible: !!root.service; enabled: !!root.service; onClicked: root.service.refresh() }
         }
         InfoText {
-            visible: root.moduleName !== "calendar"
+            visible: root.moduleName !== "calendar" && text.length > 0
             objectName: "provider-status"
-            text: !root.service ? "No provider is implemented for this module." : root.service.diagnostic || ((root.moduleName === "taskbar" || root.moduleName === "workspaces") ? root.service.state.actionError || "" : "") || (root.moduleName === "volume" && root.ready && root.service.pendingPercent !== undefined && root.service.pendingPercent !== null ? "Pending volume: " + Math.round(root.service.pendingPercent) + "%" : root.service.busy && !root.ready ? "Refreshing…" : root.ready ? "Live system data" + (root.moduleName === "volume" && root.service.state.backend ? " · " + root.service.state.backend : "") : "Provider unavailable")
+            text: !root.service ? "No provider is implemented for this module." : root.service.diagnostic || ((root.moduleName === "taskbar" || root.moduleName === "workspaces") ? root.service.state.actionError || "" : "") || (root.moduleName === "volume" && root.ready && root.service.pendingPercent !== undefined && root.service.pendingPercent !== null ? "Pending volume: " + Math.round(root.service.pendingPercent) + "%" : root.service.busy && !root.ready ? "Refreshing…" : root.ready ? "" : "Provider unavailable")
             color: root.ready ? root.theme.palette.muted : root.theme.palette.accent
             Layout.fillWidth: true
         }
@@ -140,21 +150,29 @@ Control {
                 ColumnLayout {
                     visible: root.moduleName === "wifi" && root.ready
                     Layout.fillWidth: true
-                    ShellButton {
-                        text: root.ready && root.service.state.powered ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
+                    RadioActionButton {
+                        objectName: "wifi-power"
+                        iconName: "wifi"
+                        accent: root.ready && !!root.service.state.powered
+                        actionLabel: root.ready && root.service.state.powered ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
                         enabled: root.canAct && (root.config.behavior.radio_command || []).length > 0
                         onClicked: root.act("setPowered", {powered: !root.service.state.powered})
                     }
                     InfoText { text: "Saved connections"; font.bold: true }
                     Repeater {
                         model: root.moduleName === "wifi" && root.ready ? root.service.state.savedConnections || [] : []
-                        ShellButton {
+                        RowLayout {
+                            id: savedConnection
                             required property var modelData
-                            objectName: "wifi-saved-" + modelData.uuid
-                            text: "Connect · " + modelData.name
                             Layout.fillWidth: true
-                            enabled: root.canAct && (root.config.behavior.connect_command || []).length > 0
-                            onClicked: root.act("connectSaved", {uuid: modelData.uuid})
+                            InfoText { objectName: "wifi-saved-label-" + savedConnection.modelData.uuid; text: savedConnection.modelData.name; Layout.fillWidth: true }
+                            RadioActionButton {
+                                objectName: "wifi-saved-" + savedConnection.modelData.uuid
+                                iconName: "next"
+                                actionLabel: "Connect to " + savedConnection.modelData.name
+                                enabled: root.canAct && (root.config.behavior.connect_command || []).length > 0
+                                onClicked: root.act("connectSaved", {uuid: savedConnection.modelData.uuid})
+                            }
                         }
                     }
                     InfoText { text: "Cached access points · only saved profiles can connect; use your network manager for passwords and new networks."; Layout.fillWidth: true; color: root.theme.palette.muted }
@@ -164,13 +182,20 @@ Control {
                     Layout.fillWidth: true
                     Repeater {
                         model: root.moduleName === "bluetooth" && root.ready ? root.service.state.adapters || [] : []
-                        ShellButton {
+                        RowLayout {
+                            id: adapter
                             required property var modelData
-                            objectName: "bluetooth-adapter-" + modelData.path
-                            text: (modelData.Alias || modelData.Name || modelData.Address) + (modelData.Powered ? " · Turn off" : " · Turn on")
+                            readonly property string label: modelData.Alias || modelData.Name || modelData.Address
                             Layout.fillWidth: true
-                            enabled: root.canAct
-                            onClicked: root.act("setPowered", {path: modelData.path, powered: !modelData.Powered})
+                            InfoText { objectName: "bluetooth-adapter-label-" + adapter.modelData.path; text: adapter.label; Layout.fillWidth: true }
+                            RadioActionButton {
+                                objectName: "bluetooth-adapter-" + adapter.modelData.path
+                                iconName: "bluetooth"
+                                accent: !!adapter.modelData.Powered
+                                actionLabel: (adapter.modelData.Powered ? "Turn off " : "Turn on ") + adapter.label
+                                enabled: root.canAct
+                                onClicked: root.act("setPowered", {path: adapter.modelData.path, powered: !adapter.modelData.Powered})
+                            }
                         }
                     }
                     InfoText { text: "Paired-device controls · pairing and discovery require your Bluetooth manager."; Layout.fillWidth: true; color: root.theme.palette.muted }
@@ -274,7 +299,6 @@ Control {
                                             onClicked: { const p = mapToGlobal(width / 2, height / 2); root.act(modelData, {id: card.modelData.id, x: Math.round(p.x), y: Math.round(p.y)}) }
                                         }
                                     }
-                                    ShellButton { visible: root.moduleName === "bluetooth"; text: card.modelData.Connected ? "Disconnect" : "Connect"; enabled: root.canAct && !!card.modelData.Paired; onClicked: root.act(card.modelData.Connected ? "disconnect" : "connect", {path: card.modelData.path}) }
                                     Repeater {
                                         model: root.moduleName === "notifications" && card.modelData.active ? card.modelData.actions || [] : []
                                         ShellButton {
@@ -289,8 +313,17 @@ Control {
                             RowLayout {
                                 Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                                 spacing: root.theme.spacing / 2
-                                visible: root.moduleName === "workspaces" || root.moduleName === "notifications" || root.moduleName === "taskbar"
+                                visible: root.moduleName === "workspaces" || root.moduleName === "notifications" || root.moduleName === "taskbar" || root.moduleName === "bluetooth"
+                                RadioActionButton {
+                                    objectName: "bluetooth-device-" + card.modelData.path
+                                    visible: root.moduleName === "bluetooth"
+                                    iconName: card.modelData.Connected ? "close" : "next"
+                                    actionLabel: (card.modelData.Connected ? "Disconnect " : "Connect to ") + (card.modelData.Alias || card.modelData.Name || card.modelData.Address || "device")
+                                    enabled: root.canAct && !!card.modelData.Paired
+                                    onClicked: root.act(card.modelData.Connected ? "disconnect" : "connect", {path: card.modelData.path})
+                                }
                                 ShellButton {
+                                    visible: root.moduleName !== "bluetooth"
                                     objectName: root.moduleName + "-activate-" + card.modelData.id
                                     iconName: "next"
                                     iconSource: "image://icons/builtin/next"
