@@ -10,6 +10,18 @@ Control {
     readonly property var module: Config.model.modules.tray_launcher
     readonly property var options: module.behavior
     readonly property var menu: Tray.menu
+    readonly property color foreground: module.style.foreground || theme.palette.foreground
+    component ToolbarButton: ShellButton {
+        id: button
+        required property string actionLabel
+        focusPolicy: Qt.NoFocus
+        foreground: root.foreground
+        Accessible.name: actionLabel
+        accessibleDescription: actionLabel
+        ToolTip.text: actionLabel
+        ToolTip.delay: Config.model.settings.module_tooltip_delay_ms
+        ToolTip.visible: Config.model.settings.module_tooltips && button.visible && button.enabled && button.hovered && !button.down
+    }
     property string appId: ""
     property string appTitle: ""
     property string selectedId: ""
@@ -24,6 +36,15 @@ Control {
             const label = registryPage ? String(row.Title || row.id) : String(row.label || "").replace(/_(.)/g, "$1")
             return !query || (options.search_case_sensitive ? label : label.toLocaleLowerCase()).includes(query)
         })
+    }
+    function entryIcon(row) {
+        if (registryPage) {
+            const name = row.Status === "NeedsAttention" ? row.AttentionIconName || row.IconName : row.IconName
+            return row.iconUrl || "image://icons/theme/" + (name || module.style.icon)
+        }
+        if (row["toggle-type"])
+            return "image://icons/builtin/" + (row["toggle-state"] === 1 ? "check" : row["toggle-state"] === -1 ? "minus" : "circle")
+        return "image://icons/theme/" + row["icon-name"]
     }
     function selectable(row) { return registryPage || (row.enabled && row.type !== "separator") }
     function syncSelection() {
@@ -96,9 +117,9 @@ Control {
     opacity: module.style.opacity
     font.family: theme.font
     font.pixelSize: theme.font_size
-    palette.text: module.style.foreground || theme.palette.foreground
-    palette.windowText: module.style.foreground || theme.palette.foreground
-    palette.buttonText: module.style.foreground || theme.palette.foreground
+    palette.text: root.foreground
+    palette.windowText: root.foreground
+    palette.buttonText: root.foreground
     palette.base: theme.palette.surface
     palette.button: theme.palette.surface
     palette.highlight: theme.palette.accent
@@ -108,31 +129,87 @@ Control {
         color: Qt.alpha(root.module.style.background || root.theme.palette.background, root.theme.opacity)
         radius: root.theme.radius
         border.width: root.theme.border_width
-        border.color: root.theme.palette.border
+        border.color: Qt.alpha(root.theme.palette.border, root.theme.opacity)
         BackgroundBlur { anchors.fill: parent; radius: parent.radius; blurEnabled: root.theme.blur_enabled }
     }
     contentItem: ColumnLayout {
         spacing: root.theme.spacing
         RowLayout {
             Layout.fillWidth: true
-            Button { objectName: "tray-launcher-back"; text: "Back"; enabled: !root.registryPage; focusPolicy: Qt.NoFocus; onClicked: root.back() }
-            Label { Layout.fillWidth: true; text: root.registryPage ? "Tray apps" : root.appTitle; elide: Text.ElideRight }
-            Button { text: "Apps"; visible: !root.registryPage; focusPolicy: Qt.NoFocus; onClicked: { root.menu.close(); root.appId = ""; root.pageChanged(); Tray.refresh() } }
-            Button { objectName: "tray-launcher-refresh"; text: "Refresh"; enabled: !root.busy; focusPolicy: Qt.NoFocus; onClicked: { if (root.registryPage) Tray.refresh(); else { Tray.openMenu(root.appId); root.pageChanged() } } }
-            Button { text: "Close"; focusPolicy: Qt.NoFocus; onClicked: Shell.closePopup() }
+            spacing: root.theme.spacing / 2
+            ToolbarButton {
+                objectName: "tray-launcher-back"
+                iconName: "previous"
+                actionLabel: "Back"
+                visible: !root.registryPage
+                onClicked: root.back()
+            }
+            Image {
+                visible: root.registryPage && root.module.style.show_icon
+                Layout.preferredWidth: Math.min(root.module.style.icon_size, Config.model.ui.module_height)
+                Layout.preferredHeight: Layout.preferredWidth
+                sourceSize: Qt.size(width, height)
+                source: "image://icons/" + root.theme.icon_mode + "/" + root.module.style.icon
+            }
+            Label {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                text: root.registryPage ? "Tray apps" : root.appTitle
+                textFormat: Text.PlainText
+                color: root.foreground
+                elide: Text.ElideRight
+            }
+            ToolbarButton {
+                objectName: "tray-launcher-apps"
+                iconName: root.module.style.icon
+                actionLabel: "All tray apps"
+                visible: !root.registryPage
+                onClicked: { root.menu.close(); root.appId = ""; root.pageChanged(); Tray.refresh() }
+            }
+            ToolbarButton {
+                objectName: "tray-launcher-refresh"
+                iconName: "refresh"
+                actionLabel: "Refresh"
+                enabled: !root.busy
+                onClicked: { if (root.registryPage) Tray.refresh(); else { Tray.openMenu(root.appId); root.pageChanged() } }
+            }
+            ToolbarButton {
+                objectName: "tray-launcher-close"
+                iconName: "close"
+                actionLabel: "Close"
+                onClicked: Shell.closePopup()
+            }
         }
         TextField {
             id: search
             objectName: "tray-launcher-search"
             Layout.fillWidth: true
+            implicitHeight: Math.max(Config.model.ui.module_height, contentHeight + topPadding + bottomPadding)
+            padding: Config.model.ui.panel_padding
+            leftPadding: root.theme.spacing
+            rightPadding: root.theme.spacing
+            color: root.foreground
+            placeholderTextColor: root.theme.palette.muted
+            selectionColor: root.theme.palette.accent
+            selectedTextColor: root.theme.palette.background
             placeholderText: root.registryPage ? "Search current tray apps" : "Search this menu page"
             selectByMouse: true
             focus: true
+            background: Rectangle {
+                objectName: "tray-launcher-search-background"
+                radius: Math.min(root.theme.radius, height / 2)
+                color: Qt.alpha(root.theme.palette.surface, root.theme.opacity)
+                border.width: root.theme.border_width
+                border.color: search.activeFocus ? root.theme.palette.accent : root.theme.palette.border
+                Behavior on border.color { ColorAnimation { duration: Config.model.ui.animation_ms } }
+            }
         }
         Label {
             objectName: "tray-launcher-status"
             Layout.fillWidth: true
             visible: text.length > 0
+            color: root.diagnostic ? root.theme.palette.accent : root.theme.palette.muted
+            textFormat: Text.PlainText
             wrapMode: Text.Wrap
             text: root.diagnostic || root.statusText || (root.busy ? "Loading…" : !root.rows.length ? (search.text ? "No matching entries" : root.registryPage ? "No tray apps registered" : "No menu entries; use Back or Refresh") : "")
         }
@@ -145,32 +222,46 @@ Control {
             model: root.rows
             currentIndex: root.rows.findIndex(row => String(row.id) === root.selectedId)
             ScrollBar.vertical: ScrollBar {}
-            delegate: ItemDelegate {
+            delegate: ShellButton {
                 id: entry
                 required property var modelData
                 width: entries.width
                 objectName: "tray-launcher-entry-" + modelData.id
-                height: modelData.type === "separator" ? Math.max(8, root.theme.spacing) : Math.max(Config.model.ui.module_height, implicitHeight)
+                height: modelData.type === "separator" ? root.theme.spacing : Math.max(Config.model.ui.module_height, implicitContentHeight + topPadding + bottomPadding)
                 enabled: root.selectable(modelData) && !root.busy
-                highlighted: String(modelData.id) === root.selectedId
+                accent: String(modelData.id) === root.selectedId
                 focusPolicy: Qt.NoFocus
-                text: root.registryPage ? String(modelData.Title || modelData.id) : (modelData["toggle-type"] ? (modelData["toggle-state"] === 1 ? "● " : modelData["toggle-state"] === -1 ? "− " : "○ ") : "") + String(modelData.label || "").replace(/_(.)/g, "$1") + (modelData.submenu ? "  ›" : "")
-                background: Rectangle {
-                    objectName: "tray-launcher-row-background-" + entry.modelData.id
-                    radius: Math.min(root.theme.radius, height / 2)
-                    color: entry.highlighted || entry.hovered ? Qt.alpha(root.theme.palette.accent, 0.16) : "transparent"
-                    border.width: entry.highlighted ? root.theme.border_width : 0
-                    border.color: root.theme.palette.accent
-                }
-                contentItem: Text {
-                    objectName: "tray-launcher-row-label-" + entry.modelData.id
-                    text: entry.text
-                    textFormat: Text.PlainText
-                    font: entry.font
-                    color: root.module.style.foreground || root.theme.palette.foreground
+                text: root.registryPage ? String(modelData.Title || modelData.id) : String(modelData.label || "").replace(/_(.)/g, "$1")
+                contentItem: RowLayout {
+                    spacing: root.theme.spacing
                     opacity: entry.enabled ? 1 : 0.45
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
+                    Image {
+                        objectName: "tray-launcher-row-icon-" + entry.modelData.id
+                        readonly property bool toggle: !root.registryPage && !!entry.modelData["toggle-type"]
+                        visible: toggle || (root.module.style.show_icon && (root.registryPage || !!entry.modelData["icon-name"]))
+                        Layout.preferredWidth: root.module.style.icon_size
+                        Layout.preferredHeight: root.module.style.icon_size
+                        sourceSize: Qt.size(width, height)
+                        source: visible ? root.entryIcon(entry.modelData) : ""
+                    }
+                    Text {
+                        objectName: "tray-launcher-row-label-" + entry.modelData.id
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        text: entry.text
+                        textFormat: Text.PlainText
+                        font: entry.font
+                        color: root.foreground
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                    }
+                    Image {
+                        visible: !!entry.modelData.submenu
+                        Layout.preferredWidth: root.module.style.icon_size
+                        Layout.preferredHeight: root.module.style.icon_size
+                        sourceSize: Qt.size(width, height)
+                        source: visible ? "image://icons/" + root.theme.icon_mode + "/next" : ""
+                    }
                 }
                 Accessible.name: text
                 Accessible.description: !root.registryPage && modelData["toggle-type"] ? modelData["toggle-type"] + ": " + modelData["toggle-state"] : ""

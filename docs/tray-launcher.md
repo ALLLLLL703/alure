@@ -70,6 +70,16 @@ Settings module palette and typed fields. See `config/tray-launcher-example.toml
   `close_shortcut="Esc"`: canonical Qt portable strings or empty.
 - `format` is the static panel label; shared module style controls icon,
   label visibility/sizing, foreground, background and content opacity.
+  The launcher uses the bar's `ShellButton` for compact icon-only toolbar actions
+  and menu rows, including the same hover/pressed tint and configured animation.
+  Toolbar descriptions follow `settings.module_tooltips` and its delay and retain
+  accessible names. The search field uses matching rounded corners and palette
+  rather than platform-default rectangular controls. Row/button density follows
+  `ui.module_height` and `ui.panel_padding`; no independent sizing defaults are added.
+  `style.show_icon` controls decorative app/menu icons; toggle-state and submenu
+  indicators remain visible. `style.icon_size` sizes row icons. `show_label` and
+  module width limits remain panel-entry options: searchable row labels always stay
+  visible. Tray app icons use the same pixmap/theme/fallback selection as the bar.
   The card inherits the unified theme's font, palette, spacing, padding, radius,
   border, tint (`theme.opacity`) and blur (`theme.blur_enabled`). Nonempty module
   background/foreground override the inherited colors. BackgroundBlur owns no
@@ -118,7 +128,9 @@ that provider (or an independent complete fixture), never host tray apps.
 
 References consulted (no implementation copied):
 [StatusNotifierItem specification](https://specifications.freedesktop.org/status-notifier-item/latest-single),
-[DBusMenu XML](https://github.com/gnustep/libs-dbuskit/blob/master/Bundles/DBusMenu/com.canonical.dbusmenu.xml).
+[DBusMenu XML](https://github.com/gnustep/libs-dbuskit/blob/master/Bundles/DBusMenu/com.canonical.dbusmenu.xml),
+[Qt Quick Controls customization](https://doc.qt.io/qt-6/qtquickcontrols-customize.html)
+(the search field keeps TextField editing while customizing its background).
 The deployed `org.kde` namespace is intentionally retained rather than silently
 switching to the specification's alternative namespace.
 
@@ -145,3 +157,12 @@ failure was corrected by using a separate private-bus fixture connection and
 scoped fixture cleanup. The user's ModuleStrip snapshot was byte-compared: only
 the deliberately committed launcher-label expression differs; original formatting
 and deleted learning files remain uncommitted. No installation or push occurred.
+
+The bar-aligned styling follow-up adds default, custom light-theme/density/color,
+and hidden-icon UI cases, including minimum-width navigation and visible toggle
+state. ConfigStore, ConfigEditing, TrayCtl and TrayLauncherUi pass. In private
+Niri with synthetic tray providers, the bar and launcher were displayed together:
+compact rounded rows/search, toolbar hover descriptions, app icons, disabled rows,
+submenu chevrons and a live unchecked-to-checked transition were verified. Escape
+returned to the registry and closed cleanly (exit 0); no QML or Wayland errors were
+logged. The private session was stopped; the real bar/configuration was untouched.

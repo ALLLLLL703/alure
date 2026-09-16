@@ -72,13 +72,68 @@ private slots:
         QCOMPARE(object->property("summary").toString(), "Tray apps");
         QVERIFY(object->property("service").isNull()); QCOMPARE(warnings.size(), 0);
     }
+    void barStyle_data() {
+        QTest::addColumn<QString>("toml");
+        QTest::newRow("defaults") << QString();
+        QTest::newRow("custom-light") << QString("[theme]\nname='dawn'\nradius=20\nspacing=14\n[ui]\nmodule_height=42\npanel_padding=8\n[modules.tray_launcher.style]\nforeground='#244466'\nicon_size=20\n");
+        QTest::newRow("icons-hidden") << QString("[modules.tray_launcher.style]\nshow_icon=false\n");
+    }
+    void barStyle() {
+        QFETCH(QString, toml);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("missing")); QVERIFY(config.reload());
+        if (!toml.isEmpty()) QVERIFY(config.previewText(toml));
+        Alure::TrayService tray(nullptr, Alure::TrayService::WatcherPolicy::ObserveOnly);
+        auto module = config.model().value("modules").toMap().value("tray_launcher").toMap(); module["enabled"] = true;
+        tray.configure(module); QTRY_VERIFY(tray.available());
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Tray", &tray);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        Alure::TrayLauncherHost host(config, engine, true); QVERIFY(host.ready());
+        QQuickView *view = nullptr;
+        for (auto *window : QGuiApplication::topLevelWindows()) if (window->title() == "Alure tray launcher") view = qobject_cast<QQuickView *>(window);
+        QVERIFY(view); auto *root = view->rootObject(); auto *search = find(root, "tray-launcher-search"); QVERIFY(search);
+        QTRY_VERIFY(search->hasActiveFocus());
+        const auto theme = config.model().value("theme").toMap();
+        const auto ui = config.model().value("ui").toMap();
+        const auto style = module.value("style").toMap();
+        const auto foreground = QColor(style.value("foreground").toString().isEmpty() ? theme.value("palette").toMap().value("foreground").toString() : style.value("foreground").toString());
+        QCOMPARE(search->property("color").value<QColor>(), foreground);
+        QVERIFY(search->height() >= ui.value("module_height").toInt());
+        auto *searchBackground = find(root, "tray-launcher-search-background"); QVERIFY(searchBackground);
+        QCOMPARE(searchBackground->property("radius").toDouble(), qMin(theme.value("radius").toDouble(), searchBackground->height() / 2));
+        for (const auto &name : {"refresh", "close"}) {
+            auto *button = find(root, QString("tray-launcher-") + name); QVERIFY(button);
+            QCOMPARE(button->property("iconName").toString(), QString(name));
+            QVERIFY(button->property("text").toString().isEmpty());
+            QVERIFY(!button->property("actionLabel").toString().isEmpty());
+            QCOMPARE(button->height(), ui.value("module_height").toDouble());
+            QCOMPARE(button->property("focusPolicy").toInt(), int(Qt::NoFocus));
+        }
+        const QString id = "org.alure.LauncherFixture/StatusNotifierItem";
+        auto *row = find(root, "tray-launcher-entry-" + id); QVERIFY(row);
+        QVERIFY(row->property("accent").toBool());
+        auto *icon = find(root, "tray-launcher-row-icon-" + id); QVERIFY(icon);
+        QCOMPARE(icon->isVisible(), style.value("show_icon").toBool());
+        QCOMPARE(row->property("padding").toInt(), ui.value("panel_padding").toInt());
+        QCOMPARE(find(root, "tray-launcher-row-label-" + id)->property("color").value<QColor>(), foreground);
+        // Compact icon toolbar still fits the minimum supported launcher width.
+        view->resize(240, 240); QTest::qWait(30);
+        auto *close = find(root, "tray-launcher-close");
+        QVERIFY(close->mapToScene(QPointF(close->width(), 0)).x() <= view->width());
+        QTest::keyClick(view, Qt::Key_Return); QTRY_VERIFY(!tray.menu()->loading());
+        QVERIFY(close->mapToScene(QPointF(close->width(), 0)).x() <= view->width());
+        auto *toggle = find(root, "tray-launcher-row-icon-4"); QVERIFY(toggle);
+        QVERIFY(toggle->isVisible()); // State indicators are not decorative app icons.
+        QVERIFY(toggle->property("source").toUrl().path().contains("check"));
+        QCOMPARE(warnings.size(), 0);
+    }
     void searchNavigationLifetime() {
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("missing")); QVERIFY(config.reload());
         QVERIFY(config.previewText("[theme]\nopacity=0.45\n[modules.tray_launcher.style]\nbackground='#123456'\nforeground='#abcdef'\n"));
         PausableTrayService tray;
         auto module = config.model().value("modules").toMap().value("tray_launcher").toMap(); module["enabled"] = true;
         tray.configure(module); QTRY_VERIFY(tray.available());
-        QQmlApplicationEngine engine;
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
         engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Tray", &tray);
         QSignalSpy warnings(&engine, &QQmlEngine::warnings);
         {
@@ -92,7 +147,8 @@ private slots:
             const auto selected = root->property("selectedId");
             auto *selectedLabel = find(root, "tray-launcher-row-label-" + selected.toString()); QVERIFY(selectedLabel);
             QCOMPARE(selectedLabel->property("color").value<QColor>(), QColor("#abcdef"));
-            auto *selectedBackground = find(root, "tray-launcher-row-background-" + selected.toString()); QVERIFY(selectedBackground);
+            auto *selectedEntry = find(root, "tray-launcher-entry-" + selected.toString()); QVERIFY(selectedEntry);
+            auto *selectedBackground = selectedEntry->property("background").value<QObject *>(); QVERIFY(selectedBackground);
             QVERIFY(qAbs(selectedBackground->property("color").value<QColor>().alphaF() - .16) < .01);
 
             auto *entries = find(root, "tray-launcher-entries"); QVERIFY(entries);
@@ -133,7 +189,7 @@ private slots:
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("missing")); QVERIFY(config.reload());
         Alure::TrayService tray(nullptr, Alure::TrayService::WatcherPolicy::ObserveOnly);
         auto module = config.model().value("modules").toMap().value("tray_launcher").toMap(); module["enabled"] = true; tray.configure(module); QTRY_VERIFY(tray.available());
-        QQmlApplicationEngine engine; engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Tray", &tray);
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider); engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Tray", &tray);
         Alure::TrayLauncherHost host(config, engine, true); QVERIFY(host.ready());
         QQuickView *view = nullptr; for (auto *w : QGuiApplication::topLevelWindows()) if (w->title() == "Alure tray launcher") view = qobject_cast<QQuickView *>(w);
         QVERIFY(view); auto *root = view->rootObject();
@@ -160,7 +216,7 @@ private slots:
         Alure::TrayService tray(nullptr, Alure::TrayService::WatcherPolicy::ObserveOnly);
         auto module = config.model().value("modules").toMap().value("tray_launcher").toMap(); module["enabled"] = true;
         tray.configure(module); QTRY_VERIFY(tray.available());
-        QQmlApplicationEngine engine; engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Tray", &tray);
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider); engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Tray", &tray);
         Alure::TrayLauncherHost host(config, engine, true); QVERIFY(host.ready());
         QQuickView *view = nullptr; for (auto *w : QGuiApplication::topLevelWindows()) if (w->title() == "Alure tray launcher") view = qobject_cast<QQuickView *>(w);
         QVERIFY(view); auto *root = view->rootObject(); auto *search = find(root, "tray-launcher-search");
@@ -184,7 +240,7 @@ private slots:
         QVERIFY(config.previewText("[modules.tray_launcher.behavior]\nallow_actions=false\n"));
         Alure::TrayService tray(nullptr, Alure::TrayService::WatcherPolicy::ObserveOnly);
         auto module = config.model().value("modules").toMap().value("tray_launcher").toMap(); module["enabled"] = true; tray.configure(module); QTRY_VERIFY(tray.available());
-        QQmlApplicationEngine engine; engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Tray", &tray);
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider); engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Tray", &tray);
         QSignalSpy warnings(&engine, &QQmlEngine::warnings);
         Alure::TrayLauncherHost host(config, engine, true); QVERIFY(host.ready());
         QQuickView *view = nullptr; for (auto *w : QGuiApplication::topLevelWindows()) if (w->title() == "Alure tray launcher") view = qobject_cast<QQuickView *>(w);

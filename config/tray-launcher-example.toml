@@ -8,7 +8,9 @@ opacity = 0.82
 enabled = true # optional panel entry; explicit commands ignore this switch
 [modules.tray_launcher.style]
 icon = "tray"
-show_label = true
+icon_size = 18 # launcher app/menu icons, also used by the panel entry
+show_icon = true # decorative launcher icons; toggle/submenu indicators remain visible
+show_label = true # panel entry; searchable launcher labels remain visible
 foreground = "" # theme inheritance
 background = "" # theme background tinted by theme.opacity
 opacity = 1.0
