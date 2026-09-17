@@ -67,9 +67,11 @@ private:
 class FakeMpris final : public QObject {
     Q_OBJECT
 public:
-    FakeMpris(QString suffix, QString identity, QString title, QString status, bool seekable)
+    FakeMpris(QString suffix, QString identity, QString title, QString status, bool seekable, QString connectionTag = {})
         : service("org.mpris.MediaPlayer2." + suffix), identity(std::move(identity)), title(std::move(title)),
-          status(std::move(status)), seekable(seekable), connection(QDBusConnection::connectToBus(QDBusConnection::SessionBus, "media-fixture-" + suffix)) {
+          status(std::move(status)), seekable(seekable),
+          connection(QDBusConnection::connectToBus(QDBusConnection::SessionBus,
+                                                    "media-fixture-" + suffix + (connectionTag.isEmpty() ? "" : "-" + connectionTag))) {
         new RootAdaptor(this); new PlayerAdaptor(this);
         registered = connection.registerService(service)
             && connection.registerObject("/org/mpris/MediaPlayer2", this, QDBusConnection::ExportAdaptors);
@@ -80,7 +82,7 @@ public:
         QDBusConnection::disconnectFromBus(connection.name());
     }
     void remove() { connection.unregisterService(service); }
-    QString service, identity, title, status;
+    QString service, identity, title, status, artUrl;
     bool seekable = true, shuffle = false;
     QString loop = "None";
     qlonglong positionUs = 10000000;
@@ -96,7 +98,7 @@ QVariantMap PlayerAdaptor::metadata() const {
     return {{"mpris:trackid", QVariant::fromValue(QDBusObjectPath("/fixture/track"))},
             {"mpris:length", 180000000LL}, {"xesam:title", m_player->title},
             {"xesam:artist", QStringList{"Fixture Artist"}}, {"xesam:album", "Fixture Album"},
-            {"mpris:artUrl", ""}};
+            {"mpris:artUrl", m_player->artUrl}};
 }
 qlonglong PlayerAdaptor::position() const { return m_player->positionUs; }
 bool PlayerAdaptor::shuffle() const { return m_player->shuffle; }
@@ -120,6 +122,7 @@ class PausableMediaService final : public Alure::MediaService {
 public:
     void pauseActions() { setBusy(true); }
     void resumeActions() { setBusy(false); }
+    void publishRows(const QVariantList &rows) { publish({{"count", rows.size()}}, rows); }
 };
 
 class MediaLauncherUiTest : public QObject {
@@ -152,9 +155,10 @@ private slots:
     void registryDetailKeyboardAndRemoval() {
         FakeMpris alpha("Alpha", "Alpha Player", "Alpha Song", "Playing", true);
         FakeMpris beta("Beta", "Beta Player", "Beta Song", "Paused", false);
+        alpha.artUrl = "https://invalid.example.test/hidden-cover.png";
         QVERIFY(alpha.registered); QVERIFY(beta.registered);
         QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("missing")); QVERIFY(config.reload());
-        QVERIFY(config.previewText("[modules.media]\nenabled=false\n[modules.media_launcher.behavior]\ninterval_ms=60000\nartwork_remote=false\n"));
+        QVERIFY(config.previewText("[modules.media]\nenabled=false\n[modules.media_launcher.behavior]\ninterval_ms=60000\nshow_artwork=false\nartwork_remote=true\n"));
         PausableMediaService media;
         auto module = config.model().value("modules").toMap().value("media_launcher").toMap(); module["enabled"] = true; media.configure(module);
         QTRY_VERIFY_WITH_TIMEOUT(media.available(), 5000); QTRY_COMPARE(media.items().size(), 2);
@@ -178,11 +182,19 @@ private slots:
         QTest::keyClick(view, Qt::Key_Return); QTRY_VERIFY(!root->property("registryPage").toBool());
         QCOMPARE(view->rootObject(), root); QCOMPARE(QGuiApplication::topLevelWindows().size(), 1);
         QCOMPARE(find(root, "media-launcher-title")->property("text").toString(), "Alpha Song");
+        QTRY_VERIFY(root->property("viewActive").toBool());
+        auto *artwork = find(root, "media-launcher-artwork"); QVERIFY(artwork);
+        QVERIFY(artwork->property("source").toUrl().isEmpty());
         QTRY_COMPARE(QGuiApplication::focusObject()->objectName(), QString("media-launcher-back"));
+        auto *back = find(root, "media-launcher-back"); QVERIFY(back);
+        QVERIFY(back->property("visualFocus").toBool());
         const auto selected = root->property("selectedId");
         QTest::keyClick(view, Qt::Key_Tab); QTRY_COMPARE(QGuiApplication::focusObject()->objectName(), QString("media-launcher-refresh"));
+        auto *refresh = find(root, "media-launcher-refresh"); QVERIFY(refresh);
+        QVERIFY(refresh->property("visualFocus").toBool()); QVERIFY(!back->property("visualFocus").toBool());
         QCOMPARE(root->property("selectedId"), selected); // Registry Tab shortcut is disabled here.
         QTest::keyClick(view, Qt::Key_Tab, Qt::ShiftModifier); QTRY_COMPARE(QGuiApplication::focusObject()->objectName(), QString("media-launcher-back"));
+        QVERIFY(back->property("visualFocus").toBool());
         QTest::keyClick(view, Qt::Key_Tab, Qt::ShiftModifier); QTRY_COMPARE(QGuiApplication::focusObject()->objectName(), QString("media-launcher-repeat"));
         for (const auto *name : {"media-launcher-back", "media-launcher-refresh", "media-launcher-close", "media-launcher-progress", "media-launcher-shuffle", "media-launcher-previous", "media-launcher-play-pause", "media-launcher-next", "media-launcher-repeat", "media-launcher-back"}) {
             QTest::keyClick(view, Qt::Key_Tab); QTRY_COMPARE(QGuiApplication::focusObject()->objectName(), QString(name));
@@ -208,6 +220,8 @@ private slots:
         QTRY_VERIFY(alpha.seekCalls > 0); QVERIFY(alpha.positionUs > originalPosition);
         alpha.title = "Updated Alpha"; QTest::keyClick(view, Qt::Key_F5);
         QTRY_COMPARE(find(root, "media-launcher-title")->property("text").toString(), QString("Updated Alpha"));
+        QTest::keyClick(view, Qt::Key_F5); QTRY_VERIFY(!media.busy());
+        QTRY_VERIFY(root->property("statusText").toString().isEmpty());
         alpha.remove(); QTest::keyClick(view, Qt::Key_F5);
         QTRY_VERIFY(root->property("registryPage").toBool());
         QTRY_VERIFY(find(root, "media-launcher-status")->property("text").toString().contains("disappeared"));
@@ -218,6 +232,50 @@ private slots:
         QSignalSpy finished(&host, &Alure::MediaLauncherHost::finished);
         QTest::keyClick(view, Qt::Key_Escape); QTRY_COMPARE(finished.size(), 1);
         QVERIFY(!view->isVisible()); QVERIFY(warnings.isEmpty());
+    }
+    void ownerReplacementCancelsQueuedAction() {
+        FakeMpris original("OwnerSwap", "Original Player", "Original Song", "Paused", true, "original");
+        QVERIFY(original.registered);
+        QTemporaryDir dir; Alure::ConfigStore config(dir.filePath("missing")); QVERIFY(config.reload());
+        QVERIFY(config.previewText("[modules.media_launcher.behavior]\ninterval_ms=60000\nshow_artwork=false\n"));
+        PausableMediaService media;
+        auto module = config.model().value("modules").toMap().value("media_launcher").toMap(); module["enabled"] = true; media.configure(module);
+        QTRY_VERIFY_WITH_TIMEOUT(media.available(), 5000); QTRY_COMPARE(media.items().size(), 1);
+        QCOMPARE(media.items().first().toMap().value("owner").toString(), original.connection.baseService());
+        QQmlApplicationEngine engine; engine.addImageProvider("icons", new Alure::IconProvider);
+        engine.rootContext()->setContextProperty("Config", &config); engine.rootContext()->setContextProperty("Media", &media);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        Alure::MediaLauncherHost host(config, engine, true); QVERIFY(host.ready());
+        QQuickView *view = nullptr;
+        for (auto *window : QGuiApplication::topLevelWindows()) if (window->title() == "Alure media launcher") view = qobject_cast<QQuickView *>(window);
+        QVERIFY(view);
+        auto *root = view->rootObject();
+        QVERIFY(QMetaObject::invokeMethod(root, "choose", Q_ARG(QVariant, original.service)));
+        QTRY_VERIFY(!root->property("registryPage").toBool());
+        media.pauseActions();
+        QVERIFY(QMetaObject::invokeMethod(root, "dispatch", Q_ARG(QVariant, "next"), Q_ARG(QVariant, QVariantMap{})));
+        QVERIFY(root->property("queuedAction").isValid());
+
+        original.remove();
+        FakeMpris replacement("OwnerSwap", "Replacement Player", "Replacement Song", "Paused", true, "replacement");
+        QVERIFY(replacement.registered);
+        auto replacementRows = media.items();
+        auto replacementRow = replacementRows.first().toMap();
+        replacementRow["owner"] = replacement.connection.baseService();
+        replacementRow["identity"] = replacement.identity;
+        replacementRows[0] = replacementRow;
+        media.publishRows(replacementRows);
+        QTRY_COMPARE(root->property("player").toMap().value("owner").toString(), replacement.connection.baseService());
+        media.resumeActions();
+        QTRY_VERIFY(root->property("queuedAction").isNull());
+        QTRY_VERIFY(root->property("actionError").toString().contains("cancelled"));
+        QCOMPARE(original.nextCalls, 0); QCOMPARE(replacement.nextCalls, 0);
+
+        QVERIFY(!media.action("next", {{"service", replacement.service}, {"owner", original.connection.baseService()}}));
+        QCOMPARE(replacement.nextCalls, 0);
+        QVERIFY(media.action("next", {{"service", replacement.service}, {"owner", replacement.connection.baseService()}}));
+        QTRY_COMPARE(replacement.nextCalls, 1);
+        QVERIFY(warnings.isEmpty());
     }
 };
 int main(int argc, char **argv) {

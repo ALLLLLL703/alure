@@ -13,7 +13,7 @@ protected:
     bool act(const QString &, const QVariantMap &) override;
 private:
     void readPlayers(QStringList names, QVariantList rows);
-    void readPlayer(const QString &name, QStringList names, QVariantList rows, const QString &identity);
+    void readPlayer(const QString &name, const QString &owner, QStringList names, QVariantList rows, const QString &identity);
 };
 class BluetoothService : public Service {
     Q_OBJECT

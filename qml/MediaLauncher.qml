@@ -56,7 +56,7 @@ Control {
                 .filter(item => item.visible && item.enabled && item.activeFocusOnTab)
         const current = order.findIndex(item => item.activeFocus)
         const next = current < 0 ? 0 : (current + (reverse ? -1 : 1) + order.length) % order.length
-        if (order.length) order[next].forceActiveFocus()
+        if (order.length) order[next].forceActiveFocus(reverse ? Qt.BacktabFocusReason : Qt.TabFocusReason)
         if (event) event.accepted = true
     }
     function syncSelection() {
@@ -88,7 +88,7 @@ Control {
         actionError = ""
         queuedAction = null
         if (options.reset_search_on_page) search.clear()
-        Qt.callLater(() => backButton.forceActiveFocus())
+        Qt.callLater(() => backButton.forceActiveFocus(Qt.TabFocusReason))
     }
     function back() {
         if (registryPage) return
@@ -105,7 +105,8 @@ Control {
     }
     function dispatch(name, args) {
         if (!viewActive || registryPage || !player.service) return false
-        const request = {name: name, service: String(player.service), args: Object.assign({service: String(player.service)}, args || {})}
+        const request = {name: name, service: String(player.service), owner: String(player.owner),
+                         args: Object.assign({service: String(player.service), owner: String(player.owner)}, args || {})}
         if (service.busy) {
             queuedAction = request
             actionError = ""
@@ -120,7 +121,8 @@ Control {
         const request = queuedAction
         queuedAction = null
         const current = players.find(row => String(row.service) === request.service)
-        actionError = viewActive && !registryPage && selectedService === request.service && current && options.allow_actions && current.CanControl
+        actionError = viewActive && !registryPage && selectedService === request.service && current
+                && String(current.owner) === request.owner && options.allow_actions && current.CanControl
                 && service.action(request.name, request.args) ? "" : "The queued action was cancelled because its player changed."
     }
     function timeLabel(us) {
@@ -145,8 +147,10 @@ Control {
     }
     Connections {
         target: root.service
-        function onChanged() {
-            if (root.queuedAction && !root.service.busy) Qt.callLater(root.flushAction)
+        function onBusyChanged() {
+            if (root.service.busy) return
+            if (root.statusText === "Refreshing players…") root.statusText = ""
+            if (root.queuedAction) Qt.callLater(root.flushAction)
         }
     }
     Connections { target: Config; function onModelChanged() { root.queuedAction = null } }
@@ -350,6 +354,7 @@ Control {
                         sourceSize: Qt.size(Math.ceil(width), Math.ceil(height))
                         fillMode: Image.PreserveAspectFit
                         source: {
+                            if (!root.options.show_artwork || !root.viewActive) return ""
                             const url = String(root.player.artUrl || "")
                             return url.startsWith("file:") || (root.options.artwork_remote && /^https?:\/\//i.test(url)) ? url : ""
                         }

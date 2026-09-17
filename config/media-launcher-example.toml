@@ -8,6 +8,8 @@ enabled = true # optional static bar entry; explicit invocation ignores this swi
 [modules.media_launcher.style]
 icon = "media"
 icon_size = 18
+max_width = 240
+min_width = 30
 show_icon = true
 show_label = true
 foreground = ""
@@ -17,6 +19,7 @@ opacity = 1.0
 explicit_launch = true
 popup_enabled = true
 allow_actions = true
+command = [] # unused; the launcher never starts applications
 format = "Media players"
 popup_width = 680
 popup_height = 560

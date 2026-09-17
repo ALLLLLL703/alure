@@ -19,9 +19,9 @@ selection across unchanged refreshes. Player/track/capability changes arrive at
 the configured poll interval and after acknowledged actions. If the selected
 service disappears, pending work is discarded and the registry reappears with a
 diagnosis. A busy service retains only the newest requested action, including
-seek movements; it records the original service and is cancelled rather than
-retargeted if selection, page, visibility, configuration, or player identity
-changes.
+seek movements; it records both the well-known service and its unique D-Bus
+owner, targets that unique owner, and is cancelled rather than retargeted if
+selection, page, visibility, configuration, or service ownership changes.
 
 ## Keyboard contract
 

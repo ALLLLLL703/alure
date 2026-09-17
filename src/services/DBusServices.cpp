@@ -32,19 +32,24 @@ void MediaService::readPlayers(QStringList names, QVariantList rows) {
     }
     const auto name = names.takeFirst();
     const auto fallback = name.section('.', 3).section(".instance", 0, 0);
-    properties(QDBusConnection::sessionBus(), name, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2",
-               [this, name, names, rows, fallback](const QVariantMap &props) {
-        readPlayer(name, names, rows, props.value("Identity", fallback).toString());
-    }, [this, name, names, rows, fallback](const QString &) {
-        readPlayer(name, names, rows, fallback);
-    });
+    call(QDBusConnection::sessionBus(), "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner", {name},
+         [this, name, names, rows, fallback](const QVariantList &args) {
+        const auto owner = args.value(0).toString();
+        if (owner.isEmpty()) { readPlayers(names, rows); return; }
+        properties(QDBusConnection::sessionBus(), owner, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2",
+                   [this, name, owner, names, rows, fallback](const QVariantMap &props) {
+            readPlayer(name, owner, names, rows, props.value("Identity", fallback).toString());
+        }, [this, name, owner, names, rows, fallback](const QString &) {
+            readPlayer(name, owner, names, rows, fallback);
+        });
+    }, [this, names, rows](const QString &) { readPlayers(names, rows); });
 }
-void MediaService::readPlayer(const QString &name, QStringList names, QVariantList rows, const QString &identity) {
-    properties(QDBusConnection::sessionBus(), name, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player",
-               [this, name, names, rows, identity](QVariantMap props) mutable {
+void MediaService::readPlayer(const QString &name, const QString &owner, QStringList names, QVariantList rows, const QString &identity) {
+    properties(QDBusConnection::sessionBus(), owner, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player",
+               [this, name, owner, names, rows, identity](QVariantMap props) mutable {
         if (!props.contains("PlaybackStatus")) { readPlayers(names, rows); return; }
         const auto metadata = dbusMap(unbox(props.value("Metadata")));
-        QVariantMap row{{"service", name}, {"identity", identity},
+        QVariantMap row{{"service", name}, {"owner", owner}, {"identity", identity},
                         {"title", metadata.value("xesam:title")}, {"artist", qdbus_cast<QStringList>(metadata.value("xesam:artist"))},
                         {"album", metadata.value("xesam:album")}, {"artUrl", metadata.value("mpris:artUrl")},
                         {"trackId", qvariant_cast<QDBusObjectPath>(unbox(metadata.value("mpris:trackid"))).path()},
@@ -65,8 +70,9 @@ bool MediaService::act(const QString &name, const QVariantMap &args) {
     else if (name != "setPosition" && name != "setShuffle" && name != "setLoopStatus") return false;
     for (const auto &entry : items()) {
         const auto row = entry.toMap();
-        if (row.value("service") != args.value("service") || !row.value("CanControl").toBool()) continue;
-        const auto destination = row.value("service").toString();
+        if (row.value("service") != args.value("service") || row.value("owner") != args.value("owner") ||
+            !row.value("CanControl").toBool()) continue;
+        const auto destination = row.value("owner").toString();
         if (name == "setPosition") {
             const auto value = args.value("positionUs");
             if (value.metaType().id() != QMetaType::Double && value.metaType().id() != QMetaType::LongLong && value.metaType().id() != QMetaType::Int) return false;
@@ -87,7 +93,7 @@ bool MediaService::act(const QString &name, const QVariantMap &args) {
         }
         if (name == "playPause") capability = row.value("playbackStatus") == "Playing" ? "CanPause" : "CanPlay";
         if (!row.value(capability).toBool()) return false;
-        return dbusAction(QDBusConnection::sessionBus(), row.value("service").toString(), "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", method);
+        return dbusAction(QDBusConnection::sessionBus(), destination, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", method);
     }
     return false;
 }
