@@ -1,0 +1,24 @@
+// Merge these rules into your Niri config to make translucent Alure surfaces
+// sample application windows behind them instead of looking through to wallpaper.
+// This does not force blur on: Alure's theme.blur_enabled request still controls it.
+
+// Module details, tray menus, media and clipboard popups are xdg_popup children
+// of an Alure bar. Change popup effects without changing the bar itself.
+layer-rule {
+    match namespace="^alure-"
+
+    popups {
+        background-effect {
+            xray false
+        }
+    }
+}
+
+// Independent non-bar layer-shell surfaces.
+layer-rule {
+    match namespace="^alure-(tray-launcher|clipboard|toast|osd)$"
+
+    background-effect {
+        xray false
+    }
+}

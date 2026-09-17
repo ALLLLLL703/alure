@@ -48,14 +48,27 @@ there is no screenshot capture or render-loop blur workload in Alure.
 
 ## Compositor policy and fallback
 
-Niri controls blur strength globally. Its **xray is enabled by default**, sampling
-the wallpaper rather than intervening application windows. To blur those windows
-too, the user must opt into `background-effect { xray false; }` in the relevant
-Niri window/layer rules (and popup rules where applicable). This can be more
-expensive; see the upstream documentation below. The client protocol exposes a
-blur region, not strength or xray controls. Alure does not modify Niri configuration,
-force a compositor rule, or claim it can override one. In particular, a user rule
-forcing blur can override the effect of disabling Alure's request.
+Niri controls blur strength and sampling policy. Its **xray is enabled by default**,
+sampling the wallpaper rather than intervening application windows. This is why a
+translucent popup can appear to punch through an ordinary window to the desktop.
+The client protocol exposes a blur region, not strength or xray controls, so Alure
+cannot change this per surface through KWindowEffects.
+
+To keep the bar's existing policy while making only non-bar Alure surfaces sample
+the windows actually behind them, merge
+[`config/niri-window-aware-transparency.kdl`](../config/niri-window-aware-transparency.kdl)
+into your Niri configuration. Its first rule applies `xray false` only to xdg_popup
+children of Alure bars (module details, media, clipboard and tray menus); its
+second rule matches independent `alure-tray-launcher`, `alure-clipboard`,
+`alure-toast` and `alure-osd` layer surfaces. It deliberately does **not** set
+`blur true`, so `theme.blur_enabled` remains authoritative instead of a compositor
+rule forcing blur behind disabled Alure surfaces. Confirm active namespaces with
+`niri msg layers` after launching the relevant UI.
+
+Non-xray effects can be more expensive and Niri currently documents visual
+limitations during animations or moving windows; see the upstream documentation
+below. Alure does not modify the user's Niri configuration or claim it can override
+compositor policy.
 
 If blur is unavailable or disabled in the compositor, backgrounds retain alpha
 transparency. A single informational stderr message after capability discovery
@@ -198,7 +211,17 @@ was stopped. No host Niri configuration, running Shell, or hardware setting was
 changed. Actual toast/OSD/clipboard visuals, physical multi-output and fractional
 scaling were not covered by this bounded live check.
 
+A follow-up native check validated the supplied non-xray rules in an isolated
+Sway → Niri session. A high-contrast `foot` window was placed behind the standalone
+tray launcher at `theme.opacity=0.35`; its cyan text and window boundary remained
+visible through the launcher and were genuinely blurred, rather than the effect
+sampling the gray wallpaper behind that window. `niri msg layers` reported the
+matched `alure-tray-launcher` namespace. The launcher closed cleanly, its log had
+no protocol/QML errors, and the isolated session was stopped. No host Niri file or
+running shell was modified.
+
 Sources inspected for this implementation:
+- [Niri layer rules and popup effects](https://niri-wm.github.io/niri/Configuration%3A-Layer-Rules.html)
 - [Niri 26.04 window effects](https://niri-wm.github.io/niri/Window-Effects.html)
 - [KWindowSystem v6.30 Wayland implementation](https://github.com/KDE/kwindowsystem/blob/v6.30.0/src/platforms/wayland/windoweffects.cpp)
 - [KWindowSystem v6.25 protocol support](https://github.com/KDE/kwindowsystem/blob/v6.25.0/src/platforms/wayland/windoweffects.cpp)

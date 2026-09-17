@@ -12,6 +12,9 @@ No wallpaper, compositor replacement or simulated system state is supplied.
 [Frosted glass backgrounds](docs/background-blur.md) request compositor blur by default;
 `theme.blur_enabled=false` restores alpha-only transparency. Blur requires compositor
 support (Niri >=26.04); opacity remains independent of compositor-controlled blur strength.
+Niri's default xray effect samples wallpaper through windows; the optional
+[`niri-window-aware-transparency.kdl`](config/niri-window-aware-transparency.kdl)
+rules make Alure's non-bar surfaces sample intervening windows without changing the bar.
 
 See [architecture](docs/architecture.md), [configuration](docs/configuration.md),
 [interface/configuration coverage](docs/interface.md), [current UI changes](docs/ui-refinement.md), and
