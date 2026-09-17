@@ -81,8 +81,17 @@ alure media-launcher --config config/media-launcher-example.toml
 Exercise search, same-window transition, detail Tab/Shift+Tab order, Enter/Space,
 seek arrows, F5, service property changes/removal, Back and Escape. Inspect
 `niri msg layers` for exactly one `alure-media-launcher` surface. Never point a
-control fixture at the host session bus or real players. Native compositor blur,
-focus, scaling and multi-output behavior remain parent-owned checks.
+control fixture at the host session bus or real players. The parent independently ran the final build against two synthetic MPRIS players
+on a private native Wayland/session bus. Registry Tab/Enter navigation, same-window
+detail, capability-disabled seek, keyboard seek/shuffle/play-pause, F5 metadata
+refresh and selected-player removal recovery all worked without touching host
+players. After the review fix, Tab visibly outlined Refresh and Shift+Tab visibly
+outlined Back with the shared accent treatment; a focused seek still delivered
+`SetPosition` to the exact synthetic owner. Escape closed cleanly, logs contained
+no QML/Wayland errors, and the isolated session was stopped. The parent also reran
+ConfigStore, PanelHostContract, CliSmoke, Services, ConfigEditing,
+TrayLauncherUi and MediaLauncherUi: **7/7 suites passed** in 24.28 seconds.
+Physical multi-output, fractional scaling and focus-loss remain untested.
 
 MPRIS field/method semantics follow the official specification:
 https://specifications.freedesktop.org/mpris-spec/latest/
