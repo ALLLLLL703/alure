@@ -5,8 +5,11 @@ ShellButton {
     id: control
     required property string symbol
     property real glyphSize: Config.model.modules.media.behavior.control_icon_size
-    implicitWidth: Config.model.modules.media.behavior.control_size
+    property real controlSize: Config.model.modules.media.behavior.control_size
+    implicitWidth: controlSize
     implicitHeight: implicitWidth
+    Keys.onReturnPressed: event => { control.click(); event.accepted = true }
+    Keys.onEnterPressed: event => { control.click(); event.accepted = true }
     contentItem: Item {
         opacity: control.enabled ? 1 : 0.45
         Shape {

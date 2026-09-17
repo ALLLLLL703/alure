@@ -311,13 +311,13 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model,
         range(behavior, "menu_width", 160, 1920, path);
         range(behavior, "menu_height", 100, 2160, path);
       }
-      if (it.key() == "tray_launcher") {
+      if (it.key() == "tray_launcher" || it.key() == "media_launcher") {
         range(behavior, "popup_width", 240, 1920, path);
         range(behavior, "popup_height", 240, 2160, path);
         const auto output = behavior.value("output").toString();
         if (output.isEmpty() || output == "*" || output.contains(QChar::Null))
           invalid(path + "output", "expected primary or one output name");
-        for (const auto &key : {"next_shortcut", "previous_shortcut", "tab_shortcut", "reverse_tab_shortcut", "activate_shortcut", "back_shortcut", "close_shortcut"}) {
+        for (const auto &key : {"next_shortcut", "previous_shortcut", "tab_shortcut", "reverse_tab_shortcut", "activate_shortcut", "refresh_shortcut", "back_shortcut", "close_shortcut"}) {
           const auto shortcut = behavior.value(key).toString();
           const auto sequence = QKeySequence::fromString(shortcut, QKeySequence::PortableText);
           if (!shortcut.isEmpty() && (sequence.isEmpty() || sequence.toString(QKeySequence::PortableText) != shortcut))
@@ -361,12 +361,13 @@ bool ConfigStore::parse(const QByteArray &text, QVariantMap &model,
               behavior.value(key).toList().first().toString().isEmpty())
             invalid(path + key, "expected a nonempty executable argv");
       }
-      if (it.key() == "media") {
+      if (it.key() == "media" || it.key() == "media_launcher") {
         range(behavior, "popup_width", 240, 1920, path);
         range(behavior, "popup_height", 240, 2160, path);
         range(behavior, "control_size", 24, 96, path);
         range(behavior, "control_icon_size", 16, 64, path);
         range(behavior, "artwork_height", 80, 720, path);
+        if (it.key() == "media_launcher") range(behavior, "seek_step_seconds", 1, 300, path);
         const auto preferred = behavior.value("preferred_player").toString();
         if (!preferred.isEmpty() &&
             !QRegularExpression("^org\\.mpris\\.MediaPlayer2\\.[A-Za-z0-9_-]+(?"

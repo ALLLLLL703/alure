@@ -31,11 +31,20 @@ void MediaService::readPlayers(QStringList names, QVariantList rows) {
         return;
     }
     const auto name = names.takeFirst();
+    const auto fallback = name.section('.', 3).section(".instance", 0, 0);
+    properties(QDBusConnection::sessionBus(), name, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2",
+               [this, name, names, rows, fallback](const QVariantMap &props) {
+        readPlayer(name, names, rows, props.value("Identity", fallback).toString());
+    }, [this, name, names, rows, fallback](const QString &) {
+        readPlayer(name, names, rows, fallback);
+    });
+}
+void MediaService::readPlayer(const QString &name, QStringList names, QVariantList rows, const QString &identity) {
     properties(QDBusConnection::sessionBus(), name, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player",
-               [this, name, names, rows](QVariantMap props) mutable {
+               [this, name, names, rows, identity](QVariantMap props) mutable {
         if (!props.contains("PlaybackStatus")) { readPlayers(names, rows); return; }
         const auto metadata = dbusMap(unbox(props.value("Metadata")));
-        QVariantMap row{{"service", name}, {"identity", name.section('.', 3).section(".instance", 0, 0)},
+        QVariantMap row{{"service", name}, {"identity", identity},
                         {"title", metadata.value("xesam:title")}, {"artist", qdbus_cast<QStringList>(metadata.value("xesam:artist"))},
                         {"album", metadata.value("xesam:album")}, {"artUrl", metadata.value("mpris:artUrl")},
                         {"trackId", qvariant_cast<QDBusObjectPath>(unbox(metadata.value("mpris:trackid"))).path()},

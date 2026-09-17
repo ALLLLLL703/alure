@@ -1,5 +1,6 @@
 #include "BackgroundBlur.h"
 #include "TrayLauncherHost.h"
+#include "MediaLauncherHost.h"
 #include "ClipboardHost.h"
 #include "ClipboardImageProvider.h"
 #include "ConfigStore.h"
@@ -62,16 +63,17 @@ int main(int argc, char **argv) {
   parser.addOption({"quit-after-ms",
                     "Exit after a bounded interval (testing only, 1..600000)",
                     "ms"});
-  parser.addPositionalArgument("tray-launcher", "Open the centered, observer-only tray launcher");
+  parser.addPositionalArgument("launcher", "tray-launcher or media-launcher");
   parser.process(*app);
   const bool trayLauncher = parser.positionalArguments() == QStringList{"tray-launcher"};
-  if (!trayLauncher && !parser.positionalArguments().isEmpty()) {
+  const bool mediaLauncher = parser.positionalArguments() == QStringList{"media-launcher"};
+  if (!trayLauncher && !mediaLauncher && !parser.positionalArguments().isEmpty()) {
     QTextStream(stderr)
         << "Unexpected positional arguments; use --config PATH\n";
     return 2;
   }
-  if (trayLauncher && (parser.isSet("settings") || parser.isSet("clipboard") || parser.isSet("validate-config"))) {
-    QTextStream(stderr) << "tray-launcher cannot be combined with settings, clipboard or validation\n";
+  if ((trayLauncher || mediaLauncher) && (parser.isSet("settings") || parser.isSet("clipboard") || parser.isSet("validate-config"))) {
+    QTextStream(stderr) << "launchers cannot be combined with settings, clipboard or validation\n";
     return 2;
   }
   if (parser.isSet("settings") && parser.isSet("clipboard")) {
@@ -94,9 +96,9 @@ int main(int argc, char **argv) {
   }
   std::unique_ptr<Alure::SingleInstance> instance;
   if (!parser.isSet("validate-config") &&
-      (parser.isSet("settings") || parser.isSet("clipboard") || trayLauncher)) {
+      (parser.isSet("settings") || parser.isSet("clipboard") || trayLauncher || mediaLauncher)) {
     instance = std::make_unique<Alure::SingleInstance>(
-        trayLauncher ? "org.alure.TrayLauncher" : parser.isSet("settings") ? "org.alure.Settings"
+        trayLauncher ? "org.alure.TrayLauncher" : mediaLauncher ? "org.alure.MediaLauncher" : parser.isSet("settings") ? "org.alure.Settings"
                                  : "org.alure.Clipboard");
     const int state = instance->acquire();
     if (state != 0)
@@ -135,6 +137,7 @@ int main(int argc, char **argv) {
   // Settings and validation never acquire names or start service processes.
   std::unique_ptr<Alure::Services> services;
   std::unique_ptr<Alure::TrayService> tray;
+  std::unique_ptr<Alure::MediaService> media;
   std::unique_ptr<Alure::ClipboardService> clipboard;
   if (trayLauncher) {
     auto module = config.model().value("modules").toMap().value("tray_launcher").toMap();
@@ -145,6 +148,15 @@ int main(int argc, char **argv) {
     module["enabled"] = true;
     tray = std::make_unique<Alure::TrayService>(nullptr, Alure::TrayService::WatcherPolicy::ObserveOnly);
     tray->configure(module);
+  } else if (mediaLauncher) {
+    auto module = config.model().value("modules").toMap().value("media_launcher").toMap();
+    if (!module.value("behavior").toMap().value("explicit_launch").toBool()) {
+      QTextStream(stderr) << "modules.media_launcher.behavior.explicit_launch is false\n";
+      return 1;
+    }
+    module["enabled"] = true;
+    media = std::make_unique<Alure::MediaService>();
+    media->configure(module);
   } else if (parser.isSet("clipboard")) {
     clipboard = std::make_unique<Alure::ClipboardService>();
     auto module =
@@ -173,6 +185,7 @@ int main(int argc, char **argv) {
         new Alure::NotificationImageProvider(services->notifications()));
   }
   if (tray) engine.rootContext()->setContextProperty("Tray", tray.get());
+  if (media) engine.rootContext()->setContextProperty("Media", media.get());
   if (clipboard) {
     engine.rootContext()->setContextProperty(
         "Services",
@@ -188,11 +201,17 @@ int main(int argc, char **argv) {
   std::unique_ptr<Alure::PanelHost> host;
   std::unique_ptr<Alure::ClipboardHost> clipboardHost;
   std::unique_ptr<Alure::TrayLauncherHost> trayHost;
+  std::unique_ptr<Alure::MediaLauncherHost> mediaHost;
   if (tray) {
     trayHost = std::make_unique<Alure::TrayLauncherHost>(config, engine, parser.isSet("preview"));
     if (!trayHost->ready()) return 1;
     QObject::connect(trayHost.get(), &Alure::TrayLauncherHost::finished, app.get(), &QCoreApplication::quit);
     QObject::connect(instance.get(), &Alure::SingleInstance::activated, trayHost.get(), &Alure::TrayLauncherHost::activate);
+  } else if (media) {
+    mediaHost = std::make_unique<Alure::MediaLauncherHost>(config, engine, parser.isSet("preview"));
+    if (!mediaHost->ready()) return 1;
+    QObject::connect(mediaHost.get(), &Alure::MediaLauncherHost::finished, app.get(), &QCoreApplication::quit);
+    QObject::connect(instance.get(), &Alure::SingleInstance::activated, mediaHost.get(), &Alure::MediaLauncherHost::activate);
   } else if (clipboard) {
     clipboardHost = std::make_unique<Alure::ClipboardHost>(
         config, engine, parser.isSet("preview"));

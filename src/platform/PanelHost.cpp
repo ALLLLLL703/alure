@@ -395,13 +395,15 @@ bool PanelHost::openSettings() {
     return QProcess::startDetached(QCoreApplication::applicationFilePath(), {"--settings", "--config", m_config.path()});
 }
 void PanelHost::openModule(const QString &name, const QString &panelId, const QString &output, QQuickItem *anchor, const QString &trayItem) {
-    if (name == "tray_launcher") {
+    if (name == "tray_launcher" || name == "media_launcher") {
         const auto module = m_config.model().value("modules").toMap().value(name).toMap();
         const auto behavior = module.value("behavior").toMap();
         if (module.value("enabled").toBool() && behavior.value("popup_enabled").toBool() && behavior.value("explicit_launch").toBool()) {
-            QStringList arguments{"tray-launcher", "--config", m_config.path()};
+            const QString launcher = name == "tray_launcher" ? "tray-launcher" : "media-launcher";
+            QStringList arguments{launcher, "--config", m_config.path()};
             if (m_preview) arguments << "--preview";
-            if (!QProcess::startDetached(QCoreApplication::applicationFilePath(), arguments)) qWarning("Cannot start tray launcher");
+            if (!QProcess::startDetached(QCoreApplication::applicationFilePath(), arguments))
+                qWarning("Cannot start %s", qPrintable(launcher));
         }
         return;
     }

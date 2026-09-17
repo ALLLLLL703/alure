@@ -42,7 +42,8 @@ function describe(path, value) {
         const clipboardRanges = {inline_image_height:[48,512], inline_text_lines:[2,64], preview_cache_items:[1,128], max_items:[1,1000], max_bytes:[1024,67108864], max_image_pixels:[1024,67108864], preview_image_size:[64,1024], preview_text_chars:[128,65536], cursor_timeout_ms:[50,3000], cursor_gap:[0,128]}
         if (clipboardRanges[key]) range = clipboardRanges[key]
     }
-    if (path === "modules.media.behavior.artwork_height") range = [80,720]
+    if (path === "modules.media.behavior.artwork_height" || path === "modules.media_launcher.behavior.artwork_height") range = [80,720]
+    if (path === "modules.media_launcher.behavior.seek_step_seconds") range = [1,300]
     if (path === "modules.tray.behavior.menu_width") range = [160,1920]
     if (path === "modules.tray.behavior.menu_height") range = [100,2160]
     if (path === "ui.toast.width") range = [240,1920]
@@ -93,6 +94,25 @@ function describe(path, value) {
         help.debounce_ms = "Rate-limit one brightness command and one latest pending target across both kinds; continuous input is not postponed indefinitely."
         help.sysfs_path = "Absolute sysfs class directory. Alternative paths are for fixtures; the writer command must also target your fixture, not real hardware."
     }
+    if (path.startsWith("modules.media_launcher.")) {
+        help.explicit_launch = "Permit alure media-launcher independently of the optional panel entry's Enabled switch. Reopen to apply."
+        help.popup_enabled = "Permit the optional static panel button to start the launcher."
+        help.allow_actions = "Permit MPRIS controls and seeking. Off preserves searchable read-only player details."
+        help.output = "Exactly one output: primary or its screen name (not *). Reopen to apply."
+        help.search_case_sensitive = "Search readable player identity and current title on the registry page. Default ignores case."
+        help.reset_search_on_page = "Clear registry search when entering or leaving player detail."
+        help.preferred_player = "Optional full MPRIS service name/prefix ranked first. This launcher owns its polling policy and works when the media bar module is disabled."
+        help.seek_step_seconds = "Seconds moved by Left/Right while the detail seek slider has focus."
+        help.tab_shortcut = "Registry only: Tab cycles player results and keeps search focus. On detail, normal visible focus traversal is used."
+        help.reverse_tab_shortcut = "Registry only: Shift+Tab cycles player results backward. On detail, normal reverse focus traversal is used."
+        help.refresh_shortcut = "F5 by default: refresh players and current metadata from MPRIS."
+        help.back_shortcut = "Alt+Left by default: return from player detail to the registry."
+        help.close_shortcut = "Escape by default: return from detail, then close from the registry."
+        help.command = "Unused. Discovery disables D-Bus auto-start and never launches a player."
+        help.interval_ms = "Independent bounded MPRIS registry/property poll interval. Reopen to apply."
+        help.timeout_ms = "Individual observer/action D-Bus deadline. Reopen to apply."
+        help.format = "Static optional panel label."
+    }
     if (path.startsWith("modules.tray_launcher.")) {
         help.explicit_launch = "Permit alure tray-launcher and alure-trayctl, independently of the optional panel entry's Enabled switch. Reopen to apply."
         help.allow_actions = "Permit acknowledged DBusMenu leaf clicks. Off still allows registry/menu inspection and submenu navigation."
@@ -102,6 +122,7 @@ function describe(path, value) {
         help.close_on_activate = "Close only after the provider replies to Event(clicked). False reopens the app menu."
         help.tab_shortcut = "Tab by default: cycle forward through selectable results and wrap at the end. Search keeps focus. Empty disables."
         help.reverse_tab_shortcut = "Shift+Tab by default: cycle backward through selectable results and wrap at the start. Search keeps focus. Empty disables."
+        help.refresh_shortcut = "F5 by default: refresh the registry or reopen the current app menu. Empty disables."
         help.close_shortcut = "Escape by default: Back on menu pages, close on registry. Empty disables."
         help.command = "Unused. The launcher never starts tray applications."
         help.interval_ms = "Refresh existing watcher registry; never acquire a watcher. Reopen to apply all launcher configuration."

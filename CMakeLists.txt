@@ -20,6 +20,7 @@ target_link_libraries(alure PRIVATE alure_core alure_platform alure_services Qt6
 set(ALURE_UI_FILES
         assets/icons/taskbar.svg
         qml/TrayLauncher.qml
+        qml/MediaLauncher.qml
         qml/BrightnessControl.qml
         qml/Osd.qml
         assets/icons/brightness.svg
@@ -72,7 +73,7 @@ set(ALURE_UI_FILES
 )
 qt_add_resources(alure ui PREFIX / FILES ${ALURE_UI_FILES})
 install(TARGETS alure RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES config/tray-launcher-example.toml config/default.toml config/multi-panel.toml config/services-example.toml config/clipboard-example.toml config/brightness-osd-example.toml config/taskbar-example.toml config/four-edge.toml config/layouts.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/alure)
+install(FILES config/tray-launcher-example.toml config/media-launcher-example.toml config/default.toml config/multi-panel.toml config/services-example.toml config/clipboard-example.toml config/brightness-osd-example.toml config/taskbar-example.toml config/four-edge.toml config/layouts.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/alure)
 # systemd performs its own quoting, environment and specifier expansion.
 set(ALURE_SYSTEMD_EXECUTABLE "${CMAKE_INSTALL_FULL_BINDIR}/alure")
 if(ALURE_SYSTEMD_EXECUTABLE MATCHES "[\n\r]")

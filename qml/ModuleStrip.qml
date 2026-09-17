@@ -24,7 +24,7 @@ Item {
     readonly property real iconExtent: sharedIcon ? style.icon_size + 2 * Config.model.ui.panel_padding : 0
     readonly property real iconOffset: sharedIcon ? iconExtent + Config.model.theme.spacing / 2 : 0
     property date now: new Date()
-    readonly property string summary: moduleName === "tray_launcher" ? config.behavior.format : moduleName === "calendar" ? Qt.formatDateTime(now, config.behavior.format) : !service || !service.available ? (moduleName === "clipboard" ? "Clipboard" : "Unavailable") : Ui.format(config.behavior.format, Ui.values(moduleName, service.state, service.items))
+    readonly property string summary: moduleName === "tray_launcher" || moduleName === "media_launcher" ? config.behavior.format : moduleName === "calendar" ? Qt.formatDateTime(now, config.behavior.format) : !service || !service.available ? (moduleName === "clipboard" ? "Clipboard" : "Unavailable") : Ui.format(config.behavior.format, Ui.values(moduleName, service.state, service.items))
     implicitWidth: vertical ? crossSize : Math.min(style.max_width, listMode ? iconOffset + strip.contentWidth : Math.max(style.min_width, main.implicitWidth))
     implicitHeight: vertical ? (listMode ? Math.min(style.max_width, iconOffset + strip.contentHeight) : Config.model.ui.module_height) : crossSize
     Timer { interval: root.config.behavior.interval_ms; running: root.moduleName === "calendar"; repeat: true; onTriggered: root.now = new Date() }

@@ -499,5 +499,55 @@ previous_shortcut = "Up"
 tab_shortcut = "Tab" # cycles forward through selectable filtered entries
 reverse_tab_shortcut = "Shift+Tab" # cycles backward; search keeps keyboard focus
 activate_shortcut = "Return"
+refresh_shortcut = "F5"
+back_shortcut = "Alt+Left"
+close_shortcut = "Esc"
+
+# Independent searchable MPRIS launcher. Its provider policy is explicit here so
+# it remains useful when modules.media.enabled=false.
+[modules.media_launcher]
+enabled = false
+[modules.media_launcher.style]
+opacity = 1.0
+icon = "media"
+icon_size = 18
+max_width = 240
+min_width = 30
+foreground = ""
+background = ""
+show_icon = true
+show_label = true
+[modules.media_launcher.behavior]
+popup_enabled = true # permits the optional panel entry
+explicit_launch = true # permits `alure media-launcher`
+allow_actions = true
+interval_ms = 1000 # bounded MPRIS registry/property polling
+timeout_ms = 3000
+command = [] # unused; the launcher never starts applications
+format = "Media players"
+popup_width = 640
+popup_height = 560
+output = "primary"
+search_case_sensitive = false
+reset_search_on_page = true
+close_on_focus_loss = false
+preferred_player = ""
+show_artwork = true
+artwork_remote = true
+artwork_height = 180
+show_artist = true
+show_album = true
+show_progress = true
+show_shuffle = true
+show_repeat = true
+control_size = 40
+control_icon_size = 26
+seek_step_seconds = 5
+next_shortcut = "Down"
+previous_shortcut = "Up"
+tab_shortcut = "Tab"
+reverse_tab_shortcut = "Shift+Tab"
+activate_shortcut = "Return"
+refresh_shortcut = "F5"
 back_shortcut = "Alt+Left"
 close_shortcut = "Esc"

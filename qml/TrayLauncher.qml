@@ -127,6 +127,13 @@ Control {
     Shortcut { sequence: root.options.tab_shortcut; onActivated: root.moveSelection(1, true) }
     Shortcut { sequence: root.options.reverse_tab_shortcut; onActivated: root.moveSelection(-1, true) }
     Shortcut { sequence: root.options.activate_shortcut; onActivated: root.choose(root.selectedId) }
+    Shortcut {
+        sequence: root.options.refresh_shortcut
+        onActivated: {
+            if (root.registryPage) Tray.refresh()
+            else { Tray.openMenu(root.appId); root.pageChanged() }
+        }
+    }
     Shortcut { sequence: root.options.back_shortcut; onActivated: root.back() }
     Shortcut { sequence: root.options.close_shortcut; onActivated: { if (root.registryPage) Shell.closePopup(); else root.back() } }
     padding: theme.padding

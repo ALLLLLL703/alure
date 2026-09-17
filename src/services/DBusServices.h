@@ -7,12 +7,13 @@ using ObjectMap = QMap<QDBusObjectPath, InterfaceMap>;
 class MediaService : public Service {
     Q_OBJECT
 public:
-    using Service::Service;
+    explicit MediaService(QObject *parent = nullptr) : Service(parent, false) {}
 protected:
     void poll() override;
     bool act(const QString &, const QVariantMap &) override;
 private:
     void readPlayers(QStringList names, QVariantList rows);
+    void readPlayer(const QString &name, QStringList names, QVariantList rows, const QString &identity);
 };
 class BluetoothService : public Service {
     Q_OBJECT
