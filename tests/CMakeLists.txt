@@ -74,3 +74,8 @@ target_link_libraries(tray_launcher_ui_tests PRIVATE alure_platform alure_servic
 qt_add_resources(tray_launcher_ui_tests tray_launcher_ui PREFIX / BASE ${PROJECT_SOURCE_DIR} FILES ${ALURE_UI_FILES})
 add_test(NAME TrayLauncherUi COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tray_launcher_ui_tests>)
 set_tests_properties(TrayLauncherUi PROPERTIES TIMEOUT 40)
+qt_add_executable(media_launcher_ui_tests MediaLauncherUiTest.cpp)
+target_link_libraries(media_launcher_ui_tests PRIVATE alure_platform alure_services Qt6::Test Qt6::QuickControls2)
+qt_add_resources(media_launcher_ui_tests media_launcher_ui PREFIX / BASE ${PROJECT_SOURCE_DIR} FILES ${ALURE_UI_FILES})
+add_test(NAME MediaLauncherUi COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:media_launcher_ui_tests>)
+set_tests_properties(MediaLauncherUi PROPERTIES TIMEOUT 40)

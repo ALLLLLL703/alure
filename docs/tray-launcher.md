@@ -69,8 +69,9 @@ Settings module palette and typed fields. See `config/tray-launcher-example.toml
   `tab_shortcut="Tab"` and `reverse_tab_shortcut="Shift+Tab"` cycle through
   selectable entries on the filtered current page and wrap at either end while
   keeping keyboard focus in search. Disabled items and separators are skipped.
-  `activate_shortcut="Return"`, `back_shortcut="Alt+Left"`, and
-  `close_shortcut="Esc"` retain their existing behavior. All shortcuts use
+  `activate_shortcut="Return"`, `refresh_shortcut="F5"`,
+  `back_shortcut="Alt+Left"`, and `close_shortcut="Esc"` retain their existing
+  behavior. Refresh reloads the registry or current app menu. All shortcuts use
   canonical Qt portable strings; an empty value disables that binding.
 - `format` is the static panel label; shared module style controls icon,
   label visibility/sizing, foreground, background and content opacity.

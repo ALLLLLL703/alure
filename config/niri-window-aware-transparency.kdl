@@ -16,7 +16,7 @@ layer-rule {
 
 // Independent non-bar layer-shell surfaces.
 layer-rule {
-    match namespace="^alure-(tray-launcher|clipboard|toast|osd)$"
+    match namespace="^alure-(tray-launcher|media-launcher|clipboard|toast|osd)$"
 
     background-effect {
         xray false

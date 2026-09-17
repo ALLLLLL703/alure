@@ -23,7 +23,7 @@ private slots:
         QCOMPARE(model.value("ui").toMap().value("popup_alignment").toString(), "center");
         QCOMPARE(model.value("ui").toMap().value("popup_direction").toString(), "inward");
         QCOMPARE(model.value("panels").toList().size(), 1);
-        QCOMPARE(model.value("modules").toMap().keys(), (QStringList{"battery", "bluetooth", "brightness", "calendar", "clipboard", "media", "notifications", "taskbar", "tray", "tray_launcher", "updates", "volume", "wifi", "workspaces"}));
+        QCOMPARE(model.value("modules").toMap().keys(), (QStringList{"battery", "bluetooth", "brightness", "calendar", "clipboard", "media", "media_launcher", "notifications", "taskbar", "tray", "tray_launcher", "updates", "volume", "wifi", "workspaces"}));
         QVERIFY(model.value("modules").toMap().value("clipboard").toMap().value("enabled").toBool()); // Lazy until opened.
         QCOMPARE(model.value("theme").toMap().value("palette").toMap().value("background").toString(), "#151923");
         QTemporaryDir dir; ConfigStore store(dir.filePath("missing.toml"));
@@ -39,11 +39,28 @@ private slots:
         QVERIFY(!module.value("behavior").toMap().value("search_case_sensitive").toBool());
         QCOMPARE(module.value("behavior").toMap().value("tab_shortcut").toString(), "Tab");
         QCOMPARE(module.value("behavior").toMap().value("reverse_tab_shortcut").toString(), "Shift+Tab");
+        QCOMPARE(module.value("behavior").toMap().value("refresh_shortcut").toString(), "F5");
         QVERIFY(ConfigStore::parse("[modules.tray_launcher]\nenabled=true\n[modules.tray_launcher.behavior]\npopup_width=900\npopup_height=700\noutput='DP-2'\nallow_actions=false\nsearch_case_sensitive=true\nnext_shortcut='Ctrl+N'\ntab_shortcut='Ctrl+Tab'\nreverse_tab_shortcut=''", model, error));
         QCOMPARE(model.value("modules").toMap().value("tray_launcher").toMap().value("behavior").toMap().value("popup_width").toInt(), 900);
-        for (const auto *source : {"popup_width=0", "popup_height=2161", "output='*'", "output=''", "explicit_launch=1", "search_case_sensitive='yes'", "next_shortcut='Nonsense'", "tab_shortcut='Nonsense'", "reverse_tab_shortcut='Tab+Shift'", "close_on_activate=1"}) {
+        for (const auto *source : {"popup_width=0", "popup_height=2161", "output='*'", "output=''", "explicit_launch=1", "search_case_sensitive='yes'", "next_shortcut='Nonsense'", "tab_shortcut='Nonsense'", "reverse_tab_shortcut='Tab+Shift'", "refresh_shortcut='Nonsense'", "close_on_activate=1"}) {
             QVERIFY(!ConfigStore::parse(QByteArray("[modules.tray_launcher.behavior]\n") + source, model, error));
             QVERIFY(error.contains("tray_launcher"));
+        }
+    }
+    void mediaLauncherOptions() {
+        QVariantMap model; QString error;
+        QVERIFY2(ConfigStore::parse({}, model, error), qPrintable(error));
+        const auto module = model.value("modules").toMap().value("media_launcher").toMap();
+        QVERIFY(!module.value("enabled").toBool());
+        const auto behavior = module.value("behavior").toMap();
+        QVERIFY(behavior.value("explicit_launch").toBool());
+        QCOMPARE(behavior.value("refresh_shortcut").toString(), "F5");
+        QCOMPARE(behavior.value("seek_step_seconds").toInt(), 5);
+        QVERIFY2(ConfigStore::parse("[modules.media_launcher]\nenabled=true\n[modules.media_launcher.behavior]\npopup_width=800\npopup_height=600\noutput='DP-2'\nsearch_case_sensitive=true\nseek_step_seconds=15\nrefresh_shortcut='Ctrl+R'", model, error), qPrintable(error));
+        QCOMPARE(model.value("modules").toMap().value("media_launcher").toMap().value("behavior").toMap().value("seek_step_seconds").toInt(), 15);
+        for (const auto *source : {"popup_width=0", "popup_height=2161", "output='*'", "seek_step_seconds=0", "seek_step_seconds=301", "refresh_shortcut='Nonsense'", "explicit_launch=1", "show_artwork='yes'"}) {
+            QVERIFY(!ConfigStore::parse(QByteArray("[modules.media_launcher.behavior]\n") + source, model, error));
+            QVERIFY(error.contains("media_launcher"));
         }
     }
     void backgroundBlurOptions() {
@@ -144,7 +161,7 @@ private slots:
             const auto behavior = it.value().toMap().value("behavior").toMap();
             QVERIFY(behavior.contains("interval_ms")); QVERIFY(behavior.contains("popup_enabled"));
             for (const auto *key : {"preferred_player", "control_size", "control_icon_size", "show_artwork", "artwork_remote", "artwork_height", "show_artist", "show_album", "show_progress", "show_shuffle", "show_repeat"})
-                QCOMPARE(behavior.contains(key), it.key() == "media");
+                QCOMPARE(behavior.contains(key), it.key() == "media" || it.key() == "media_launcher");
         }
         QVERIFY(modules.value("clipboard").toMap().value("behavior").toMap().contains("popup_width"));
         QVERIFY2(ConfigStore::parse("[modules.media.behavior]\npreferred_player='org.mpris.MediaPlayer2.musicfox'\n[modules.wifi.behavior]\npreferred_player='legacy-key'", model, error), qPrintable(error));

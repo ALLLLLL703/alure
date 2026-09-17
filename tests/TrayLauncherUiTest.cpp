@@ -161,6 +161,8 @@ private slots:
             QCOMPARE(root->property("selectedId"), selected); QCOMPARE(search->property("text").toString(), "mUsIc"); QVERIFY(search->hasActiveFocus());
             QTest::keyClick(view, Qt::Key_Return);
             QTRY_VERIFY(!root->property("registryPage").toBool()); QTRY_VERIFY(!tray.menu()->loading());
+            menu.shown = -1; QTest::keyClick(view, Qt::Key_F5);
+            QTRY_VERIFY(!tray.menu()->loading()); QTRY_COMPARE(menu.shown, 0);
             tray.resume();
             QCOMPARE(search->property("text").toString(), "");
             QCOMPARE(view->rootObject(), root); QCOMPARE(QGuiApplication::topLevelWindows().size(), 1);
@@ -276,15 +278,16 @@ private slots:
         QQmlComponent fields(&engine); fields.setData("import QtQml\nimport \"qrc:/qml/SettingsFields.js\" as F\nQtObject { property var options: F.fields(Config.model.modules.tray_launcher, 'modules.tray_launcher') }", QUrl());
         std::unique_ptr<QObject> specs(fields.create()); QVERIFY2(specs, qPrintable(fields.errorString()));
         const auto options = specs->property("options").value<QJSValue>().toVariant().toList();
-        bool hasSearch = false, hasExplicit = false, hasTab = false, hasReverseTab = false;
+        bool hasSearch = false, hasExplicit = false, hasTab = false, hasReverseTab = false, hasRefresh = false;
         for (const auto &entry : options) {
             const auto map = entry.toMap();
             if (map.value("path") == "modules.tray_launcher.behavior.search_case_sensitive") { hasSearch = true; QCOMPARE(map.value("kind").toString(), "boolean"); }
             if (map.value("path") == "modules.tray_launcher.behavior.explicit_launch") hasExplicit = true;
             if (map.value("path") == "modules.tray_launcher.behavior.tab_shortcut") { hasTab = true; QVERIFY(map.value("help").toString().contains("cycle forward")); }
             if (map.value("path") == "modules.tray_launcher.behavior.reverse_tab_shortcut") { hasReverseTab = true; QVERIFY(map.value("help").toString().contains("cycle backward")); }
+            if (map.value("path") == "modules.tray_launcher.behavior.refresh_shortcut") { hasRefresh = true; QVERIFY(map.value("help").toString().contains("F5")); }
         }
-        QVERIFY(hasSearch); QVERIFY(hasExplicit); QVERIFY(hasTab); QVERIFY(hasReverseTab); QCOMPARE(warnings.size(), 0);
+        QVERIFY(hasSearch); QVERIFY(hasExplicit); QVERIFY(hasTab); QVERIFY(hasReverseTab); QVERIFY(hasRefresh); QCOMPARE(warnings.size(), 0);
     }
 };
 int main(int argc, char **argv) {

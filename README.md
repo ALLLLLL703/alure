@@ -143,6 +143,6 @@ device/media controls remain unverified. Automatic zones now send thickness only
 relative to the remaining usable rectangle. Workspace ordering defaults to
 `modules.workspaces.behavior.ordering="output-index"`; `"provider"` opts out.
 
-## Tray launcher / headless CLI
+## Standalone launchers / headless tray CLI
 
-`alure tray-launcher` searches current tray apps and navigates their DBusMenus in one centered overlay window. `alure-trayctl list|menu|click` uses the same observer-only backend without a display. See [configuration, interaction and validation](docs/tray-launcher.md) and [CLI contract](tools/alure-trayctl/README.md).
+`alure tray-launcher` searches current tray apps and navigates their DBusMenus in one centered overlay window. `alure media-launcher` searches readable MPRIS players and opens live controls in that same window. Both are fully keyboard operable and observer discovery does not start applications. See the [tray launcher](docs/tray-launcher.md), [media launcher](docs/media-launcher.md), and [tray CLI contract](tools/alure-trayctl/README.md).

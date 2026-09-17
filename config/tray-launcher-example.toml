@@ -33,6 +33,7 @@ previous_shortcut = "Up"
 tab_shortcut = "Tab"
 reverse_tab_shortcut = "Shift+Tab"
 activate_shortcut = "Return"
+refresh_shortcut = "F5"
 back_shortcut = "Alt+Left"
 close_shortcut = "Esc"
 

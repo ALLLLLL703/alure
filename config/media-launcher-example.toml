@@ -1,0 +1,52 @@
+# Reopen to apply. The optional panel entry applies on panel reload.
+[theme]
+blur_enabled = true
+opacity = 0.82
+
+[modules.media_launcher]
+enabled = true # optional static bar entry; explicit invocation ignores this switch
+[modules.media_launcher.style]
+icon = "media"
+icon_size = 18
+show_icon = true
+show_label = true
+foreground = ""
+background = ""
+opacity = 1.0
+[modules.media_launcher.behavior]
+explicit_launch = true
+popup_enabled = true
+allow_actions = true
+format = "Media players"
+popup_width = 680
+popup_height = 560
+output = "primary"
+interval_ms = 1000
+timeout_ms = 3000
+preferred_player = ""
+search_case_sensitive = false
+reset_search_on_page = true
+close_on_focus_loss = false
+show_artwork = true
+artwork_remote = true
+artwork_height = 180
+show_artist = true
+show_album = true
+show_progress = true
+show_shuffle = true
+show_repeat = true
+control_size = 40
+control_icon_size = 26
+seek_step_seconds = 5
+next_shortcut = "Down"
+previous_shortcut = "Up"
+tab_shortcut = "Tab"
+reverse_tab_shortcut = "Shift+Tab"
+activate_shortcut = "Return"
+refresh_shortcut = "F5"
+back_shortcut = "Alt+Left"
+close_shortcut = "Esc"
+
+[[panels]]
+id = "media-entry"
+modules = ["media_launcher", "@settings"]

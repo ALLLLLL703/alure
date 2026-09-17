@@ -59,8 +59,8 @@ the windows actually behind them, merge
 [`config/niri-window-aware-transparency.kdl`](../config/niri-window-aware-transparency.kdl)
 into your Niri configuration. Its first rule applies `xray false` only to xdg_popup
 children of Alure bars (module details, media, clipboard and tray menus); its
-second rule matches independent `alure-tray-launcher`, `alure-clipboard`,
-`alure-toast` and `alure-osd` layer surfaces. It deliberately does **not** set
+second rule matches independent `alure-tray-launcher`, `alure-media-launcher`,
+`alure-clipboard`, `alure-toast` and `alure-osd` layer surfaces. It deliberately does **not** set
 `blur true`, so `theme.blur_enabled` remains authoritative instead of a compositor
 rule forcing blur behind disabled Alure surfaces. Confirm active namespaces with
 `niri msg layers` after launching the relevant UI.

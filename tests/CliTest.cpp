@@ -39,6 +39,17 @@ private slots:
         QVERIFY(!output.contains("rebuilding panels")); QVERIFY(!QFile::exists(marker)); QVERIFY(!QFile::exists(dir.filePath("missing-db")));
         QCOMPARE(run({"--clipboard", "--settings", "--config", path}, true), 2);
     }
+    void mediaLauncherParsing() {
+        QTemporaryDir dir; const auto path = dir.filePath("config.toml");
+        QCOMPARE(run({"media-launcher", "--preview", "--config", path, "--quit-after-ms", "250"}, true), 0);
+        QVERIFY2(!output.contains("ReferenceError") && !output.contains("TypeError") && !output.contains("qrc:"), output.constData());
+        QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("[modules.media_launcher.behavior]\nexplicit_launch=false\n"); file.close();
+        QCOMPARE(run({"media-launcher", "--preview", "--config", path, "--quit-after-ms", "250"}, true), 1);
+        QVERIFY(output.contains("explicit_launch is false"));
+        QCOMPARE(run({"media-launcher", "--settings", "--config", path}, true), 2);
+        QCOMPARE(run({"media-launcher", "extra", "--config", path}, true), 2);
+    }
     void previewRebuildsOnReload() {
         QTemporaryDir dir; const auto path = dir.filePath("config.toml");
         QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("version = 1\n"); file.close();
