@@ -100,6 +100,8 @@ function describe(path, value) {
         help.search_case_sensitive = "Search the current app/menu page. Default ignores case; never recursively activates or searches provider menus."
         help.reset_search_on_page = "Clear search on app/submenu/Back transitions, not on live updates."
         help.close_on_activate = "Close only after the provider replies to Event(clicked). False reopens the app menu."
+        help.tab_shortcut = "Tab by default: cycle forward through selectable results and wrap at the end. Search keeps focus. Empty disables."
+        help.reverse_tab_shortcut = "Shift+Tab by default: cycle backward through selectable results and wrap at the start. Search keeps focus. Empty disables."
         help.close_shortcut = "Escape by default: Back on menu pages, close on registry. Empty disables."
         help.command = "Unused. The launcher never starts tray applications."
         help.interval_ms = "Refresh existing watcher registry; never acquire a watcher. Reopen to apply all launcher configuration."

@@ -65,9 +65,13 @@ Settings module palette and typed fields. See `config/tray-launcher-example.toml
 - Booleans: `search_case_sensitive=false`, `reset_search_on_page=true`,
   `close_on_activate=true` (only on acknowledged Event),
   `close_on_focus_loss=false`.
-- `next_shortcut="Down"`, `previous_shortcut="Up"`,
-  `activate_shortcut="Return"`, `back_shortcut="Alt+Left"`,
-  `close_shortcut="Esc"`: canonical Qt portable strings or empty.
+- `next_shortcut="Down"`, `previous_shortcut="Up"` move without wrapping.
+  `tab_shortcut="Tab"` and `reverse_tab_shortcut="Shift+Tab"` cycle through
+  selectable entries on the filtered current page and wrap at either end while
+  keeping keyboard focus in search. Disabled items and separators are skipped.
+  `activate_shortcut="Return"`, `back_shortcut="Alt+Left"`, and
+  `close_shortcut="Esc"` retain their existing behavior. All shortcuts use
+  canonical Qt portable strings; an empty value disables that binding.
 - `format` is the static panel label; shared module style controls icon,
   label visibility/sizing, foreground, background and content opacity.
   The launcher uses the bar's `ShellButton` for compact icon-only toolbar actions
@@ -166,3 +170,8 @@ compact rounded rows/search, toolbar hover descriptions, app icons, disabled row
 submenu chevrons and a live unchecked-to-checked transition were verified. Escape
 returned to the registry and closed cleanly (exit 0); no QML or Wayland errors were
 logged. The private session was stopped; the real bar/configuration was untouched.
+
+The Tab-navigation follow-up was also checked with the synthetic menu in a private
+native session: Tab advanced Open → Checked → More → Open, Shift+Tab returned to
+More, disabled/separator rows were skipped, and the search field retained focus.
+Escape closed cleanly and the isolated session was stopped.

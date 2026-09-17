@@ -60,15 +60,29 @@ Control {
         Qt.callLater(syncSelection)
         search.forceActiveFocus()
     }
-    function moveSelection(delta) {
-        let index = rows.findIndex(row => String(row.id) === selectedId)
-        for (let i = index + delta; i >= 0 && i < rows.length; i += delta) {
-            if (selectable(rows[i])) {
-                selectedId = String(rows[i].id)
-                entries.positionViewAtIndex(i, ListView.Contain)
-                break
-            }
+    function moveSelection(delta, wrap) {
+        const selectableIndexes = []
+        for (let i = 0; i < rows.length; ++i)
+            if (selectable(rows[i])) selectableIndexes.push(i)
+        if (!selectableIndexes.length) {
+            selectedId = ""
+            search.forceActiveFocus()
+            return
         }
+        const currentIndex = rows.findIndex(row => String(row.id) === selectedId)
+        let position = selectableIndexes.indexOf(currentIndex)
+        if (position < 0)
+            position = delta > 0 ? 0 : selectableIndexes.length - 1
+        else {
+            position += delta
+            if (wrap)
+                position = (position + selectableIndexes.length) % selectableIndexes.length
+            else
+                position = Math.max(0, Math.min(selectableIndexes.length - 1, position))
+        }
+        const index = selectableIndexes[position]
+        selectedId = String(rows[index].id)
+        entries.positionViewAtIndex(index, ListView.Contain)
         search.forceActiveFocus()
     }
     function choose(id) {
@@ -108,8 +122,10 @@ Control {
             }
         }
     }
-    Shortcut { sequence: root.options.next_shortcut; onActivated: root.moveSelection(1) }
-    Shortcut { sequence: root.options.previous_shortcut; onActivated: root.moveSelection(-1) }
+    Shortcut { sequence: root.options.next_shortcut; onActivated: root.moveSelection(1, false) }
+    Shortcut { sequence: root.options.previous_shortcut; onActivated: root.moveSelection(-1, false) }
+    Shortcut { sequence: root.options.tab_shortcut; onActivated: root.moveSelection(1, true) }
+    Shortcut { sequence: root.options.reverse_tab_shortcut; onActivated: root.moveSelection(-1, true) }
     Shortcut { sequence: root.options.activate_shortcut; onActivated: root.choose(root.selectedId) }
     Shortcut { sequence: root.options.back_shortcut; onActivated: root.back() }
     Shortcut { sequence: root.options.close_shortcut; onActivated: { if (root.registryPage) Shell.closePopup(); else root.back() } }

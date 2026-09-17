@@ -37,9 +37,11 @@ private slots:
         QVERIFY(!module.value("enabled").toBool());
         QVERIFY(module.value("behavior").toMap().value("explicit_launch").toBool());
         QVERIFY(!module.value("behavior").toMap().value("search_case_sensitive").toBool());
-        QVERIFY(ConfigStore::parse("[modules.tray_launcher]\nenabled=true\n[modules.tray_launcher.behavior]\npopup_width=900\npopup_height=700\noutput='DP-2'\nallow_actions=false\nsearch_case_sensitive=true\nnext_shortcut='Ctrl+N'", model, error));
+        QCOMPARE(module.value("behavior").toMap().value("tab_shortcut").toString(), "Tab");
+        QCOMPARE(module.value("behavior").toMap().value("reverse_tab_shortcut").toString(), "Shift+Tab");
+        QVERIFY(ConfigStore::parse("[modules.tray_launcher]\nenabled=true\n[modules.tray_launcher.behavior]\npopup_width=900\npopup_height=700\noutput='DP-2'\nallow_actions=false\nsearch_case_sensitive=true\nnext_shortcut='Ctrl+N'\ntab_shortcut='Ctrl+Tab'\nreverse_tab_shortcut=''", model, error));
         QCOMPARE(model.value("modules").toMap().value("tray_launcher").toMap().value("behavior").toMap().value("popup_width").toInt(), 900);
-        for (const auto *source : {"popup_width=0", "popup_height=2161", "output='*'", "output=''", "explicit_launch=1", "search_case_sensitive='yes'", "next_shortcut='Nonsense'", "close_on_activate=1"}) {
+        for (const auto *source : {"popup_width=0", "popup_height=2161", "output='*'", "output=''", "explicit_launch=1", "search_case_sensitive='yes'", "next_shortcut='Nonsense'", "tab_shortcut='Nonsense'", "reverse_tab_shortcut='Tab+Shift'", "close_on_activate=1"}) {
             QVERIFY(!ConfigStore::parse(QByteArray("[modules.tray_launcher.behavior]\n") + source, model, error));
             QVERIFY(error.contains("tray_launcher"));
         }

@@ -166,6 +166,16 @@ private slots:
             QCOMPARE(view->rootObject(), root); QCOMPARE(QGuiApplication::topLevelWindows().size(), 1);
             QTRY_VERIFY(find(root, "tray-launcher-entry-2")); QVERIFY(!find(root, "tray-launcher-entry-2")->isEnabled());
             QVERIFY(!find(root, "tray-launcher-entry-3")->isEnabled()); QVERIFY(!find(root, "tray-launcher-entry-6"));
+            QTRY_COMPARE(root->property("selectedId").toString(), "1");
+            QTest::keyClick(view, Qt::Key_Tab); QTRY_COMPARE(root->property("selectedId").toString(), "4");
+            QTest::keyClick(view, Qt::Key_Tab); QTRY_COMPARE(root->property("selectedId").toString(), "5");
+            QTest::keyClick(view, Qt::Key_Tab); QTRY_COMPARE(root->property("selectedId").toString(), "1");
+            QTest::keyClick(view, Qt::Key_Tab, Qt::ShiftModifier); QTRY_COMPARE(root->property("selectedId").toString(), "5");
+            QVERIFY(search->hasActiveFocus()); QCOMPARE(search->property("text").toString(), "");
+            search->setProperty("text", "check"); QTRY_COMPARE(root->property("selectedId").toString(), "4");
+            QTest::keyClick(view, Qt::Key_Tab); QTRY_COMPARE(root->property("selectedId").toString(), "4");
+            QTest::keyClick(view, Qt::Key_Tab, Qt::ShiftModifier); QTRY_COMPARE(root->property("selectedId").toString(), "4");
+            QVERIFY(search->hasActiveFocus());
             search->setProperty("text", "mOrE"); QTRY_COMPARE(root->property("selectedId").toString(), "5");
             QTest::keyClick(view, Qt::Key_Return); QTRY_VERIFY(tray.menu()->canGoBack()); QTRY_VERIFY(!tray.menu()->loading());
             QCOMPARE(menu.shown, 5); QVERIFY(search->hasActiveFocus());
@@ -266,9 +276,15 @@ private slots:
         QQmlComponent fields(&engine); fields.setData("import QtQml\nimport \"qrc:/qml/SettingsFields.js\" as F\nQtObject { property var options: F.fields(Config.model.modules.tray_launcher, 'modules.tray_launcher') }", QUrl());
         std::unique_ptr<QObject> specs(fields.create()); QVERIFY2(specs, qPrintable(fields.errorString()));
         const auto options = specs->property("options").value<QJSValue>().toVariant().toList();
-        bool hasSearch = false, hasExplicit = false;
-        for (const auto &entry : options) { const auto map = entry.toMap(); if (map.value("path") == "modules.tray_launcher.behavior.search_case_sensitive") { hasSearch = true; QCOMPARE(map.value("kind").toString(), "boolean"); } if (map.value("path") == "modules.tray_launcher.behavior.explicit_launch") hasExplicit = true; }
-        QVERIFY(hasSearch); QVERIFY(hasExplicit); QCOMPARE(warnings.size(), 0);
+        bool hasSearch = false, hasExplicit = false, hasTab = false, hasReverseTab = false;
+        for (const auto &entry : options) {
+            const auto map = entry.toMap();
+            if (map.value("path") == "modules.tray_launcher.behavior.search_case_sensitive") { hasSearch = true; QCOMPARE(map.value("kind").toString(), "boolean"); }
+            if (map.value("path") == "modules.tray_launcher.behavior.explicit_launch") hasExplicit = true;
+            if (map.value("path") == "modules.tray_launcher.behavior.tab_shortcut") { hasTab = true; QVERIFY(map.value("help").toString().contains("cycle forward")); }
+            if (map.value("path") == "modules.tray_launcher.behavior.reverse_tab_shortcut") { hasReverseTab = true; QVERIFY(map.value("help").toString().contains("cycle backward")); }
+        }
+        QVERIFY(hasSearch); QVERIFY(hasExplicit); QVERIFY(hasTab); QVERIFY(hasReverseTab); QCOMPARE(warnings.size(), 0);
     }
 };
 int main(int argc, char **argv) {
