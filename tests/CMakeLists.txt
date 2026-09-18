@@ -79,3 +79,8 @@ target_link_libraries(media_launcher_ui_tests PRIVATE alure_platform alure_servi
 qt_add_resources(media_launcher_ui_tests media_launcher_ui PREFIX / BASE ${PROJECT_SOURCE_DIR} FILES ${ALURE_UI_FILES})
 add_test(NAME MediaLauncherUi COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:media_launcher_ui_tests>)
 set_tests_properties(MediaLauncherUi PROPERTIES TIMEOUT 40)
+
+qt_add_executable(dmenu_protocol_tests DmenuProtocolTest.cpp)
+target_link_libraries(dmenu_protocol_tests PRIVATE alure_core Qt6::Test)
+add_test(NAME DmenuProtocol COMMAND dmenu_protocol_tests)
+set_tests_properties(DmenuProtocol PROPERTIES TIMEOUT 30)
